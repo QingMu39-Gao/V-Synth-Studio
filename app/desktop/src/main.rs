@@ -26,7 +26,7 @@ mod ytdlp;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
+use tauri::{WebviewUrl, WebviewWindowBuilder};
 
 const WINDOW_TITLE: &str = "清沐的虚拟歌姬工作站";
 const STARTUP_TIMEOUT_SECS: u64 = 30;

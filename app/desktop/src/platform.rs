@@ -303,17 +303,7 @@ pub fn move_to_trash(target: &Path) -> std::io::Result<()> {
     }
 }
 
-/* ══════════════════════════════════ 编辑器 / 工具探测 ══════════════════════════════════ */
-
-/// 本机装了的歌声编辑器。阶段 3 接上真实探测（现在返回空数组，形状对齐）。
-pub fn detect_editors() -> Vec<Value> {
-    crate::tools::detect_editors()
-}
-
-/// 外部工具（ffmpeg / yt-dlp / python）。阶段 3 接上真实探测。
-pub fn detect_tools(root: &Path) -> Value {
-    crate::tools::detect_tools(root)
-}
+/* ══════════════════════════════════ 可执行文件查找 ══════════════════════════════════ */
 
 /// 在 PATH 和给定目录里找一个可执行文件
 pub fn find_binary(name: &str, extra_dirs: &[PathBuf]) -> Option<PathBuf> {

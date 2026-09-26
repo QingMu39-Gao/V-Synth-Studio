@@ -29,9 +29,7 @@ pub fn cli_path(root: &Path) -> Option<PathBuf> {
     candidates.into_iter().find(|p| p.is_file())
 }
 
-pub fn is_available(root: &Path) -> bool {
-    cli_path(root).is_some()
-}
+
 
 /* ══════════════════════════════════ 格式清单 ══════════════════════════════════ */
 

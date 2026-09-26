@@ -8,7 +8,7 @@
 //! 与 Node 版的差异：注册表用 Win32 API 直接读，不再经 PowerShell。
 //! 少一层 shell，快得多，也不会受控制台代码页影响导致中文路径乱码。
 
-use std::collections::BTreeMap;
+
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
@@ -185,11 +185,6 @@ fn ddb_name_in(dir: &Path) -> String {
 
 /// 从声库目录名推导「核心名」的别名（去掉 _V4X / _EVEC / _Original 这类后缀）
 fn add_derived_aliases(aliases: &mut Vec<String>, name: &str) {
-    let suffixes = [
-        "_V4X", "_V3", "_V2", "_EVEC", "_Straight", "_Soft", "_Whisper", "_Original", "_Solid",
-        "_Dark", "_Sweet", "_Power", "_Native", "_Jpn", "_CHN", "_ENG", "_Warm", "_Cold",
-        "_Serious", "_Meng", "_Ning", "_Wan",
-    ];
     /*
      * 按分隔符拆段，删掉纯变体词的段。
      * 词表必须和 Node 版**完全一致** —— 多列一个词就会多删一段，

@@ -23,13 +23,30 @@
       "icons/128x128.png",
       "icons/icon.ico"
     ],
+
+    "_resources_note": [
+      "随包分发的目录。程序运行时靠 find_app_root() 往上找 app/web/index.html 来定位根目录，",
+      "所以这些资源在安装后必须保持 <安装目录>/app/... 和 <安装目录>/tools/... 的相对结构 ——",
+      "Tauri 的 resources 是平铺到 <安装目录>/resources/ 下的，两者对不上，",
+      "因此不用 resources（见下方 _packaging_todo）。"
+    ],
     "resources": [],
+
+    "_packaging_todo": [
+      "打包前还要做两件事，现在做了会打出跑不起来的安装包：",
+      "1) 让 find_app_root() 认识 Tauri 的安装布局（resources/ 下是平铺的），",
+      "   或者改用 tauri 的 resource_dir() API 定位；",
+      "2) tools/ 里是 390 MB 的独立 exe（ffmpeg / LibreSVIP / yt-dlp），",
+      "   要么放进 resources 一起装，要么安装后首次运行时释放。",
+      "在那之前，分发用「整个目录打压缩包」的方式 —— 双击 启动工作站.bat 即可运行。"
+    ],
+
     "windows": {
       "webviewInstallMode": {
         "type": "downloadBootstrapper"
       }
     },
     "shortDescription": "翻调 P 主的本地工作台",
-    "longDescription": "工程格式互转、MV 解析下载、人声分离、资源导航。完全离线运行。"
+    "longDescription": "工程格式互转、MV 解析下载、人声分离、资源导航。完全离线运行。工具（ffmpeg / yt-dlp / LibreSVIP）随包分发，不需要联网下载。"
   }
 }

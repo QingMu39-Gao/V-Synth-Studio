@@ -515,17 +515,3 @@ fn ffmpeg_version(bin: &Path) -> Option<String> {
 fn trim_version(bin: &Path, args: &[&str]) -> Option<String> {
     run_capture(bin, args).map(|s| s.trim().to_string())
 }
-
-/// 自定义程序路径（设置页里加的）
-pub fn custom_programs(config: &Value) -> Vec<PathBuf> {
-    config
-        .get("customPrograms")
-        .and_then(|v| v.as_array())
-        .map(|a| {
-            a.iter()
-                .filter_map(|x| x.get("path").and_then(|p| p.as_str()))
-                .map(PathBuf::from)
-                .collect()
-        })
-        .unwrap_or_default()
-}
