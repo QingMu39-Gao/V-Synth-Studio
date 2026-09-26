@@ -20,7 +20,7 @@ mod net;
 mod platform;
 mod server;
 mod tools;
-mod voices;
+
 mod ytdlp;
 
 use std::path::{Path, PathBuf};
@@ -115,16 +115,6 @@ fn main() {
 /// 起 HTTP 服务（阻塞到进程结束）
 async fn serve(root: PathBuf, port: u16) -> Result<(), String> {
     let state = server::AppState::new(root.clone());
-    // 把用户手动指定的声库目录注入扫描器（和 Node 版的 setUserVoiceDirs 对应）
-    {
-        let cfg = state.config_snapshot();
-        let dirs: Vec<String> = cfg
-            .get("voiceDirs")
-            .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-            .unwrap_or_default();
-        voices::set_user_dirs(&dirs);
-    }
     let app = server::router(state.clone());
 
     let listener = tokio::net::TcpListener::bind(("127.0.0.1", port))

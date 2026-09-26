@@ -104,9 +104,6 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/tools/detect", get(tools::detect))
         .route("/api/tools/install", post(tools::install))
         .route("/api/tools/launch", post(tools::launch))
-        .route("/api/voices", get(tools::voices))
-        .route("/api/voices/match", post(tools::voices_match))
-        .route("/api/voices/probe", post(tools::voices_probe))
         // ── 视频与音频（阶段 4）───────────────────────────
         .route("/api/video/parse", post(media::video_parse))
         .route("/api/video/download", post(media::video_download))

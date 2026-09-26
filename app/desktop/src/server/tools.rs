@@ -1,7 +1,7 @@
 //! 阶段 3：工具与声库路由
 //!
 //! `detect` 已经能用（走 crate::tools 的真实探测）。
-//! install / launch / voices/* 留待阶段 3 接上。
+//! 只保留真正被用到的：外部工具探测（功能开关）与启动 UVR。
 
 use std::sync::Arc;
 
@@ -37,38 +37,36 @@ pub async fn launch(
     State(st): State<Arc<AppState>>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    if id.is_empty() {
-        return Err(ApiError::bad_request("缺少 id"));
-    }
+    // 两种调用方式，前端都在用：
+    //   { path }        —— 已经有确切路径（设置页选的文件、音频页记下的 UVR 路径）
+    //   { id }          —— 只知道 id，需要去设置里的自定义程序列表查
+    // 早先只实现了 { id }，导致传 path 的调用点全部报「缺少 id」。
+    let target = match body.get("path").and_then(|v| v.as_str()) {
+        Some(p) if !p.is_empty() => Some(p.to_string()),
+        _ => {
+            let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
+            if id.is_empty() {
+                return Err(ApiError::bad_request("缺少程序路径或 id"));
+            }
+            // 自定义程序：配置里存的是 [{ id, name, path }]
+            st.config_snapshot()
+                .get("customPrograms")
+                .and_then(|v| v.as_array())
+                .and_then(|arr| {
+                    arr.iter()
+                        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
+                        .and_then(|p| p.get("path").and_then(|v| v.as_str()))
+                        .map(String::from)
+                })
+        }
+    };
 
-    // 找目标路径。顺序：内置编辑器表 → 设置页里用户自己添加的程序。
-    // 自定义程序也要能启动，否则设置页里加进去的东西就是个死入口。
-    let editors = crate::tools::detect_editors();
-    let mut target = editors
-        .iter()
-        .find(|e| {
-            e.get("id").and_then(|v| v.as_str()) == Some(id)
-                && e.get("installed").and_then(|v| v.as_bool()) == Some(true)
-        })
-        .and_then(|e| e.get("path").and_then(|p| p.as_str()))
-        .map(String::from);
-
-    if target.is_none() {
-        // 自定义程序：配置里存的是 [{ id, name, path }]
-        let cfg = st.config_snapshot();
-        target = cfg
-            .get("customPrograms")
-            .and_then(|v| v.as_array())
-            .and_then(|arr| {
-                arr.iter()
-                    .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
-                    .and_then(|p| p.get("path").and_then(|v| v.as_str()))
-                    .map(String::from)
-            });
-    }
-
-    let target = target.ok_or_else(|| ApiError::bad_request(format!("没有找到可启动的程序：{id}")))?;
+    let target = target.ok_or_else(|| {
+        ApiError::bad_request(format!(
+            "没有找到可启动的程序：{}",
+            body.get("id").and_then(|v| v.as_str()).unwrap_or("(未指定)")
+        ))
+    })?;
 
     if !std::path::Path::new(&target).is_file() {
         return Err(ApiError::bad_request(format!("程序不存在或已被移动：{target}")));
@@ -88,24 +86,4 @@ pub async fn launch(
         .map_err(|e| ApiError::internal(format!("启动失败：{e}")))?;
 
     Ok(Json(ok(json!({ "launched": target }))))
-}
-
-pub async fn voices(State(st): State<Arc<AppState>>) -> Json<Value> {
-    Json(ok(crate::voices::snapshot(&st.config_snapshot())))
-}
-
-pub async fn voices_match(Json(body): Json<Value>) -> Json<Value> {
-    let singer = body.get("singer").and_then(|v| v.as_str()).unwrap_or("");
-    Json(ok(crate::voices::match_singer(singer)))
-}
-
-pub async fn voices_probe(Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
-    let dir = body.get("dir").and_then(|v| v.as_str()).unwrap_or("");
-    if dir.is_empty() {
-        return Err(ApiError::bad_request("缺少 dir 参数"));
-    }
-    if !std::path::Path::new(dir).is_dir() {
-        return Err(ApiError::bad_request(format!("不是目录：{dir}")));
-    }
-    Ok(Json(ok(crate::voices::probe_dir(dir))))
 }

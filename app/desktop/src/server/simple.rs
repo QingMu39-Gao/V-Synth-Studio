@@ -140,15 +140,6 @@ pub async fn config_post(
     if let Ok(mut guard) = st.config.lock() {
         *guard = cfg.clone();
     }
-    // 声库目录改了要立刻生效并清缓存，否则用户加完目录还得等 5 分钟
-    if body.get("voiceDirs").is_some() {
-        let dirs: Vec<String> = cfg
-            .get("voiceDirs")
-            .and_then(|v| v.as_array())
-            .map(|a| a.iter().filter_map(|x| x.as_str().map(String::from)).collect())
-            .unwrap_or_default();
-        crate::voices::set_user_dirs(&dirs);
-    }
     Ok(Json(ok(json!({ "config": cfg }))))
 }
 
@@ -160,7 +151,6 @@ pub async fn state(State(st): State<Arc<AppState>>) -> Json<Value> {
         "formats": crate::libresvip::list_formats(&st.root),
         "editors": crate::tools::detect_editors(),
         "tools": crate::tools::detect_tools(&st.root),
-        "voices": crate::voices::snapshot(&cfg),
         "transformOps": crate::data::transform_ops(),
         "audioFormats": crate::data::audio_formats(),
         "pinyin": crate::data::pinyin_summary(&st.root),

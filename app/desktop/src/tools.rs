@@ -24,292 +24,42 @@ struct Candidate {
     scan_depth: usize,
 }
 
-fn home() -> PathBuf {
-    crate::platform::home_dir().unwrap_or_else(|| PathBuf::from("C:\\Users\\Administrator"))
-}
 
-fn local_appdata() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| home().join("AppData\\Local"))
-}
 
-/// 完整候选表 —— 顺序即界面上的显示顺序，和 Node 版一致
+/// 需要探测的外部程序。
+///
+/// **只留 UVR 一个**。原来的表里有 16 个编辑器（VOCALOID6/5、SynthV 1/2、CeVIO、
+/// OpenUtau、UTAU、ACE Studio、DeepVocal、VOICEVOX、FL Studio、oremo、RecStar…），
+/// 配 56 条硬编码路径和带深度限制的目录扫描 —— 但其中**只有 UVR 被真正用到**
+/// （音频页的人声分离要跳过去）。
+///
+/// 其余的用途只是「在工作站里显示装了什么」和「从工作站启动别的编辑器」。
+/// 用户桌面本来就有快捷方式，绕这一层没有意义，还带来一堆要跟着编辑器版本维护的路径。
 fn candidates() -> Vec<Candidate> {
-    let pf = PathBuf::from(std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into()));
-    let pfx = PathBuf::from(
-        std::env::var("ProgramFiles(x86)").unwrap_or_else(|_| "C:\\Program Files (x86)".into()),
+    let pf = PathBuf::from(
+        std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into()),
     );
-    let utau_voice = home().join("Desktop").join("UTAU VOICE");
 
-    vec![
-        Candidate {
-            id: "vocaloid6",
-            name: "VOCALOID6",
-            vendor: "Yamaha",
-            category: "editor",
-            formats: &["vpr", "vsqx"],
-            color: "#00b3e3",
-            paths: vec![
-                PathBuf::from("H:\\VOCALOID6\\Editor\\VOCALOID6.exe"),
-                PathBuf::from("D:\\VOCALOID6\\Editor\\VOCALOID6.exe"),
-                pf.join("VOCALOID6\\Editor\\VOCALOID6.exe"),
-                pfx.join("VOCALOID6\\Editor\\VOCALOID6.exe"),
-            ],
-            scan_dirs: vec![
-                PathBuf::from("H:\\VOCALOID6"),
-                PathBuf::from("D:\\VOCALOID6"),
-                pf.join("VOCALOID6"),
-            ],
-            exe_names: &["vocaloid6.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "vocaloid5",
-            name: "VOCALOID5",
-            vendor: "Yamaha",
-            category: "editor",
-            formats: &["vpr", "vsqx"],
-            color: "#00b3e3",
-            paths: vec![
-                pf.join("VOCALOID5\\Editor\\VOCALOID5.exe"),
-                PathBuf::from("D:\\VOCALOID5\\Editor\\VOCALOID5.exe"),
-            ],
-            scan_dirs: vec![pf.join("VOCALOID5"), PathBuf::from("D:\\VOCALOID5")],
-            exe_names: &["vocaloid5.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "synthv2",
-            name: "Synthesizer V Studio 2 Pro",
-            vendor: "Dreamtonics",
-            category: "editor",
-            formats: &["svp"],
-            color: "#f5a623",
-            paths: vec![
-                PathBuf::from("H:\\Synthesizer V Studio 2 Pro\\synthv-studio.exe"),
-                PathBuf::from("D:\\Synthesizer V Studio 2 Pro\\synthv-studio.exe"),
-                pf.join("Synthesizer V Studio 2 Pro\\synthv-studio.exe"),
-            ],
-            scan_dirs: vec![
-                PathBuf::from("H:\\Synthesizer V Studio 2 Pro"),
-                PathBuf::from("D:\\Synthesizer V Studio 2 Pro"),
-                pf.join("Synthesizer V Studio 2 Pro"),
-            ],
-            exe_names: &["synthv-studio.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "synthv1",
-            name: "Synthesizer V Studio",
-            vendor: "Dreamtonics",
-            category: "editor",
-            formats: &["svp"],
-            color: "#f5a623",
-            paths: vec![
-                pf.join("Synthesizer V Studio\\synthv-studio.exe"),
-                PathBuf::from("D:\\Synthesizer V Studio\\synthv-studio.exe"),
-            ],
-            scan_dirs: vec![pf.join("Synthesizer V Studio")],
-            exe_names: &["synthv-studio.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "cevio",
-            name: "CeVIO AI / CS",
-            vendor: "CeVIO",
-            category: "editor",
-            formats: &["ccs"],
-            color: "#e6007e",
-            paths: vec![
-                PathBuf::from("H:\\cevio\\CeVIO AI.exe"),
-                pf.join("CeVIO\\CeVIO AI.exe"),
-                pfx.join("CeVIO\\CeVIO Creative Studio.exe"),
-            ],
-            scan_dirs: vec![PathBuf::from("H:\\cevio"), pf.join("CeVIO"), pfx.join("CeVIO")],
-            exe_names: &["cevio ai.exe", "cevio creative studio.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "openutau",
-            name: "OpenUtau",
-            vendor: "OpenUtau",
-            category: "editor",
-            formats: &["ustx", "ust"],
-            color: "#7c5cff",
-            paths: vec![
-                PathBuf::from("H:\\OpenUtau\\OpenUtau.exe"),
-                pf.join("OpenUtau\\OpenUtau.exe"),
-            ],
-            scan_dirs: vec![
-                PathBuf::from("H:\\OpenUtau"),
-                pf.join("OpenUtau"),
-                local_appdata().join("OpenUtau"),
-            ],
-            exe_names: &["openutau.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "utau",
-            name: "UTAU",
-            vendor: "飴屋／菖蒲",
-            category: "editor",
-            formats: &["ust"],
-            color: "#4caf50",
-            paths: vec![
-                pfx.join("UTAU\\UTAU.exe"),
-                PathBuf::from("C:\\UTAU\\UTAU.exe"),
-                PathBuf::from("D:\\UTAU\\UTAU.exe"),
-            ],
-            scan_dirs: vec![pfx.join("UTAU"), PathBuf::from("C:\\UTAU"), PathBuf::from("D:\\UTAU")],
-            exe_names: &["utau.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "acestudio",
-            name: "ACE Studio",
-            vendor: "ACE Studio",
-            category: "editor",
-            formats: &["acep"],
-            color: "#ff5c8a",
-            paths: vec![
-                pf.join("ACE Studio\\ACE Studio.exe"),
-                PathBuf::from("D:\\ACE Studio\\ACE Studio.exe"),
-                PathBuf::from("H:\\ACE Studio\\ACE Studio.exe"),
-            ],
-            scan_dirs: vec![
-                pf.join("ACE Studio"),
-                PathBuf::from("D:\\ACE Studio"),
-                PathBuf::from("H:\\ACE Studio"),
-            ],
-            exe_names: &["ace studio.exe", "acestudio.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "deepvocal",
-            name: "DeepVocal",
-            vendor: "DeepVocal",
-            category: "editor",
-            formats: &["dv"],
-            color: "#00c2a8",
-            paths: vec![
-                pf.join("DeepVocal\\DeepVocal.exe"),
-                PathBuf::from("D:\\DeepVocal\\DeepVocal.exe"),
-            ],
-            scan_dirs: vec![pf.join("DeepVocal"), PathBuf::from("D:\\DeepVocal")],
-            exe_names: &["deepvocal.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "voicevox",
-            name: "VOICEVOX",
-            vendor: "Hiroshiba",
-            category: "editor",
-            formats: &[],
-            color: "#39c5bb",
-            paths: vec![
-                pf.join("VOICEVOX\\VOICEVOX.exe"),
-                PathBuf::from("D:\\VOICEVOX\\VOICEVOX.exe"),
-                local_appdata().join("Programs\\VOICEVOX\\VOICEVOX.exe"),
-            ],
-            scan_dirs: vec![pf.join("VOICEVOX"), local_appdata().join("Programs\\VOICEVOX")],
-            exe_names: &["voicevox.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "uvr",
-            name: "Ultimate Vocal Remover (离线人声分离)",
-            vendor: "社区",
-            category: "tool",
-            formats: &[],
-            color: "#00d1b2",
-            paths: vec![
-                PathBuf::from("H:\\ChiXiaoYangUVR5\\UVR.exe"),
-                PathBuf::from("H:\\ChiXiaoYangUVR5\\Start.exe"),
-                pf.join("Ultimate Vocal Remover\\UVR.exe"),
-            ],
-            scan_dirs: vec![
-                PathBuf::from("H:\\ChiXiaoYangUVR5"),
-                pf.join("Ultimate Vocal Remover"),
-            ],
-            exe_names: &["uvr.exe", "start.exe", "ultimate vocal remover.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "vlabeler",
-            name: "vLabeler（原音设定标注）",
-            vendor: "sdercolin",
-            category: "tool",
-            formats: &[],
-            color: "#9c88ff",
-            // Node 版除了环境变量拼的路径，还硬编码了这个绝对路径。
-            // 保留它 —— 环境变量在某些启动方式下拿不到（比如被上层进程改写）
-            paths: vec![
-                PathBuf::from("C:\\Users\\Administrator\\Desktop\\UTAU VOICE\\vlabeler-1.7.0-beta2-win64\\vLabeler.exe"),
-                utau_voice.join("vlabeler-1.7.0-beta2-win64\\vLabeler.exe"),
-            ],
-            scan_dirs: vec![utau_voice.clone()],
-            exe_names: &["vlabeler.exe"],
-            scan_depth: 3,
-        },
-        Candidate {
-            id: "flstudio",
-            name: "FL Studio",
-            vendor: "Image-Line",
-            category: "daw",
-            formats: &["midi"],
-            color: "#ff8a00",
-            paths: vec![
-                pf.join("Image-Line\\FL Studio 2024\\FL64.exe"),
-                pf.join("Image-Line\\FL Studio 2025\\FL64.exe"),
-            ],
-            scan_dirs: vec![
-                pf.join("Image-Line"),
-                PathBuf::from("D:\\Program Files\\Image-Line"),
-                PathBuf::from("H:\\Image-Line"),
-            ],
-            exe_names: &["fl64.exe", "fl.exe"],
-            scan_depth: 3,
-        },
-        Candidate {
-            id: "oremo",
-            name: "oremo（声库录音工具）",
-            vendor: "UTAU 生态",
-            category: "voicebank",
-            formats: &[],
-            color: "#4caf50",
-            paths: vec![],
-            scan_dirs: vec![utau_voice.clone()],
-            exe_names: &["oremo.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "recstar",
-            name: "RecStar（声库录音工具）",
-            vendor: "UTAU 生态",
-            category: "voicebank",
-            formats: &[],
-            color: "#4caf50",
-            paths: vec![],
-            scan_dirs: vec![utau_voice.clone()],
-            exe_names: &["recstar.exe"],
-            scan_depth: 2,
-        },
-        Candidate {
-            id: "textgrid2oto",
-            name: "TextGrid2oto（自动原音设定）",
-            vendor: "UTAU 生态",
-            category: "voicebank",
-            formats: &[],
-            color: "#4caf50",
-            paths: vec![],
-            scan_dirs: vec![utau_voice],
-            exe_names: &["textgrid2oto.exe"],
-            scan_depth: 2,
-        },
-    ]
+    vec![Candidate {
+        id: "uvr",
+        name: "Ultimate Vocal Remover (离线人声分离)",
+        vendor: "社区",
+        category: "tool",
+        formats: &[],
+        color: "#00d1b2",
+        paths: vec![
+            PathBuf::from("H:\\ChiXiaoYangUVR5\\UVR.exe"),
+            PathBuf::from("H:\\ChiXiaoYangUVR5\\Start.exe"),
+            pf.join("Ultimate Vocal Remover\\UVR.exe"),
+        ],
+        scan_dirs: vec![
+            PathBuf::from("H:\\ChiXiaoYangUVR5"),
+            pf.join("Ultimate Vocal Remover"),
+        ],
+        exe_names: &["uvr.exe", "start.exe", "ultimate vocal remover.exe"],
+        scan_depth: 2,
+    }]
 }
-
 /// 探测本机装了哪些编辑器
 pub fn detect_editors() -> Vec<Value> {
     candidates()
