@@ -134,3 +134,13 @@ api.saveConfig(patch)
   （浏览器专用 API 无法在 Node 跑，只需要通过语法解析）。
 - 服务端已在 `http://127.0.0.1:8787` 运行，可用
   `Invoke-RestMethod` 直接验证你要调的接口真实返回结构。
+
+---
+
+## 6. 改完后端之后
+
+**必须用 `app\desktop\build.ps1`，不要直接 `cargo build`。**
+
+`cargo build` 只编译不复制，根目录的 `清沐的虚拟歌姬工作站.exe` 会停在旧版本 ——
+你双击启动器跑的是旧二进制，但代码和测试都是新的。这个坑真实发生过：
+`/api/fs/raw` 加好后一直用 cargo，根目录 exe 没更新，音频播放 404。
