@@ -84,6 +84,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/fs/delete", post(simple::fs_delete))
         .route("/api/fs/open", post(simple::fs_open))
         .route("/api/fs/reveal", post(simple::fs_reveal))
+        // 把本地媒体文件原样吐给前端 —— 浏览器只能吃 URL，不能读本地路径。
+        // 音频页的试听和波形都靠它，支持 Range（播放器拖进度条要用）
+        .route("/api/fs/raw", get(simple::fs_raw))
         // ── 任务 ──────────────────────────────────────────
         .route("/api/jobs", get(simple::jobs_list))
         .route("/api/jobs/get", get(simple::jobs_get))

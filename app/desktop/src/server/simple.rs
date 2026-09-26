@@ -513,6 +513,154 @@ pub async fn resources_check() -> Json<Value> {
     Json(ok(json!({ "results": [], "pending": true })))
 }
 
+/* ══════════════════════════════════ 本地媒体文件 ══════════════════════════════════ */
+
+/// 把本机的一个媒体文件原样吐给前端。
+///
+/// 为什么需要它：浏览器里的 `<audio>` 和 `AudioContext.decodeAudioData` 都只能吃
+/// URL，不能直接读本地路径 —— 没有这个路由，音频页就没法试听、也画不出波形。
+///
+/// **支持 Range 请求**：播放器要靠它才能拖动进度条跳到任意位置。
+/// 不支持 Range 的话，只能从头听，拖一下就断。
+pub async fn fs_raw(
+    State(st): State<Arc<AppState>>,
+    Query(q): Query<PathQuery>,
+    headers: axum::http::HeaderMap,
+) -> Response {
+    let Some(target) = q.path.as_deref().filter(|p| !p.is_empty()) else {
+        return (StatusCode::BAD_REQUEST, "缺少 path 参数").into_response();
+    };
+
+    /*
+     * 跨源防护。
+     *
+     * 这是一个只监听 127.0.0.1 的本地服务，但这个路由会**读任意本地文件的内容** ——
+     * 比同目录下那些「列目录」「用资源管理器打开」的路由危险得多：
+     * 恶意网页只要知道端口，就能 fetch 到你的文件。
+     *
+     * 浏览器发起跨源请求时一定会带 Origin，而本应用自己的页面是同源（不带 Origin，
+     * 或者带的就是自己）。所以「带了 Origin 且不是自己」一律拒绝。
+     */
+    if let Some(origin) = headers.get(header::ORIGIN).and_then(|v| v.to_str().ok()) {
+        let host = headers.get(header::HOST).and_then(|v| v.to_str().ok()).unwrap_or("");
+        if !host.is_empty() && !origin.ends_with(host) {
+            return (StatusCode::FORBIDDEN, "拒绝跨源读取本地文件").into_response();
+        }
+    }
+
+    let path = PathBuf::from(target);
+    if !path.is_file() {
+        return (StatusCode::NOT_FOUND, "文件不存在").into_response();
+    }
+
+    let Ok(meta) = fs::metadata(&path) else {
+        return (StatusCode::INTERNAL_SERVER_ERROR, "读不到文件信息").into_response();
+    };
+    let total = meta.len();
+    let mime = media_mime_of(&path);
+
+    // ── Range 请求：只回请求的那一段 ──
+    if let Some(range) = headers.get(header::RANGE).and_then(|v| v.to_str().ok()) {
+        let Some((start, end)) = parse_range(range, total) else {
+            return (
+                StatusCode::RANGE_NOT_SATISFIABLE,
+                [(header::CONTENT_RANGE, format!("bytes */{total}"))],
+                "",
+            )
+                .into_response();
+        };
+
+        use std::io::{Read, Seek, SeekFrom};
+        let Ok(mut f) = fs::File::open(&path) else {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "打开文件失败").into_response();
+        };
+        if f.seek(SeekFrom::Start(start)).is_err() {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "定位失败").into_response();
+        }
+        let len = (end - start + 1) as usize;
+        let mut buf = vec![0u8; len];
+        if f.read_exact(&mut buf).is_err() {
+            return (StatusCode::INTERNAL_SERVER_ERROR, "读取失败").into_response();
+        }
+
+        return (
+            StatusCode::PARTIAL_CONTENT,
+            [
+                (header::CONTENT_TYPE, mime.to_string()),
+                (header::ACCEPT_RANGES, "bytes".to_string()),
+                (header::CONTENT_RANGE, format!("bytes {start}-{end}/{total}")),
+                (header::CONTENT_LENGTH, len.to_string()),
+            ],
+            Body::from(buf),
+        )
+            .into_response();
+    }
+
+    // ── 整文件 ──
+    match fs::read(&path) {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [
+                (header::CONTENT_TYPE, mime.to_string()),
+                (header::ACCEPT_RANGES, "bytes".to_string()),
+                (header::CONTENT_LENGTH, total.to_string()),
+            ],
+            Body::from(bytes),
+        )
+            .into_response(),
+        Err(e) => (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()).into_response(),
+    }
+}
+
+/// 解析 `bytes=start-end`。end 可以省略（表示到文件末尾）。
+/// 返回闭区间的 (start, end)。
+fn parse_range(header: &str, total: u64) -> Option<(u64, u64)> {
+    let spec = header.strip_prefix("bytes=")?;
+    // 只处理单段请求；多段（逗号分隔）在实际使用里见不到，遇到了就当整文件
+    let (a, b) = spec.split_once('-')?;
+    if total == 0 {
+        return None;
+    }
+
+    if a.is_empty() {
+        // `bytes=-N`：最后 N 字节
+        let n: u64 = b.trim().parse().ok()?;
+        if n == 0 {
+            return None;
+        }
+        return Some((total.saturating_sub(n), total - 1));
+    }
+
+    let start: u64 = a.trim().parse().ok()?;
+    if start >= total {
+        return None;
+    }
+    let end = if b.trim().is_empty() {
+        total - 1
+    } else {
+        b.trim().parse::<u64>().ok()?.min(total - 1)
+    };
+    if end < start {
+        return None;
+    }
+    Some((start, end))
+}
+
+/// 媒体文件类型。波形和试听都靠它 —— 浏览器只认对类型才肯解码。
+fn media_mime_of(p: &Path) -> &'static str {
+    match p.extension().and_then(|e| e.to_str()).map(|s| s.to_lowercase()).as_deref() {
+        Some("wav") => "audio/wav",
+        Some("mp3") => "audio/mpeg",
+        Some("flac") => "audio/flac",
+        Some("m4a") | Some("aac") => "audio/mp4",
+        Some("ogg") | Some("opus") => "audio/ogg",
+        Some("mp4") => "video/mp4",
+        Some("webm") => "video/webm",
+        Some("mkv") => "video/x-matroska",
+        _ => "application/octet-stream",
+    }
+}
+
 /* ══════════════════════════════════ 静态文件 ══════════════════════════════════ */
 
 /// 前端静态文件。/api/* 之外的所有请求都走这里。
