@@ -11,9 +11,9 @@
 
 import { api } from '../api.js'
 import {
-  h, mount, icon, toast, promptDialog, confirmDialog, modal, button, card, statBlock,
+  h, mount, icon, toast, confirmDialog, modal, button, card, statBlock,
 } from '../ui.js'
-import { directoryInput } from '../components/dirPicker.js'
+import { directoryInput, pickDirectory } from '../components/dirPicker.js'
 
 const LS_QUALITY = 'fandiao.settings.quality'
 const LS_SECTION = 'fandiao.settings.section'
@@ -552,15 +552,13 @@ export async function render(ctx) {
                 pathInput,
                 button('浏览文件', {
                   iconName: 'folder',
-                  onClick: async () => {
-                    const p = await promptDialog({
-                      title: '粘贴 exe 完整路径',
-                      label: '在资源管理器里复制路径后粘贴到这里（Ctrl+Shift+C 可复制完整路径）',
-                      value: pathInput.value,
-                      placeholder: 'C:\\Program Files\\xxx\\xxx.exe',
-                    })
-                    if (p !== null) pathInput.value = p.trim()
-                  },
+                  onClick: () => pickDirectory({
+                    mode: 'file',
+                    exts: ['exe', 'bat', 'cmd', 'lnk'],
+                    title: '选择可执行文件',
+                    initial: pathInput.value,
+                    onPick: (p) => { pathInput.value = p },
+                  }),
                 }),
               ]),
             ]),

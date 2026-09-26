@@ -52,7 +52,12 @@ export const api = {
   launch: (payload) => request('/api/tools/launch', { method: 'POST', body: payload }),
 
   fsRoots: () => request('/api/fs/roots'),
-  fsList: (path) => request(`/api/fs/list?path=${encodeURIComponent(path ?? '')}`),
+  fsList: (path, { exts, files } = {}) => {
+    const qs = new URLSearchParams({ path: path ?? '' })
+    if (exts?.length) qs.set('exts', exts.join(','))
+    if (files === false) qs.set('files', '0')
+    return request(`/api/fs/list?${qs}`)
+  },
   fsMkdir: (path) => request('/api/fs/mkdir', { method: 'POST', body: { path } }),
   fsReveal: (path, select = true) => request('/api/fs/reveal', { method: 'POST', body: { path, select } }),
   fsOpen: (payload) => request('/api/fs/open', { method: 'POST', body: payload }),

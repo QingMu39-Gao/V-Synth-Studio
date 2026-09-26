@@ -97,9 +97,7 @@ export async function navigate(id, params = {}) {
 
   highlightNav(id)
   location.hash = params.section ? `#/${id}/${params.section}` : `#/${id}`
-  document.title = `${def.title} · 清沐的虚拟歌姬工作站`
-  document.getElementById('view-title').textContent = def.title
-  document.getElementById('view-sub').textContent = def.sub
+  setViewChrome(def)
 
   const viewEl = document.getElementById('view')
   const headerActions = document.getElementById('header-actions')
@@ -180,25 +178,53 @@ function padStatus() {
 
 /* ------------------------------------------------------------ 启动 */
 
+/// 视图的标题栏（navigate 和骨架共用）
+function setViewChrome(def) {
+  document.title = `${def.title} · 清沐的虚拟歌姬工作站`
+  document.getElementById('view-title').textContent = def.title
+  document.getElementById('view-sub').textContent = def.sub
+}
+
+/// 状态还没回来时的占位
+function showSkeleton(id) {
+  const def = VIEWS.find((v) => v.id === id)
+  if (def) {
+    highlightNav(id)
+    setViewChrome(def)
+  }
+  mount(document.getElementById('view'), h('div.empty', [h('div.skeleton', { style: { width: '100%', height: '90px', marginBottom: '14px' } })]))
+}
+
 async function boot() {
   buildNav()
 
-  // 先渲染总览骨架，再后台拉状态
   const initialMatch = location.hash.match(/^#\/(\w+)(?:\/([\w-]+))?/)
   const initial = initialMatch?.[1] ?? 'dashboard'
   const initialParam = initialMatch?.[2]
-  await navigate(VIEWS.some((v) => v.id === initial) ? initial : 'dashboard', initialParam ? { section: initialParam } : {})
+  const id = VIEWS.some((v) => v.id === initial) ? initial : 'dashboard'
+  const params = initialParam ? { section: initialParam } : {}
 
+  /*
+   * 先挂骨架，状态回来之后再渲染真视图 —— 只渲染一次。
+   *
+   * 早先是「先渲染一遍视图、拿到状态再渲染第二遍」，第二遍会把第一遍的 DOM 整块换掉。
+   * 这中间用户要是点开了「选择文件 / 选择目录」，对话框的回调闭包指向的是已经被换掉的
+   * 旧实例：选完文件界面毫无反应（配置文件那类走 localStorage 的勉强能靠第二遍读回来，
+   * 转换页的待转列表这种只在内存里的就直接没了）。
+   */
+  showSkeleton(id)
   try {
     await refreshState()
-    // 状态就绪后重渲染当前视图，让数据填充进去（带上原来的参数，别退回默认节）
-    await navigate(currentView ?? 'dashboard', lastParams)
   } catch (err) {
     console.error(err)
     toast('无法连接本地服务，请确认服务仍在运行', 'err')
     const dot = document.getElementById('status-dot')
     if (dot) dot.style.background = 'var(--err)'
   }
+
+  // 等状态的这段时间用户自己切过页，就按新状态渲染那一页（带上原来的参数）
+  if (currentView) await navigate(currentView, lastParams)
+  else await navigate(id, params)
 
   state.ready = true
 }

@@ -180,6 +180,10 @@ pub async fn fs_roots() -> Json<Value> {
 #[derive(serde::Deserialize)]
 pub struct PathQuery {
     pub path: Option<String>,
+    /// 只看这些扩展名（逗号分隔、不带点、大小写不敏感）；不传 = 全部文件
+    pub exts: Option<String>,
+    /// `files=0` 不返回文件列表 —— 选目录的场景用不上
+    pub files: Option<String>,
 }
 
 pub async fn fs_list(
@@ -197,6 +201,9 @@ pub async fn fs_list(
         return Err(ApiError::bad_request("缺少 path 参数"));
     }
 
+    let want_files = q.files.as_deref() != Some("0");
+    let exts = parse_exts(q.exts.as_deref());
+
     let target = PathBuf::from(&requested);
     if !target.exists() {
         // 目标不存在时返回它最近的已存在父目录
@@ -212,6 +219,7 @@ pub async fn fs_list(
             "requested": requested,
             "exists": false,
             "dirs": list_dirs(&cur),
+            "files": files_json(&cur, want_files, &exts),
             "parent": parent_str(&cur),
         }))));
     }
@@ -225,8 +233,26 @@ pub async fn fs_list(
         "path": crate::platform::clean_path(&resolved),
         "exists": true,
         "dirs": list_dirs(&target),
+        "files": files_json(&target, want_files, &exts),
         "parent": parent_str(&resolved),
     }))))
+}
+
+/// `?exts=mp3,wav,.FLAC` → `["mp3","wav","flac"]`（空 = 不过滤）
+fn parse_exts(raw: Option<&str>) -> Vec<String> {
+    raw.unwrap_or("")
+        .split(',')
+        .map(|s| s.trim().trim_start_matches('.').to_lowercase())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn files_json(dir: &Path, want: bool, exts: &[String]) -> Value {
+    if want {
+        json!(list_files(dir, exts))
+    } else {
+        json!([])
+    }
 }
 
 /// 只列目录（不列文件），过滤掉系统目录，按名称排序 —— 和 Node 版一致
@@ -258,6 +284,61 @@ fn list_dirs(dir: &Path) -> Vec<Value> {
     out.into_iter()
         .map(|(name, path)| json!({ "name": name, "path": path }))
         .collect()
+}
+
+/// 列文件（`exts` 非空时只留这些扩展名）。排序与目录一致：名称不区分大小写。
+fn list_files(dir: &Path, exts: &[String]) -> Vec<Value> {
+    let Ok(entries) = fs::read_dir(dir) else {
+        return vec![];
+    };
+    let mut out: Vec<(String, String, u64, String)> = entries
+        .flatten()
+        .filter(|e| e.file_type().map(|t| t.is_file()).unwrap_or(false))
+        .filter(|e| !is_hidden_or_system(e))
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            let ext = Path::new(&name)
+                .extension()
+                .map(|x| x.to_string_lossy().to_lowercase())
+                .unwrap_or_default();
+            if !exts.is_empty() && !exts.iter().any(|x| x == &ext) {
+                return None;
+            }
+            let size = e.metadata().map(|m| m.len()).unwrap_or(0);
+            Some((name, e.path().to_string_lossy().to_string(), size, ext))
+        })
+        .collect();
+
+    out.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+
+    out.into_iter()
+        .map(|(name, path, size, ext)| json!({ "name": name, "path": path, "size": size, "ext": ext }))
+        .collect()
+}
+
+/// 隐藏 / 系统文件不列出来（Windows 上看属性，其他平台只看名字）
+fn is_hidden_or_system(e: &fs::DirEntry) -> bool {
+    let name = e.file_name().to_string_lossy().to_string();
+    if name.starts_with('.')
+        || name.starts_with('$')
+        || name == "System Volume Information"
+        || name.eq_ignore_ascii_case("desktop.ini")
+        || name.eq_ignore_ascii_case("thumbs.db")
+    {
+        return true;
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::MetadataExt;
+        const FILE_ATTRIBUTE_HIDDEN: u32 = 0x2;
+        const FILE_ATTRIBUTE_SYSTEM: u32 = 0x4;
+        if let Ok(md) = e.metadata() {
+            if md.file_attributes() & (FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_SYSTEM) != 0 {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// 父目录字符串。

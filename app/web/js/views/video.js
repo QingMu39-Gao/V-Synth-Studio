@@ -11,7 +11,7 @@ import {
   h, mount, icon, toast, button, card, progressBar, emptyState, alertBox,
   formatBytes, formatDuration, formatNumber, segmented,
 } from '../ui.js'
-import { directoryInput } from '../components/dirPicker.js'
+import { directoryInput, outputDirHint } from '../components/dirPicker.js'
 
 const LS_KEY = 'fandiao.video.settings'
 
@@ -787,19 +787,38 @@ export async function render(ctx) {
 
   /* ------------------------------------------------------------ 下载选项 */
 
+  const cfgDownDir = state.paths?.downloadDir || state.paths?.outputDir || ''
+  const outDirHintEl = h('div')
+
   const dirInput = directoryInput({
     value: settings.outDir,
     title: '选择视频保存目录',
-    placeholder: '视频保存到哪里…',
+    placeholder: '留空 = 用设置里的默认下载目录…',
   })
   dirInput.el.querySelector('input').addEventListener('input', () => {
     settings.outDir = dirInput.getValue()
     saveSettings(settings)
+    renderOutDirHint()
   })
   dirInput.el.querySelector('input').addEventListener('change', () => {
     settings.outDir = dirInput.getValue()
     saveSettings(settings)
+    renderOutDirHint()
   })
+
+  function renderOutDirHint() {
+    mount(outDirHintEl, outputDirHint({
+      custom: !!settings.outDir && settings.outDir !== cfgDownDir,
+      fallback: cfgDownDir,
+      onReset: () => {
+        settings.outDir = cfgDownDir
+        dirInput.setValue(cfgDownDir)
+        saveSettings(settings)
+        renderOutDirHint()
+      },
+    }))
+  }
+  renderOutDirHint()
 
   const subDirInput = h('input.input.mono', {
     value: settings.subDir,
@@ -831,7 +850,7 @@ export async function render(ctx) {
         }))
 
     const rows = [
-      h('div.field', [h('label.field-label', '输出目录'), dirInput.el]),
+      h('div.field', [h('label.field-label', '输出目录'), dirInput.el, outDirHintEl]),
       h('div.field', [
         h('label.field-label', '下载模式'),
         modeSeg,

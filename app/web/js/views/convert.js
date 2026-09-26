@@ -8,7 +8,7 @@
 
 import { api, watchJob } from '../api.js'
 import { h, mount, icon, toast, button, card, progressBar, emptyState, formatBytes, alertBox, modal } from '../ui.js'
-import { pickDirectory, directoryInput } from '../components/dirPicker.js'
+import { pickDirectory, directoryInput, outputDirHint } from '../components/dirPicker.js'
 
 const LS_KEY = 'fandiao.convert.settings'
 
@@ -70,6 +70,9 @@ export async function render(ctx) {
   if (writable.length && !writable.some((f) => f.id === settings.targetFormat)) {
     settings.targetFormat = writable[0].id
   }
+
+  /** 所有工程格式的扩展名（不带点），给本机文件选择器当过滤器 */
+  const projectExts = [...new Set(state.formats.flatMap((f) => f.exts ?? []).map((e) => String(e).replace(/^\./, '').toLowerCase()))]
 
   /* ---------------- 头部动作 ---------------- */
   mount(headerActions,
@@ -137,7 +140,7 @@ export async function render(ctx) {
     sub: '拖入文件，或从目录批量收集',
     iconName: 'file',
     actions: h('div.row.gap-sm', [
-      button('选择文件', { size: 'btn-sm', iconName: 'plus', onClick: () => fileInput.click() }),
+      button('浏览本机文件', { size: 'btn-sm', variant: 'btn-primary', iconName: 'folder', onClick: browseLocalFile }),
       button('从目录收集', { size: 'btn-sm', iconName: 'folder', onClick: collectFromDirectory }),
       button('清空', {
         size: 'btn-sm',
@@ -155,6 +158,32 @@ export async function render(ctx) {
     ]),
     body: h('div.col', [dropzone, fileInput, fileRows]),
   })
+
+  /** 在本机磁盘上挑一个工程文件（拿到的是真实路径，服务端直接读） */
+  function browseLocalFile() {
+    pickDirectory({
+      mode: 'file',
+      exts: projectExts,
+      title: '选择工程文件',
+      initial: sources.find((s) => s.path)?.path || settings.outDir,
+      onPick: (_p, entry) => {
+        if (!entry?.path) return
+        if (sources.some((s) => s.path === entry.path)) {
+          toast('这个文件已经在列表里了', 'warn')
+          return
+        }
+        sources.push({
+          path: entry.path,
+          name: entry.name,
+          size: entry.size,
+          ext: entry.ext ? `.${entry.ext}` : '',
+        })
+        previewResult = null
+        renderSources()
+        maybeAutoPreview()
+      },
+    })
+  }
 
   async function collectFromDirectory() {
     pickDirectory({
@@ -306,15 +335,35 @@ export async function render(ctx) {
   })
 
   /* ---------------- 输出设置 ---------------- */
+  const cfgOutDir = state.paths?.outputDir || ''
+  const outDirHintEl = h('div')
+
   const dirInput = directoryInput({
     value: settings.outDir,
     title: '选择输出目录',
-    placeholder: '选择转换结果的保存位置…',
+    placeholder: '留空 = 用设置里的默认输出目录…',
   })
   dirInput.el.querySelector('input').addEventListener('change', (e) => {
-    settings.outDir = e.target.value.trim()
+    // 清空 = 回到默认目录，别让用户以为「没目录所以不能转」
+    settings.outDir = e.target.value.trim() || cfgOutDir
+    if (!e.target.value.trim()) dirInput.setValue(cfgOutDir)
     saveSettings(settings)
+    renderOutDirHint()
   })
+
+  function renderOutDirHint() {
+    mount(outDirHintEl, outputDirHint({
+      custom: !!settings.outDir && settings.outDir !== cfgOutDir,
+      fallback: cfgOutDir,
+      onReset: () => {
+        settings.outDir = cfgOutDir
+        dirInput.setValue(cfgOutDir)
+        saveSettings(settings)
+        renderOutDirHint()
+      },
+    }))
+  }
+  renderOutDirHint()
 
   const nameInput = h('input.input.mono', {
     value: settings.nameTemplate,
@@ -345,7 +394,7 @@ export async function render(ctx) {
     iconName: 'save',
     iconColor: 'info',
     body: h('div.col', [
-      h('div.field', [h('label.field-label', '输出目录'), dirInput.el]),
+      h('div.field', [h('label.field-label', '输出目录'), dirInput.el, outDirHintEl]),
       h('div.field', [
         h('label.field-label', '文件名模板'),
         nameInput,

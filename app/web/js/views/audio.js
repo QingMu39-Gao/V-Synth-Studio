@@ -17,7 +17,7 @@ import {
 } from '../ui.js'
 import { parseTime, formatTime } from '../timecode.js'
 import { createWaveEditor, rawUrl } from '../components/waveEditor.js'
-import { pickDirectory, directoryInput } from '../components/dirPicker.js'
+import { pickDirectory, directoryInput, outputDirHint } from '../components/dirPicker.js'
 
 const LS_KEY = 'fandiao.audio.settings'
 const MVSEP_URL = 'https://mvsep.com/zh'
@@ -153,7 +153,7 @@ export async function render(ctx) {
         size: 'btn-sm',
         iconName: 'folder',
         onClick: () => {
-          const dir = dirInput.getValue() || settings.outDir || dirName(settings.input)
+          const dir = dirInput.getValue() || defaultOutDir() || dirName(settings.input)
           if (!dir) {
             toast('还没有确定输出目录', 'warn')
             return
@@ -183,14 +183,6 @@ export async function render(ctx) {
   })
   inputEl.addEventListener('change', () => commitInput())
 
-  const filePicker = h('input', { type: 'file', accept: 'audio/*,video/*', style: { display: 'none' } })
-  filePicker.addEventListener('change', async () => {
-    const f = filePicker.files?.[0]
-    filePicker.value = ''
-    if (!f) return
-    await acceptBrowserFile(f.name)
-  })
-
   const MEDIA_EXTS = new Set([...AUDIO_EXTS, 'mp4', 'mkv', 'flv', 'mov', 'webm', 'avi', 'ts', 'm4v', 'wmv'])
 
   const probeBox = h('div')
@@ -204,26 +196,13 @@ export async function render(ctx) {
     }
   }
 
-  async function acceptBrowserFile(name) {
-    const dir = settings.lastDir || dirName(settings.input)
-    if (dir) {
-      const candidate = joinPath(dir, name)
-      const info = await probePath(candidate)
-      if (info) {
-        setInput(candidate)
-        toast(`已按上次的文件夹拼出路径：${candidate}`, 'info')
-        return
-      }
-    }
+  function pickFile() {
     pickDirectory({
-      title: `请选择《${name}》所在的文件夹`,
-      initial: dir || state.paths?.downloadDir || '',
-      onPick: (d) => {
-        settings.lastDir = d
-        save()
-        setInput(joinPath(d, name))
-        toast('文件夹已记住，下次「选文件」会自动拼出完整路径', 'info')
-      },
+      mode: 'file',
+      exts: [...MEDIA_EXTS],
+      title: '选择音频 / 视频文件',
+      initial: settings.input || settings.lastDir || defaultOutDir(),
+      onPick: (p) => setInput(p),
     })
   }
 
@@ -237,7 +216,6 @@ export async function render(ctx) {
     }
     save()
     if (changed) {
-      syncOutDir()
       refreshName()
       void probeFile(true)
     }
@@ -250,7 +228,6 @@ export async function render(ctx) {
     nameEdited = false
     settings.nameEdited = false
     save()
-    syncOutDir()
     refreshName()
     probe = null
     renderProbe()
@@ -262,15 +239,12 @@ export async function render(ctx) {
     sub: '选一个音频或视频文件，所有处理都在本机完成',
     iconName: 'music',
     iconColor: 'purple',
-    actions: h('div.row.gap-sm', [
-      button('选文件夹', { size: 'btn-sm', iconName: 'folder', onClick: pickFolder }),
-      button('选文件', { size: 'btn-sm', variant: 'btn-primary', iconName: 'plus', onClick: () => filePicker.click() }),
-    ]),
     body: h('div.col.gap-lg', [
       h('div.field', [
         h('label.field-label', '文件路径'),
         h('div.input-group', [
           inputEl,
+          button('浏览', { variant: 'btn-primary', iconName: 'folder', onClick: pickFile }),
           button('清空', {
             variant: 'btn-ghost',
             iconName: 'x',
@@ -284,33 +258,11 @@ export async function render(ctx) {
             },
           }),
         ]),
-        h('div.field-hint', '浏览器的文件选择器拿不到完整磁盘路径，所以：先「选文件夹」再「选文件」会自动拼好路径（记住一次就行）；也可以直接在资源管理器里 Shift+右键 →「复制文件地址」粘进来。'),
+        h('div.field-hint', '点「浏览」直接在本机选文件；也可以把完整路径（含文件名）粘贴到这里，回车生效。'),
       ]),
-      filePicker,
       probeBox,
     ]),
   })
-
-  function pickFolder() {
-    pickDirectory({
-      title: '选择音频所在的文件夹',
-      initial: settings.lastDir || dirName(settings.input) || state.paths?.downloadDir || '',
-      onPick: (d) => {
-        settings.lastDir = d
-        save()
-        if (settings.input && dirName(settings.input) !== d) {
-          const composed = joinPath(d, baseName(settings.input))
-          const exts = MEDIA_EXTS.has(extOf(composed)) ? composed : ''
-          if (exts) {
-            setInput(composed)
-            toast(`已按新文件夹重算路径：${composed}`, 'info')
-            return
-          }
-        }
-        toast('已记住这个文件夹，接着点「选文件」就会自动拼出完整路径', 'ok')
-      },
-    })
-  }
 
   async function probeFile(notify) {
     const path = settings.input.trim()
@@ -694,15 +646,16 @@ export async function render(ctx) {
   /* ------------------------------------------------------------ 输出 */
 
   const dirInput = directoryInput({
-    value: settings.outDir,
+    value: settings.outDirTouched ? settings.outDir : '',
     title: '选择输出目录',
-    placeholder: '默认与输入文件同一目录…',
+    placeholder: '留空 = 写到系统下载目录…',
   })
   const dirEl = dirInput.el.querySelector('input')
   const onDirEdit = () => {
     settings.outDir = dirInput.getValue()
-    settings.outDirTouched = true
+    settings.outDirTouched = !!settings.outDir
     save()
+    renderOutDirHint()
     renderOutPath()
   }
   dirEl.addEventListener('input', onDirEdit)
@@ -722,14 +675,29 @@ export async function render(ctx) {
 
   const outPathEl = h('div.mono.small')
 
-  function syncOutDir() {
-    if (settings.outDirTouched && settings.outDir) return
-    const d = dirName(settings.input)
-    if (d) {
-      settings.outDir = d
-      dirInput.setValue(d)
-      save()
-    }
+  /** 默认输出目录 = 配置里的输出目录（本机就是系统下载目录） */
+  function defaultOutDir() {
+    return state.paths?.outputDir || ''
+  }
+
+  const outDirHintEl = h('div')
+
+  /** 输出目录的来源（默认值 / 用户改过），改输入文件时不再动它 */
+  function renderOutDirHint() {
+    mount(outDirHintEl, outputDirHint({
+      custom: settings.outDirTouched && !!settings.outDir,
+      fallback: defaultOutDir(),
+      onReset: resetOutDir,
+    }))
+  }
+
+  function resetOutDir() {
+    settings.outDir = ''
+    settings.outDirTouched = false
+    dirInput.setValue('')
+    save()
+    renderOutDirHint()
+    renderOutPath()
   }
 
   function formatExt() {
@@ -775,7 +743,7 @@ export async function render(ctx) {
 
   function resolveOutput() {
     const input = settings.input.trim()
-    const outDir = (dirInput.getValue() || settings.outDir || dirName(input) || '').trim()
+    const outDir = (dirInput.getValue() || defaultOutDir() || dirName(input) || '').trim()
     const name = (nameEl.value.trim() || inferOutName())
     return { outDir, name, output: joinPath(outDir, name) }
   }
@@ -792,7 +760,7 @@ export async function render(ctx) {
 
   const outCard = card({
     title: '输出',
-    sub: '默认跟输入文件放在一起，可以改',
+    sub: '不改的话写到系统下载目录',
     iconName: 'save',
     iconColor: 'info',
     actions: button('与输入同目录', {
@@ -800,20 +768,21 @@ export async function render(ctx) {
       variant: 'btn-ghost',
       iconName: 'refresh',
       onClick: () => {
-        settings.outDirTouched = false
         const d = dirName(settings.input)
         if (!d) {
           toast('还没选输入文件', 'warn')
           return
         }
         settings.outDir = d
+        settings.outDirTouched = true
         dirInput.setValue(d)
         save()
+        renderOutDirHint()
         renderOutPath()
       },
     }),
     body: h('div.col', [
-      h('div.field', [h('label.field-label', '输出目录'), dirInput.el]),
+      h('div.field', [h('label.field-label', '输出目录'), dirInput.el, outDirHintEl]),
       h('div.field', [
         h('label.field-label', '输出文件名'),
         nameEl,
@@ -1205,7 +1174,7 @@ export async function render(ctx) {
   renderOps()
   renderOpOptions()
   renderProbe()
-  syncOutDir()
+  renderOutDirHint()
   refreshName()
   renderOutPath()
   renderResult(lastResult)

@@ -663,6 +663,15 @@ table.data tr:last-child td { border-bottom: none; }
 .dir-entry svg { width: 14px; height: 14px; color: var(--warn); flex-shrink: 0; }
 .dir-entry.drive svg { color: var(--info); }
 .dir-entry.quick svg { color: var(--purple); }
+/* 选中的那一行：左侧色条 + 底色，和「正在浏览的目录」区分开 */
+.dir-entry.selected {
+  background: var(--glass-hover);
+  color: var(--text-0);
+  box-shadow: inset 2px 0 0 var(--info);
+}
+.dir-entry.file svg { color: var(--text-2); }
+.dir-entry.file.selected svg { color: var(--info); }
+.dir-entry .size { margin-left: auto; font-size: 11px; color: var(--text-3); flex-shrink: 0; }
 
 /* ------------------------------------------------------------ 统计块 */
 
