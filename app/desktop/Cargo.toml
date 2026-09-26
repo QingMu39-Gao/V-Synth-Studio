@@ -1,0 +1,26 @@
+[package]
+name = "qingmu-workstation"
+version = "1.0.0"
+description = "清沐的虚拟歌姬工作站"
+authors = ["QingMu"]
+edition = "2021"
+rust-version = "1.77"
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# 只有 Unix 下需要：给进程组发信号，把 node 连同它的子孙一起收掉
+[target.'cfg(unix)'.dependencies]
+libc = "0.2"
+
+[profile.release]
+# 发布版压体积：桌面外壳本身没什么计算量，优化体积比优化速度划算
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true

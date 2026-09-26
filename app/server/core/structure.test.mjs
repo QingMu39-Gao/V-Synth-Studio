@@ -14,13 +14,13 @@
  *   报出「真实文件有、我生成的文件没有」的结构——那正是编辑器会拒绝的地方。
  */
 
-import { readFileSync, readdirSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
+import { readFileSync, readdirSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadFormat } from './formats/index.mjs'
 import { getVoices } from './voices.mjs'
+import { findEntry } from '../util/zip.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const SAMPLES = join(__dirname, '..', '..', '..', 'tests', 'samples')
@@ -120,20 +120,15 @@ function fingerprint(text, kind) {
 
 /* ------------------------------------------------------- VPR 解包 */
 
-function extractVprSequence(vprPath, tag) {
-  const dir = join(WORK, tag)
-  rmSync(dir, { recursive: true, force: true })
-  mkdirSync(dir, { recursive: true })
-  const dest = join(dir, 'sequence.json')
-  const ps = [
-    'Add-Type -AssemblyName System.IO.Compression.FileSystem',
-    `$z=[System.IO.Compression.ZipFile]::OpenRead('${vprPath}')`,
-    "$e=$z.Entries | Where-Object { $_.FullName -like '*sequence.json' } | Select-Object -First 1",
-    `if($e){ [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, '${dest}', $true) }`,
-    '$z.Dispose()',
-  ].join('\n')
-  execFileSync('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true })
-  return readFileSync(dest, 'utf8')
+/*
+ * 用项目自己的纯 JS ZIP 读取器（util/zip.mjs）。
+ * 原来这里借 PowerShell 的 System.IO.Compression，那是 Windows 独有的 —— 
+ * 去掉之后移植到 macOS 时测试一行都不用改。
+ */
+function extractVprSequence(vprPath) {
+  const entry = findEntry(readFileSync(vprPath), (n) => n.includes('sequence.json'), 'vpr')
+  if (!entry) throw new Error('vpr：包内找不到 sequence.json')
+  return entry.data.toString('utf8')
 }
 
 /** 把模块写出的 Buffer 落盘（vpr 是 zip，统一按文件处理） */
@@ -180,7 +175,7 @@ async function main() {
       checked += 1
       try {
         // 真实文件的结构指纹
-        const realText = c.zip ? extractVprSequence(samplePath, `real-${c.id}`) : readFileSync(samplePath, 'utf8')
+        const realText = c.zip ? extractVprSequence(samplePath) : readFileSync(samplePath, 'utf8')
         const realFp = fingerprint(realText, c.kind)
         if (!realFp) {
           console.log(`○ ${c.id} / ${file}：样本无法解析结构，跳过`)
@@ -191,7 +186,7 @@ async function main() {
         const project = fmt.read(readFileSync(samplePath), { name: file })
         const buf = fmt.write(project, { name: file, installedVoices: installedVoicesForTest() })
         const outPath = materialize(buf, fmt.writeExt ?? '.out', `mine-${c.id}`)
-        const myText = c.zip ? extractVprSequence(outPath, `mine-${c.id}-z`) : readFileSync(outPath, 'utf8')
+        const myText = c.zip ? extractVprSequence(outPath) : readFileSync(outPath, 'utf8')
         const myFp = fingerprint(myText, c.kind)
         if (!myFp) {
           console.log(`✗ ${c.id} / ${file}：我写出的文件结构无法解析`)

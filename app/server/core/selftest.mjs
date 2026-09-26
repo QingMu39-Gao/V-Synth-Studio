@@ -12,7 +12,7 @@
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { createProject, validateProject, noteCount, curveValueAt } from './ir.mjs'
 import { FORMAT_DEFS, loadFormat } from './formats/index.mjs'
 
@@ -272,7 +272,18 @@ async function main() {
   if (fail > 0) process.exitCode = 1
 }
 
-main().catch((err) => {
-  console.error('自测框架异常：', err)
-  process.exitCode = 1
-})
+/*
+ * 只有直接运行本文件时才跑自测。
+ * 原来是无条件 main() —— 结果任何 import 它的模块（比如 template.test.mjs 只是
+ * 想复用 canonicalProject）都会连带把整套自测跑一遍，输出混在一起、难以判断谁成功谁失败。
+ */
+const isMain =
+  process.argv[1] &&
+  resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url))
+
+if (isMain) {
+  main().catch((err) => {
+    console.error('自测框架异常：', err)
+    process.exitCode = 1
+  })
+}

@@ -167,135 +167,17 @@ function hashId(text, prefix = 'C') {
   return out.slice(0, 16)
 }
 
-/* ------------------------------------------------------------ CRC / ZIP */
+/* ------------------------------------------------------------ ZIP */
 
-const CRC_TABLE = (() => {
-  const table = new Int32Array(256)
-  for (let i = 0; i < 256; i += 1) {
-    let c = i
-    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1
-    table[i] = c
-  }
-  return table
-})()
-
-function crc32(buf) {
-  let c = -1
-  for (let i = 0; i < buf.length; i += 1) c = CRC_TABLE[(c ^ buf[i]) & 0xff] ^ (c >>> 8)
-  return (c ^ -1) >>> 0
-}
-
-function isZipBuffer(buf) {
-  return (
-    buf.length > 4 &&
-    buf[0] === 0x50 &&
-    buf[1] === 0x4b &&
-    (buf[2] === 0x03 || buf[2] === 0x05 || buf[2] === 0x07)
-  )
-}
-
-/** 读取 zip 的全部条目（只用中央目录，忽略 data descriptor） */
-function unzipEntries(buf) {
-  let eocd = -1
-  const lowest = Math.max(0, buf.length - 66000)
-  for (let i = buf.length - 22; i >= lowest; i -= 1) {
-    if (buf.readUInt32LE(i) === 0x06054b50) {
-      eocd = i
-      break
-    }
-  }
-  if (eocd < 0) throw new Error('vpr：ZIP 结构损坏（找不到中央目录结尾记录）')
-  const count = buf.readUInt16LE(eocd + 10)
-  let offset = buf.readUInt32LE(eocd + 16)
-  const entries = []
-  for (let i = 0; i < count; i += 1) {
-    if (offset + 46 > buf.length || buf.readUInt32LE(offset) !== 0x02014b50) {
-      throw new Error(`vpr：ZIP 中央目录第 ${i + 1} 项损坏`)
-    }
-    const method = buf.readUInt16LE(offset + 10)
-    const compSize = buf.readUInt32LE(offset + 20)
-    const nameLen = buf.readUInt16LE(offset + 28)
-    const extraLen = buf.readUInt16LE(offset + 30)
-    const commentLen = buf.readUInt16LE(offset + 32)
-    const localOffset = buf.readUInt32LE(offset + 42)
-    const name = buf.subarray(offset + 46, offset + 46 + nameLen).toString('utf8')
-    if (localOffset + 30 <= buf.length && buf.readUInt32LE(localOffset) === 0x04034b50) {
-      const dataStart =
-        localOffset + 30 + buf.readUInt16LE(localOffset + 26) + buf.readUInt16LE(localOffset + 28)
-      const raw = buf.subarray(dataStart, Math.min(dataStart + compSize, buf.length))
-      let data = raw
-      if (method === 8) data = inflateRawSync(raw)
-      else if (method !== 0) {
-        throw new Error(`vpr：ZIP 条目「${name}」使用了不支持的压缩方式 ${method}`)
-      }
-      entries.push({ name, data: Buffer.from(data), size: raw.length })
-    }
-    offset += 46 + nameLen + extraLen + commentLen
-  }
-  return entries
-}
-
-/** 生成 zip（deflate；目录条目用 store） */
-function zipEntries(items) {
-  const chunks = []
-  const central = []
-  let offset = 0
-  const dosDate = ((2024 - 1980) << 9) | (1 << 5) | 1
-  const dosTime = 0
-  for (const item of items) {
-    const nameBuf = Buffer.from(item.name, 'utf8')
-    const raw = item.data ?? Buffer.alloc(0)
-    const isDir = item.name.endsWith('/')
-    const body = isDir || raw.length === 0 ? raw : deflateRawSync(raw, { level: 9 })
-    const method = isDir || raw.length === 0 ? 0 : 8
-    const crc = crc32(raw)
-    const header = Buffer.alloc(30)
-    header.writeUInt32LE(0x04034b50, 0)
-    header.writeUInt16LE(20, 4)
-    header.writeUInt16LE(0x0800, 6)
-    header.writeUInt16LE(method, 8)
-    header.writeUInt16LE(dosTime, 10)
-    header.writeUInt16LE(dosDate, 12)
-    header.writeUInt32LE(crc, 14)
-    header.writeUInt32LE(body.length, 18)
-    header.writeUInt32LE(raw.length, 22)
-    header.writeUInt16LE(nameBuf.length, 26)
-    header.writeUInt16LE(0, 28)
-    chunks.push(header, nameBuf, body)
-
-    const cd = Buffer.alloc(46)
-    cd.writeUInt32LE(0x02014b50, 0)
-    cd.writeUInt16LE(20, 4)
-    cd.writeUInt16LE(20, 6)
-    cd.writeUInt16LE(0x0800, 8)
-    cd.writeUInt16LE(method, 10)
-    cd.writeUInt16LE(dosTime, 12)
-    cd.writeUInt16LE(dosDate, 14)
-    cd.writeUInt32LE(crc, 16)
-    cd.writeUInt32LE(body.length, 20)
-    cd.writeUInt32LE(raw.length, 24)
-    cd.writeUInt16LE(nameBuf.length, 28)
-    cd.writeUInt16LE(0, 30)
-    cd.writeUInt16LE(0, 32)
-    cd.writeUInt16LE(0, 34)
-    cd.writeUInt16LE(0, 36)
-    cd.writeUInt32LE(isDir ? 0x10 : 0, 38)
-    cd.writeUInt32LE(offset, 42)
-    central.push(cd, nameBuf)
-    offset += header.length + nameBuf.length + body.length
-  }
-  const centralBuf = Buffer.concat(central)
-  const end = Buffer.alloc(22)
-  end.writeUInt32LE(0x06054b50, 0)
-  end.writeUInt16LE(0, 4)
-  end.writeUInt16LE(0, 6)
-  end.writeUInt16LE(items.length, 8)
-  end.writeUInt16LE(items.length, 10)
-  end.writeUInt32LE(centralBuf.length, 12)
-  end.writeUInt32LE(offset, 16)
-  end.writeUInt16LE(0, 20)
-  return Buffer.concat([...chunks, centralBuf, end])
-}
+// CRC / ZIP 读写统一放在 util/zip.mjs（vpr 和测试共用一份），
+// 这里只做转发，保持原有调用点不变。
+export { isZipBuffer, unzipEntries, zipEntries } from '../../util/zip.mjs'
+import {
+  unzipEntries as _unzip,
+  zipEntries as _zip,
+  isZipBuffer as _isZip,
+  crc32,
+} from '../../util/zip.mjs'
 
 /* --------------------------------------------------------- 音高 / 音符 */
 
@@ -585,10 +467,10 @@ export function read(buffer, opts = {}) {
   if (!Buffer.isBuffer(buffer)) throw new Error('vpr：read() 需要一个 Buffer')
   const warnings = []
   let json
-  if (isZipBuffer(buffer)) {
+  if (_isZip(buffer)) {
     let entries
     try {
-      entries = unzipEntries(buffer)
+      entries = _unzip(buffer)
     } catch (err) {
       throw new Error(`vpr：解压失败 —— ${err.message}`)
     }
@@ -1167,19 +1049,19 @@ export function write(project, opts = {}) {
    */
   const entryName = opts.v6EntryName === true ? ZIP_SEQ_ENTRY_V6 : ZIP_SEQ_ENTRY_V5
   if (opts.v6EntryName === true) {
-    return zipEntries([
+    return _zip([
       { name: ZIP_AUDIO_DIR, data: Buffer.alloc(0) },
       { name: entryName, data: seq },
     ])
   }
-  return zipEntries([{ name: entryName, data: seq }])
+  return _zip([{ name: entryName, data: seq }])
 }
 
 /** 供自测使用的内部工具（非契约 API） */
 export const __internals = {
-  unzipEntries,
-  zipEntries,
-  isZipBuffer,
+  unzipEntries: _unzip,
+  zipEntries: _zip,
+  isZipBuffer: _isZip,
   keyAtTick,
   sensitivityAt,
   measureIndexAt,

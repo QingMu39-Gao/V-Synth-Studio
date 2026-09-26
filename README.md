@@ -52,12 +52,25 @@ tools/
 
 ### 编译桌面外壳（可选）
 
+桌面外壳用 **Tauri 2**（Rust），一份代码 Windows / macOS 都能出安装包。
+
 ```
-powershell -ExecutionPolicy Bypass -File app\shell\build.ps1
+powershell -ExecutionPolicy Bypass -File app\desktop\build.ps1           # 出 exe
+powershell -ExecutionPolicy Bypass -File app\desktop\build.ps1 -Bundle   # 出 exe + MSI/NSIS
 ```
 
-用 Windows 自带的 `csc.exe` 编译，产出根目录下的 `清沐的虚拟歌姬工作站.exe`。
-WebView2 的运行库已放在 `app/shell/lib/`，不需要额外下载。
+**前置**（仅 Windows 需要，macOS 装 Xcode Command Line Tools 即可）：
+
+| 组件 | 装到哪 | 怎么装 |
+|---|---|---|
+| Rust | `H:\DevTools\`（可用环境变量改） | [rustup.rs](https://rustup.rs/) |
+| MSVC 工具链 + Windows SDK | `H:\VSBuildTools` + `C:\Program Files (x86)\Windows Kits\10` | 见 `H:\DevTools\安装VC工具链.bat`（需管理员权限） |
+
+> 脚本会自动加载 MSVC 环境（`vcvars64.bat`）—— 直接在普通终端跑 `cargo build` 会报
+> `linker link.exe not found`，因为 `link.exe` 和 SDK 的库都需要那套环境变量。
+
+编译产物在 `app\desktop\target\release\`，把它复制到根目录改名 `清沐的虚拟歌姬工作站.exe`
+即可被 `启动工作站.bat` 直接使用。
 
 没有 Node？启动器会明确告诉你，不会静默失败。
 

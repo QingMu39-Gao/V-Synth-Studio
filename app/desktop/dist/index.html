@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>清沐的虚拟歌姬工作站</title>
+<style>
+  :root { color-scheme: dark; }
+  body {
+    margin: 0; height: 100vh; display: flex; align-items: center; justify-content: center;
+    background: #16161e; color: #c8c8d8;
+    font: 14px/1.7 "Microsoft YaHei UI", "PingFang SC", system-ui, sans-serif;
+  }
+  .box { max-width: 560px; padding: 32px; }
+  h1 { font-size: 17px; margin: 0 0 12px; color: #e8e8f0; font-weight: 600; }
+  p { margin: 8px 0; }
+  code {
+    background: #22222e; padding: 2px 6px; border-radius: 4px;
+    font-family: Consolas, "Courier New", monospace; font-size: 12.5px; color: #7fd8cf;
+  }
+  .muted { color: #7a7a90; font-size: 12.5px; }
+  .spin { display: inline-block; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div class="box" id="box">
+    <h1><span class="spin">◐</span> 正在启动本地服务…</h1>
+    <p class="muted">首次启动会慢一点，请稍候。</p>
+  </div>
+  <script>
+    /*
+     * 这个页面只在两种情况下出现：
+     *   1. 服务还在启动（正常情况下一瞬间就跳走了）
+     *   2. 服务起不来 —— 此时 Rust 侧不会创建主窗口，而是把这个页面显示出来，
+     *      并把原因写在 URL 的 hash 里
+     */
+    const reason = decodeURIComponent((location.hash || '').replace(/^#/, ''))
+    if (reason) {
+      document.getElementById('box').innerHTML = `
+        <h1>没能启动本地服务</h1>
+        <p>${reason.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</p>
+        <p class="muted">详细信息写在 <code>data\\desktop-error.log</code>。</p>
+        <p class="muted">常见原因：没有安装 Node.js 20 以上版本（<code>nodejs.org</code>）。</p>
+      `
+    }
+  </script>
+</body>
+</html>

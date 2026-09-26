@@ -14,12 +14,12 @@
  */
 
 import { readFileSync, existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { execFileSync } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { dirname, join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { loadFormat } from './formats/index.mjs'
 import { canonicalProject } from './selftest.mjs'
+import { findEntry, unzipEntries } from '../util/zip.mjs'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const TEMPLATES = join(__dirname, 'formats', 'templates')
@@ -101,33 +101,20 @@ function fingerprint(text, kind) {
   return null
 }
 
-/** 从 .vpr（zip）里取出 sequence.json */
-function extractVpr(path, tag) {
-  const dir = join(WORK, tag)
-  rmSync(dir, { recursive: true, force: true })
-  mkdirSync(dir, { recursive: true })
-  const dest = join(dir, 'sequence.json')
-  const ps = [
-    'Add-Type -AssemblyName System.IO.Compression.FileSystem',
-    `$z=[System.IO.Compression.ZipFile]::OpenRead('${path}')`,
-    "$e=$z.Entries | Where-Object { $_.FullName -like '*sequence.json' } | Select-Object -First 1",
-    `if($e){ [System.IO.Compression.ZipFileExtensions]::ExtractToFile($e, '${dest}', $true) }`,
-    '$z.Dispose()',
-  ].join('\n')
-  execFileSync('powershell', ['-NoProfile', '-Command', ps], { windowsHide: true })
-  return readFileSync(dest, 'utf8')
+/*
+ * 从 .vpr（zip）里取出 sequence.json。
+ * 用项目自己的纯 JS ZIP 读取器（util/zip.mjs），不再借 PowerShell ——
+ * 那是 Windows 独有的，去掉之后移植到别的平台测试不用改。
+ */
+function extractVpr(path) {
+  const entry = findEntry(readFileSync(path), (n) => n.includes('sequence.json'), 'vpr')
+  if (!entry) throw new Error(`vpr：${path} 包内找不到 sequence.json`)
+  return entry.data.toString('utf8')
 }
 
 /** .vpr 的 ZIP 条目名（用于单独检查反斜杠约定） */
 function vprEntryNames(path) {
-  const ps = [
-    'Add-Type -AssemblyName System.IO.Compression.FileSystem',
-    `$z=[System.IO.Compression.ZipFile]::OpenRead('${path}')`,
-    '$z.Entries | ForEach-Object { $_.FullName }',
-    '$z.Dispose()',
-  ].join('\n')
-  const out = execFileSync('powershell', ['-NoProfile', '-Command', ps], { encoding: 'utf8', windowsHide: true })
-  return String(out ?? '').split(/\r?\n/).filter((l) => l.trim())
+  return unzipEntries(readFileSync(path), 'vpr').map((e) => e.name)
 }
 
 /* ------------------------------------------------------------ 主流程 */
@@ -171,7 +158,7 @@ async function main() {
       const outPath = join(WORK, `out${fmt.writeExt ?? '.out'}`)
       writeFileSync(outPath, buf)
 
-      const myText = c.zip ? extractVpr(outPath, `z-${c.id}`) : readFileSync(outPath, 'utf8')
+      const myText = c.zip ? extractVpr(outPath) : readFileSync(outPath, 'utf8')
       const myFp = fingerprint(myText, c.kind)
       if (!myFp) {
         console.log(`✗ ${c.id}：写出的文件无法解析`)

@@ -25,8 +25,14 @@ node_modules/
 *.dll
 *.pdb
 *.obj
-# 例外：编译桌面外壳需要这三个 WebView2 运行库，仓库里保留
-!app/shell/lib/*.dll
+
+# ── Rust / Tauri 构建产物 ───────────────────────────────────
+# target/ 是编译中间产物，轻松上 GB，绝对不进仓库。
+# 源码在 app/desktop/{Cargo.toml,tauri.conf.json,build.rs,src/,icons/,dist/}。
+# 图标（icons/）和起始页（dist/）是源码的一部分，要入库 —— 所以只忽略 target。
+app/desktop/target/
+# Cargo.lock 对可执行程序应当入库，锁定依赖版本以保证可复现构建
+!app/desktop/Cargo.lock
 
 # ── 真实工程样本（版权原因不入库）───────────────────────────
 # tests/samples/ 下这些是真实歌曲工程（白石溪、呐呐呐等）与用户自己的
