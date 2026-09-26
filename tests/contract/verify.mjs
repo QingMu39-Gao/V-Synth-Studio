@@ -5,10 +5,10 @@
  *
  * 为什么需要它：
  *   重写后端最大的风险是「接口形状悄悄变了」——前端读某个字段读不到，
- *   界面上就某一块空白，而且很难定位。夹具（capture.mjs 抓的）是 Node 版的
- *   真实输出，这里逐字段 diff，任何缺失/类型变化都会被抓出来。
+ *   界面上就某一块空白，而且很难定位。夹具（Node 后端还在时抓下来的真实响应，
+ *   已随仓库入库）就是基准，这里逐字段 diff，任何缺失/类型变化都会被抓出来。
  *
- * 归一化规则必须和 capture.mjs 完全一致，否则会全是假阳性。
+ * 归一化规则必须和当初抓取时完全一致，否则会全是假阳性。
  */
 
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
@@ -198,7 +198,8 @@ const POST_ROUTES = {
 
 async function main() {
   if (!existsSync(FIXTURES)) {
-    console.error(`找不到夹具目录：${FIXTURES}\n请先运行 node tests/contract/capture.mjs（对着 Node 后端抓一次）`)
+    console.error(`找不到夹具目录：${FIXTURES}`)
+    console.error('夹具是 Node 后端还在时抓下来的基准（fixtures/ 已入库），缺了就只剩 Rust 自己的输出可比。')
     process.exitCode = 1
     return
   }
