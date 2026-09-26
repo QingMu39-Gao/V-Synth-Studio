@@ -1,0 +1,229 @@
+{
+  "ok": true,
+  "checkedAt": "<TIME>",
+  "platform": "win32",
+  "node": "v24.18.0",
+  "root": "<PATH>",
+  "editors": [
+    {
+      "id": "vocaloid6",
+      "name": "VOCALOID6",
+      "vendor": "Yamaha",
+      "category": "editor",
+      "formats": [
+        "vpr",
+        "vsqx"
+      ],
+      "color": "#00b3e3",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "vocaloid5",
+      "name": "VOCALOID5",
+      "vendor": "Yamaha",
+      "category": "editor",
+      "formats": [
+        "vpr",
+        "vsqx"
+      ],
+      "color": "#00b3e3",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "synthv2",
+      "name": "Synthesizer V Studio 2 Pro",
+      "vendor": "Dreamtonics",
+      "category": "editor",
+      "formats": [
+        "svp"
+      ],
+      "color": "#f5a623",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "synthv1",
+      "name": "Synthesizer V Studio",
+      "vendor": "Dreamtonics",
+      "category": "editor",
+      "formats": [
+        "svp"
+      ],
+      "color": "#f5a623",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "cevio",
+      "name": "CeVIO AI / CS",
+      "vendor": "CeVIO",
+      "category": "editor",
+      "formats": [
+        "ccs"
+      ],
+      "color": "#e6007e",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "openutau",
+      "name": "OpenUtau",
+      "vendor": "OpenUtau",
+      "category": "editor",
+      "formats": [
+        "ustx",
+        "ust"
+      ],
+      "color": "#7c5cff",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "utau",
+      "name": "UTAU",
+      "vendor": "飴屋／菖蒲",
+      "category": "editor",
+      "formats": [
+        "ust"
+      ],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "acestudio",
+      "name": "ACE Studio",
+      "vendor": "ACE Studio",
+      "category": "editor",
+      "formats": [
+        "acep"
+      ],
+      "color": "#ff5c8a",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "deepvocal",
+      "name": "DeepVocal",
+      "vendor": "DeepVocal",
+      "category": "editor",
+      "formats": [
+        "dv"
+      ],
+      "color": "#00c2a8",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "voicevox",
+      "name": "VOICEVOX",
+      "vendor": "Hiroshiba",
+      "category": "editor",
+      "formats": [],
+      "color": "#39c5bb",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "uvr",
+      "name": "Ultimate Vocal Remover (离线人声分离)",
+      "vendor": "社区",
+      "category": "tool",
+      "formats": [],
+      "color": "#00d1b2",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "vlabeler",
+      "name": "vLabeler（原音设定标注）",
+      "vendor": "sdercolin",
+      "category": "tool",
+      "formats": [],
+      "color": "#9c88ff",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "flstudio",
+      "name": "FL Studio",
+      "vendor": "Image-Line",
+      "category": "daw",
+      "formats": [
+        "midi"
+      ],
+      "color": "#ff8a00",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "oremo",
+      "name": "oremo（声库录音工具）",
+      "vendor": "UTAU 生态",
+      "category": "voicebank",
+      "formats": [],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "recstar",
+      "name": "RecStar（声库录音工具）",
+      "vendor": "UTAU 生态",
+      "category": "voicebank",
+      "formats": [],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "textgrid2oto",
+      "name": "TextGrid2oto（自动原音设定）",
+      "vendor": "UTAU 生态",
+      "category": "voicebank",
+      "formats": [],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    }
+  ],
+  "tools": {
+    "ffmpeg": {
+      "available": true,
+      "path": "<PATH>",
+      "source": "程序目录",
+      "version": "9.0.2-essentials_build-www.gyan.dev"
+    },
+    "python": {
+      "available": true,
+      "path": "python",
+      "version": "Python 3.14.7"
+    },
+    "ytdlp": {
+      "available": true,
+      "path": "<PATH>",
+      "kind": "binary",
+      "source": "程序目录",
+      "version": "2026.08.19"
+    }
+  },
+  "installedCount": 6
+}

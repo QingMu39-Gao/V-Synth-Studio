@@ -1,0 +1,350 @@
+{
+  "ok": true,
+  "scannedAt": "<TIME>",
+  "registryCount": 17,
+  "scannedDirs": [
+    "<PATH>",
+    "<PATH>",
+    "<PATH>",
+    "<PATH>",
+    "<PATH>",
+    "<PATH>",
+    "<PATH>",
+    "<PATH>"
+  ],
+  "userDirs": [],
+  "vocaloid": [
+    {
+      "engine": "vocaloid",
+      "compID": "BCNFCY43LB2LZCD4",
+      "name": "MIKU_V4X_Original_EVEC",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bcnfcy43lb2lzcd4",
+        "mikuv4xoriginalevec",
+        "miku"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BDGE8ZB2FCTKTDBA",
+      "name": "MIKU_V4X_Sweet",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bdge8zb2fctktdba",
+        "mikuv4xsweet",
+        "miku"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BFPL93T7GE3RWFC9",
+      "name": "MIKU_V4X_Soft_EVEC",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bfpl93t7ge3rwfc9",
+        "mikuv4xsoftevec",
+        "miku"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BHNME578NG2S3HD8",
+      "name": "MIKU_V4X_Dark",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bhnme578ng2s3hd8",
+        "mikuv4xdark",
+        "miku"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BKGHF6Y5PHTN4KD6",
+      "name": "MIKU_V4X_Solid_EVEC",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bkghf6y5phtn4kd6",
+        "mikuv4xsolidevec",
+        "miku"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BDHEBZG2KCWKYDC5",
+      "name": "RIN_V4X_Warm",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bdhebzg2kcwkydc5",
+        "rinv4xwarm",
+        "rinwarm"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BKKP765AEHXWSKDB",
+      "name": "RIN_V4X_Power_EVEC",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bkkp765aehxwskdb",
+        "rinv4xpowerevec",
+        "rin"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BLECA76YHKRGXLB7",
+      "name": "RIN_V4X_Sweet",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bleca76yhkrgxlb7",
+        "rinv4xsweet",
+        "rin"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BKFFF663PHSL4KB6",
+      "name": "RIN_V4X_Serious",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bkfff663phsl4kb6",
+        "lenv4xserious",
+        "lenserious",
+        "rinv4xserious"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BKPLC6S7LH3RZKC8",
+      "name": "LEN_V4X_Power_EVEC",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bkplc6s7lh3rzkc8",
+        "lenv4xpowerevec",
+        "len"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BMGD88HZFLTHTMC7",
+      "name": "LEN_V4X_Cold",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bmgd88hzflthtmc7",
+        "lenv4xcold",
+        "lencold"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BCAK8YD6FBZPTCDK",
+      "name": "Luotianyi_JPN_Sweet",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bcak8yd6fbzptcdk",
+        "luotianyijpnsweet",
+        "luotianyi"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BTAMLDY8WSZS8TE8",
+      "name": "Luotianyi_JPN_Normal",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "btamldy8wszs8te8",
+        "luotianyijpnnormal",
+        "luotianyinormal"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BF4L93M7GE3RWFC9",
+      "name": "vflower_v4",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bf4l93m7ge3rwfc9",
+        "v4flower",
+        "vflowerv4"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BK8H76TAEHXWSKDB",
+      "name": "LuoTianyi_V4_Meng",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bk8h76taehxwskdb",
+        "luotianyichnmeng",
+        "luotianyimeng",
+        "luotianyiv4meng"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BL59A7M2HKSKXLD7",
+      "name": "LuoTianyi_V4_Ning",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bl59a7m2hkskxld7",
+        "luotianyichnning",
+        "luotianyining",
+        "luotianyiv4ning"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BMPDD88ZMLZH2MDE",
+      "name": "yuki_v4",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "注册表",
+      "aliases": [
+        "bmpdd88zmlzh2mde",
+        "yukiv4natural",
+        "yukinatural",
+        "yukiv4"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BD79E492NWWK3DDF",
+      "name": "Luo_Tianyi_Ning",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "bd79e492nwwk3ddf",
+        "luotianyining"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BL8CEAM5N4XN3LFK",
+      "name": "Luo_Tianyi_Wan",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "bl8ceam5n4xn3lfk",
+        "luotianyiwan"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BP8CDDH5M7XN2PED",
+      "name": "Luo_Tianyi_Meng",
+      "group": "",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "bp8cddh5m7xn2ped",
+        "luotianyimeng"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BKGKCC96L2TPZKAC",
+      "name": "KAITO_V3_Soft",
+      "group": "Kaito_Soft",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "bkgkcc96l2tpzkac",
+        "kaitov3soft",
+        "kaitosoft",
+        "kaito"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BDPEA722HT3KXDC4",
+      "name": "KAITO_V3_Straight",
+      "group": "Kaito_Straight",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "bdpea722ht3kxdc4",
+        "kaitov3straight",
+        "kaitostraight",
+        "kaito"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BDHEB7W2KTWKYDC5",
+      "name": "KAITO_V3_Whisper",
+      "group": "Kaito_Whisper",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "bdheb7w2ktwkydc5",
+        "kaitov3whisper",
+        "kaitowhisper",
+        "kaito"
+      ]
+    },
+    {
+      "engine": "vocaloid",
+      "compID": "BE8A88G3FWXLTEBD",
+      "name": "YuezhenglingV3",
+      "group": "Ling",
+      "dir": "<PATH>",
+      "source": "目录扫描",
+      "aliases": [
+        "be8a88g3fwxltebd",
+        "yuezhenglingv3",
+        "ling"
+      ]
+    }
+  ],
+  "openutau": [
+    {
+      "engine": "openutau",
+      "compID": "QING",
+      "name": "QingMu30-V1.1",
+      "dir": "<PATH>",
+      "source": "OpenUtau 歌手目录",
+      "aliases": [
+        "qing",
+        "qingmu30v11"
+      ]
+    }
+  ],
+  "synthv": [],
+  "total": 25,
+  "hint": ""
+}

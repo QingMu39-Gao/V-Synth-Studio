@@ -1,0 +1,1270 @@
+{
+  "ok": true,
+  "formats": [
+    {
+      "id": "ace",
+      "name": "ACE Virtual Singer",
+      "exts": [
+        "ace"
+      ],
+      "group": "ACE / AI 歌声",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "acep",
+      "name": "ACE Studio",
+      "exts": [
+        "acep",
+        "acet"
+      ],
+      "group": "ACE / AI 歌声",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "aisp",
+      "name": "AISingers",
+      "exts": [
+        "aisp"
+      ],
+      "group": "ACE / AI 歌声",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ass",
+      "name": "ASS",
+      "exts": [
+        "ass"
+      ],
+      "group": "歌词 / 字幕",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ccs",
+      "name": "CeVIO",
+      "exts": [
+        "ccs"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ds",
+      "name": "DiffSinger",
+      "exts": [
+        "ds"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "dspx",
+      "name": "DSPX",
+      "exts": [
+        "dspx"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "dv",
+      "name": "DeepVocal",
+      "exts": [
+        "dv",
+        "sk"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "json",
+      "name": "JsonSvip",
+      "exts": [
+        "json"
+      ],
+      "group": "中间数据",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "lrc",
+      "name": "LRC",
+      "exts": [
+        "lrc"
+      ],
+      "group": "歌词 / 字幕",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "mid",
+      "name": "MIDI",
+      "exts": [
+        "mid",
+        "midi"
+      ],
+      "group": "通用交换格式",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "mtp",
+      "name": "Muta",
+      "exts": [
+        "mtp"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "musicxml",
+      "name": "MusicXML",
+      "exts": [
+        "musicxml",
+        "xml",
+        "mxl"
+      ],
+      "group": "通用交换格式",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "nn",
+      "name": "NIAONiao",
+      "exts": [
+        "nn"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ppsf",
+      "name": "Ppsf",
+      "exts": [
+        "ppsf"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ps_project",
+      "name": "PocketSinger",
+      "exts": [
+        "ps_project"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "s5p",
+      "name": "SynthV Editor",
+      "exts": [
+        "s5p"
+      ],
+      "group": "Synthesizer V",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "srt",
+      "name": "SRT",
+      "exts": [
+        "srt"
+      ],
+      "group": "歌词 / 字幕",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "svg",
+      "name": "Svg",
+      "exts": [
+        "svg"
+      ],
+      "group": "歌词 / 字幕",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "svip",
+      "name": "BinSvip",
+      "exts": [
+        "svip"
+      ],
+      "group": "中间数据",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "svip3",
+      "name": "Svip3",
+      "exts": [
+        "svip3"
+      ],
+      "group": "中间数据",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "svp",
+      "name": "SynthV Studio",
+      "exts": [
+        "svp"
+      ],
+      "group": "Synthesizer V",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "tlp",
+      "name": "TuneLab Legacy",
+      "exts": [
+        "tlp"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "tlpx",
+      "name": "TuneLab",
+      "exts": [
+        "tlpx"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "tsmsln",
+      "name": "TSMSln",
+      "exts": [
+        "tsmsln"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "tssln",
+      "name": "TSSln",
+      "exts": [
+        "tssln"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ufdata",
+      "name": "UFData",
+      "exts": [
+        "ufdata"
+      ],
+      "group": "中间数据",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ust",
+      "name": "Ust",
+      "exts": [
+        "ust"
+      ],
+      "group": "UTAU / OpenUtau",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "ustx",
+      "name": "Ustx",
+      "exts": [
+        "ustx"
+      ],
+      "group": "UTAU / OpenUtau",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vfp",
+      "name": "VOX Factory",
+      "exts": [
+        "vfp"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vog",
+      "name": "Vogen",
+      "exts": [
+        "vog"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vpr",
+      "name": "Vpr",
+      "exts": [
+        "vpr"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vshp",
+      "name": "VocalShifter",
+      "exts": [
+        "vshp"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vspx",
+      "name": "VocalSharp",
+      "exts": [
+        "vspx"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vsq",
+      "name": "Vsq",
+      "exts": [
+        "vsq"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vsqx",
+      "name": "Vsqx",
+      "exts": [
+        "vsqx"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vvproj",
+      "name": "VVProj",
+      "exts": [
+        "vvproj"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "vxf",
+      "name": "VX-β",
+      "exts": [
+        "vxf"
+      ],
+      "group": "其它",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "xvsq",
+      "name": "Cadencii",
+      "exts": [
+        "xvsq"
+      ],
+      "group": "VOCALOID",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    },
+    {
+      "id": "y77",
+      "name": "Y77",
+      "exts": [
+        "y77"
+      ],
+      "group": "其它歌声编辑器",
+      "available": true,
+      "canRead": true,
+      "canWrite": true
+    }
+  ],
+  "editors": [
+    {
+      "id": "vocaloid6",
+      "name": "VOCALOID6",
+      "vendor": "Yamaha",
+      "category": "editor",
+      "formats": [
+        "vpr",
+        "vsqx"
+      ],
+      "color": "#00b3e3",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "vocaloid5",
+      "name": "VOCALOID5",
+      "vendor": "Yamaha",
+      "category": "editor",
+      "formats": [
+        "vpr",
+        "vsqx"
+      ],
+      "color": "#00b3e3",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "synthv2",
+      "name": "Synthesizer V Studio 2 Pro",
+      "vendor": "Dreamtonics",
+      "category": "editor",
+      "formats": [
+        "svp"
+      ],
+      "color": "#f5a623",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "synthv1",
+      "name": "Synthesizer V Studio",
+      "vendor": "Dreamtonics",
+      "category": "editor",
+      "formats": [
+        "svp"
+      ],
+      "color": "#f5a623",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "cevio",
+      "name": "CeVIO AI / CS",
+      "vendor": "CeVIO",
+      "category": "editor",
+      "formats": [
+        "ccs"
+      ],
+      "color": "#e6007e",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "openutau",
+      "name": "OpenUtau",
+      "vendor": "OpenUtau",
+      "category": "editor",
+      "formats": [
+        "ustx",
+        "ust"
+      ],
+      "color": "#7c5cff",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "utau",
+      "name": "UTAU",
+      "vendor": "飴屋／菖蒲",
+      "category": "editor",
+      "formats": [
+        "ust"
+      ],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "acestudio",
+      "name": "ACE Studio",
+      "vendor": "ACE Studio",
+      "category": "editor",
+      "formats": [
+        "acep"
+      ],
+      "color": "#ff5c8a",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "deepvocal",
+      "name": "DeepVocal",
+      "vendor": "DeepVocal",
+      "category": "editor",
+      "formats": [
+        "dv"
+      ],
+      "color": "#00c2a8",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "voicevox",
+      "name": "VOICEVOX",
+      "vendor": "Hiroshiba",
+      "category": "editor",
+      "formats": [],
+      "color": "#39c5bb",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "uvr",
+      "name": "Ultimate Vocal Remover (离线人声分离)",
+      "vendor": "社区",
+      "category": "tool",
+      "formats": [],
+      "color": "#00d1b2",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "vlabeler",
+      "name": "vLabeler（原音设定标注）",
+      "vendor": "sdercolin",
+      "category": "tool",
+      "formats": [],
+      "color": "#9c88ff",
+      "installed": true,
+      "path": "<PATH>",
+      "how": "已知路径"
+    },
+    {
+      "id": "flstudio",
+      "name": "FL Studio",
+      "vendor": "Image-Line",
+      "category": "daw",
+      "formats": [
+        "midi"
+      ],
+      "color": "#ff8a00",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "oremo",
+      "name": "oremo（声库录音工具）",
+      "vendor": "UTAU 生态",
+      "category": "voicebank",
+      "formats": [],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "recstar",
+      "name": "RecStar（声库录音工具）",
+      "vendor": "UTAU 生态",
+      "category": "voicebank",
+      "formats": [],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    },
+    {
+      "id": "textgrid2oto",
+      "name": "TextGrid2oto（自动原音设定）",
+      "vendor": "UTAU 生态",
+      "category": "voicebank",
+      "formats": [],
+      "color": "#4caf50",
+      "installed": false,
+      "path": null,
+      "how": null
+    }
+  ],
+  "tools": {
+    "ffmpeg": {
+      "available": true,
+      "path": "<PATH>",
+      "source": "程序目录",
+      "version": "9.0.2-essentials_build-www.gyan.dev"
+    },
+    "python": {
+      "available": true,
+      "path": "python",
+      "version": "Python 3.14.7"
+    },
+    "ytdlp": {
+      "available": true,
+      "path": "<PATH>",
+      "kind": "binary",
+      "source": "程序目录",
+      "version": "2026.08.19"
+    }
+  },
+  "voices": {
+    "vocaloid": [
+      {
+        "engine": "vocaloid",
+        "compID": "BCNFCY43LB2LZCD4",
+        "name": "MIKU_V4X_Original_EVEC",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bcnfcy43lb2lzcd4",
+          "mikuv4xoriginalevec",
+          "miku"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BDGE8ZB2FCTKTDBA",
+        "name": "MIKU_V4X_Sweet",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bdge8zb2fctktdba",
+          "mikuv4xsweet",
+          "miku"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BFPL93T7GE3RWFC9",
+        "name": "MIKU_V4X_Soft_EVEC",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bfpl93t7ge3rwfc9",
+          "mikuv4xsoftevec",
+          "miku"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BHNME578NG2S3HD8",
+        "name": "MIKU_V4X_Dark",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bhnme578ng2s3hd8",
+          "mikuv4xdark",
+          "miku"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BKGHF6Y5PHTN4KD6",
+        "name": "MIKU_V4X_Solid_EVEC",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bkghf6y5phtn4kd6",
+          "mikuv4xsolidevec",
+          "miku"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BDHEBZG2KCWKYDC5",
+        "name": "RIN_V4X_Warm",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bdhebzg2kcwkydc5",
+          "rinv4xwarm",
+          "rinwarm"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BKKP765AEHXWSKDB",
+        "name": "RIN_V4X_Power_EVEC",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bkkp765aehxwskdb",
+          "rinv4xpowerevec",
+          "rin"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BLECA76YHKRGXLB7",
+        "name": "RIN_V4X_Sweet",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bleca76yhkrgxlb7",
+          "rinv4xsweet",
+          "rin"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BKFFF663PHSL4KB6",
+        "name": "RIN_V4X_Serious",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bkfff663phsl4kb6",
+          "lenv4xserious",
+          "lenserious",
+          "rinv4xserious"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BKPLC6S7LH3RZKC8",
+        "name": "LEN_V4X_Power_EVEC",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bkplc6s7lh3rzkc8",
+          "lenv4xpowerevec",
+          "len"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BMGD88HZFLTHTMC7",
+        "name": "LEN_V4X_Cold",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bmgd88hzflthtmc7",
+          "lenv4xcold",
+          "lencold"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BCAK8YD6FBZPTCDK",
+        "name": "Luotianyi_JPN_Sweet",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bcak8yd6fbzptcdk",
+          "luotianyijpnsweet",
+          "luotianyi"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BTAMLDY8WSZS8TE8",
+        "name": "Luotianyi_JPN_Normal",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "btamldy8wszs8te8",
+          "luotianyijpnnormal",
+          "luotianyinormal"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BF4L93M7GE3RWFC9",
+        "name": "vflower_v4",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bf4l93m7ge3rwfc9",
+          "v4flower",
+          "vflowerv4"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BK8H76TAEHXWSKDB",
+        "name": "LuoTianyi_V4_Meng",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bk8h76taehxwskdb",
+          "luotianyichnmeng",
+          "luotianyimeng",
+          "luotianyiv4meng"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BL59A7M2HKSKXLD7",
+        "name": "LuoTianyi_V4_Ning",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bl59a7m2hkskxld7",
+          "luotianyichnning",
+          "luotianyining",
+          "luotianyiv4ning"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BMPDD88ZMLZH2MDE",
+        "name": "yuki_v4",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "注册表",
+        "aliases": [
+          "bmpdd88zmlzh2mde",
+          "yukiv4natural",
+          "yukinatural",
+          "yukiv4"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BD79E492NWWK3DDF",
+        "name": "Luo_Tianyi_Ning",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "bd79e492nwwk3ddf",
+          "luotianyining"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BL8CEAM5N4XN3LFK",
+        "name": "Luo_Tianyi_Wan",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "bl8ceam5n4xn3lfk",
+          "luotianyiwan"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BP8CDDH5M7XN2PED",
+        "name": "Luo_Tianyi_Meng",
+        "group": "",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "bp8cddh5m7xn2ped",
+          "luotianyimeng"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BKGKCC96L2TPZKAC",
+        "name": "KAITO_V3_Soft",
+        "group": "Kaito_Soft",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "bkgkcc96l2tpzkac",
+          "kaitov3soft",
+          "kaitosoft",
+          "kaito"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BDPEA722HT3KXDC4",
+        "name": "KAITO_V3_Straight",
+        "group": "Kaito_Straight",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "bdpea722ht3kxdc4",
+          "kaitov3straight",
+          "kaitostraight",
+          "kaito"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BDHEB7W2KTWKYDC5",
+        "name": "KAITO_V3_Whisper",
+        "group": "Kaito_Whisper",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "bdheb7w2ktwkydc5",
+          "kaitov3whisper",
+          "kaitowhisper",
+          "kaito"
+        ]
+      },
+      {
+        "engine": "vocaloid",
+        "compID": "BE8A88G3FWXLTEBD",
+        "name": "YuezhenglingV3",
+        "group": "Ling",
+        "dir": "<PATH>",
+        "source": "目录扫描",
+        "aliases": [
+          "be8a88g3fwxltebd",
+          "yuezhenglingv3",
+          "ling"
+        ]
+      }
+    ],
+    "openutau": [
+      {
+        "engine": "openutau",
+        "compID": "QING",
+        "name": "QingMu30-V1.1",
+        "dir": "<PATH>",
+        "source": "OpenUtau 歌手目录",
+        "aliases": [
+          "qing",
+          "qingmu30v11"
+        ]
+      }
+    ],
+    "synthv": [],
+    "total": 25,
+    "registryCount": 17,
+    "scannedDirs": [
+      "<PATH>",
+      "<PATH>",
+      "<PATH>",
+      "<PATH>",
+      "<PATH>",
+      "<PATH>",
+      "<PATH>",
+      "<PATH>"
+    ],
+    "userDirs": [],
+    "hint": ""
+  },
+  "transformOps": [
+    {
+      "id": "transpose",
+      "label": "转调",
+      "type": "number",
+      "unit": "半音",
+      "default": 0,
+      "hint": "正数升调，负数降调，音高曲线同步移动"
+    },
+    {
+      "id": "lyrics",
+      "label": "歌词改写",
+      "type": "select",
+      "default": "none",
+      "options": [
+        {
+          "value": "none",
+          "label": "不改写"
+        },
+        {
+          "value": "kana2romaji",
+          "label": "假名 → 罗马音"
+        },
+        {
+          "value": "romaji2kana",
+          "label": "罗马音 → 假名"
+        },
+        {
+          "value": "katakana2hiragana",
+          "label": "片假名 → 平假名"
+        },
+        {
+          "value": "hiragana2katakana",
+          "label": "平假名 → 片假名"
+        },
+        {
+          "value": "zh2pinyin",
+          "label": "中文 → 拼音（需拼音表）"
+        },
+        {
+          "value": "vcv",
+          "label": "VCV 化（UTAU 连续音）"
+        },
+        {
+          "value": "cv",
+          "label": "CV 化（去掉 VCV 前缀）"
+        }
+      ]
+    },
+    {
+      "id": "quantize",
+      "label": "节奏量化",
+      "type": "select",
+      "default": "none",
+      "options": [
+        {
+          "value": "none",
+          "label": "不量化"
+        },
+        {
+          "value": "1/4",
+          "label": "四分音符"
+        },
+        {
+          "value": "1/8",
+          "label": "八分音符"
+        },
+        {
+          "value": "1/16",
+          "label": "十六分音符"
+        },
+        {
+          "value": "1/32",
+          "label": "三十二分音符"
+        }
+      ]
+    },
+    {
+      "id": "retargetBpm",
+      "label": "速度重设",
+      "type": "number",
+      "unit": "BPM",
+      "default": 0,
+      "hint": "0 表示不改；填写后所有音符时间会等比缩放以保持绝对时长"
+    },
+    {
+      "id": "shiftBeats",
+      "label": "整体平移",
+      "type": "number",
+      "unit": "拍",
+      "default": 0,
+      "hint": "常用 +1 拍留出前奏空位"
+    },
+    {
+      "id": "fitRange",
+      "label": "音域适配",
+      "type": "toggle",
+      "default": false,
+      "hint": "超出范围时整体平移八度而不是删音符"
+    },
+    {
+      "id": "clampRange",
+      "label": "限制音高到",
+      "type": "rangeKeys",
+      "default": null,
+      "hint": "把超范围音符吸附到边界（例如目标声库音域窄）"
+    },
+    {
+      "id": "removeShort",
+      "label": "清理过短音符",
+      "type": "number",
+      "unit": "tick",
+      "default": 0,
+      "hint": "建议 30；0 表示不清"
+    },
+    {
+      "id": "mergeTied",
+      "label": "合并连续同音",
+      "type": "toggle",
+      "default": false
+    },
+    {
+      "id": "mergeTracks",
+      "label": "合并全部轨道",
+      "type": "toggle",
+      "default": false,
+      "hint": "目标格式单轨时使用"
+    },
+    {
+      "id": "splitByPitch",
+      "label": "按音高拆轨",
+      "type": "toggle",
+      "default": false
+    },
+    {
+      "id": "stripParams",
+      "label": "丢弃参数曲线",
+      "type": "toggle",
+      "default": false,
+      "hint": "目标格式不支持参数时避免产生垃圾数据"
+    },
+    {
+      "id": "resampleParams",
+      "label": "参数曲线重采样",
+      "type": "number",
+      "unit": "tick",
+      "default": 0,
+      "hint": "目标格式要求等距采样时使用，建议 20"
+    }
+  ],
+  "audioFormats": {
+    "wav": {
+      "label": "WAV 无损（推荐用于继续编辑）",
+      "ext": ".wav",
+      "args": [
+        "-c:a",
+        "pcm_s16le"
+      ],
+      "lossless": true
+    },
+    "wav24": {
+      "label": "WAV 24bit 无损",
+      "ext": ".wav",
+      "args": [
+        "-c:a",
+        "pcm_s24le"
+      ],
+      "lossless": true
+    },
+    "flac": {
+      "label": "FLAC 无损压缩",
+      "ext": ".flac",
+      "args": [
+        "-c:a",
+        "flac"
+      ],
+      "lossless": true
+    },
+    "mp3": {
+      "label": "MP3（320kbps）",
+      "ext": ".mp3",
+      "args": [
+        "-c:a",
+        "libmp3lame",
+        "-b:a",
+        "320k"
+      ],
+      "lossless": false
+    },
+    "m4a": {
+      "label": "M4A / AAC（256kbps）",
+      "ext": ".m4a",
+      "args": [
+        "-c:a",
+        "aac",
+        "-b:a",
+        "256k"
+      ],
+      "lossless": false
+    },
+    "ogg": {
+      "label": "OGG Vorbis（192kbps）",
+      "ext": ".ogg",
+      "args": [
+        "-c:a",
+        "libvorbis",
+        "-b:a",
+        "192k"
+      ],
+      "lossless": false
+    },
+    "opus": {
+      "label": "Opus（192kbps，体积小）",
+      "ext": ".opus",
+      "args": [
+        "-c:a",
+        "libopus",
+        "-b:a",
+        "192k"
+      ],
+      "lossless": false
+    }
+  },
+  "pinyin": {
+    "loaded": true,
+    "cached": false,
+    "chars": 0,
+    "bytes": 322647,
+    "error": null
+  },
+  "config": {
+    "bilibiliCookie": "",
+    "proxy": "",
+    "outputDir": "<PATH>",
+    "downloadDir": "<PATH>",
+    "defaultTargetFormat": "vsqx",
+    "nameTemplate": "{name}_converted",
+    "threads": 4,
+    "lastSourceFormat": "auto",
+    "customPrograms": [],
+    "voiceDirs": [],
+    "quality": 0,
+    "audioQuality": 0
+  },
+  "paths": {
+    "root": "<PATH>",
+    "outputDir": "<PATH>",
+    "downloadDir": "<PATH>",
+    "toolsDir": "<PATH>"
+  },
+  "platform": "win32"
+}

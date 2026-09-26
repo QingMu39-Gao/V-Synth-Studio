@@ -14,9 +14,32 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# 只有 Unix 下需要：给进程组发信号，把 node 连同它的子孙一起收掉
+# HTTP 服务：实现和 Node 后端完全相同的 31 个路由，前端零改动
+axum = { version = "0.8", features = ["json", "query"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "process", "time", "sync", "io-util"] }
+tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
+
+# 下载 / B 站解析 / 链接检查要用
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+futures-util = "0.3"
+
+# 从 LibreSVIP 插件的 .yapsy-plugin 里读格式元数据（其实是个 INI）
+# 不引 INI 库 —— 那个格式只有 key = value，自己解析十行就够
+
+# 只有 Unix 下需要：给进程组发信号，把子进程树一起收掉
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
+
+[target.'cfg(windows)'.dependencies]
+# Windows 注册表（读 VOCALOID 声库）与进程管理
+windows-sys = { version = "0.59", features = [
+    "Win32_Foundation",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_System_JobObjects",
+    "Win32_System_Diagnostics_ToolHelp",
+    "Win32_UI_Shell",
+] }
 
 [profile.release]
 # 发布版压体积：桌面外壳本身没什么计算量，优化体积比优化速度划算

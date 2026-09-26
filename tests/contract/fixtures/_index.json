@@ -1,0 +1,57 @@
+{
+  "capturedAt": "2026-09-26T18:52:33.352Z",
+  "base": "http://127.0.0.1:54302",
+  "note": "这些是 Node 后端的真实响应，用作 Rust 重写的对照基准。归一化规则见 capture.mjs 的 normalize()。",
+  "routes": {
+    "health": {
+      "path": "/api/health",
+      "status": 200,
+      "bytes": 116
+    },
+    "config": {
+      "path": "/api/config",
+      "status": 200,
+      "bytes": 262
+    },
+    "state": {
+      "path": "/api/state",
+      "status": 200,
+      "bytes": 14917
+    },
+    "resources": {
+      "path": "/api/resources",
+      "status": 200,
+      "bytes": 52117
+    },
+    "fs-roots": {
+      "path": "/api/fs/roots",
+      "status": 200,
+      "bytes": 219
+    },
+    "jobs": {
+      "path": "/api/jobs",
+      "status": 200,
+      "bytes": 21
+    },
+    "tools-detect": {
+      "path": "/api/tools/detect",
+      "status": 200,
+      "bytes": 2950
+    },
+    "voices": {
+      "path": "/api/voices",
+      "status": 200,
+      "bytes": 4638
+    },
+    "fs-list-c": {
+      "path": "/api/fs/list?path=C%3A%5C%5C",
+      "status": 200,
+      "bytes": 547
+    },
+    "fs-list-tools": {
+      "path": "/api/fs/list?path=H%3A%5C%E5%B7%A5%E4%BD%9C%E7%AB%99",
+      "status": 200,
+      "bytes": 298
+    }
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "ok": true,
+  "path": "<PATH>",
+  "exists": true,
+  "dirs": [
+    {
+      "name": ".git",
+      "path": "<PATH>"
+    },
+    {
+      "name": "app",
+      "path": "<PATH>"
+    },
+    {
+      "name": "data",
+      "path": "<PATH>"
+    },
+    {
+      "name": "docs",
+      "path": "<PATH>"
+    },
+    {
+      "name": "downloads",
+      "path": "<PATH>"
+    },
+    {
+      "name": "tests",
+      "path": "<PATH>"
+    },
+    {
+      "name": "tools",
+      "path": "<PATH>"
+    }
+  ],
+  "parent": "<PATH>"
+}

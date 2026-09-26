@@ -1,0 +1,17 @@
+{
+  "ok": true,
+  "config": {
+    "bilibiliCookie": "",
+    "proxy": "",
+    "outputDir": "<PATH>",
+    "downloadDir": "<PATH>",
+    "defaultTargetFormat": "vsqx",
+    "nameTemplate": "{name}_converted",
+    "threads": 4,
+    "lastSourceFormat": "auto",
+    "customPrograms": [],
+    "voiceDirs": [],
+    "quality": 0,
+    "audioQuality": 0
+  }
+}

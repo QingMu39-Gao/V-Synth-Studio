@@ -1,0 +1,9 @@
+{
+  "ok": true,
+  "name": "翻调工作站",
+  "version": "1.0.0",
+  "node": "v24.18.0",
+  "pid": "<NUM>",
+  "startedAt": "<NUM>",
+  "uptimeSec": "<NUM>"
+}

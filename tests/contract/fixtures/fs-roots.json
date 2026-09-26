@@ -1,0 +1,26 @@
+{
+  "ok": true,
+  "roots": [
+    {
+      "name": "C:",
+      "path": "<PATH>",
+      "type": "drive"
+    },
+    {
+      "name": "H:",
+      "path": "<PATH>",
+      "type": "drive"
+    },
+    {
+      "name": "桌面",
+      "path": "<PATH>",
+      "type": "user",
+      "parent": "<PATH>"
+    },
+    {
+      "name": "用户目录",
+      "path": "<PATH>",
+      "type": "user"
+    }
+  ]
+}

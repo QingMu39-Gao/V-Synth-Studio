@@ -1,0 +1,60 @@
+{
+  "ok": true,
+  "path": "<PATH>",
+  "exists": true,
+  "dirs": [
+    {
+      "name": "AMD",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Boot",
+      "path": "<PATH>"
+    },
+    {
+      "name": "common_attachment",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Config.Msi",
+      "path": "<PATH>"
+    },
+    {
+      "name": "PerfLogs",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Program Files",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Program Files (x86)",
+      "path": "<PATH>"
+    },
+    {
+      "name": "ProgramData",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Recovery",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Sysprep",
+      "path": "<PATH>"
+    },
+    {
+      "name": "tmp",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Users",
+      "path": "<PATH>"
+    },
+    {
+      "name": "Windows",
+      "path": "<PATH>"
+    }
+  ],
+  "parent": "<PATH>"
+}
