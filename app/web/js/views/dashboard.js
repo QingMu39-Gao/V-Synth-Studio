@@ -33,7 +33,7 @@ export async function render(ctx) {
   mount(container,
     h('div.col.gap-lg.stagger', [
       hero(state, navigate),
-      checks.length ? readinessCard(checks, navigate) : null,
+      checks.length ? readinessCard(checks) : null,
       quickActions(navigate),
       toolsCard(state, ctx),
       formatsCard(state),
@@ -99,6 +99,16 @@ function computeChecks(state) {
       detail: `可用：${formats.filter((f) => f.available).map((f) => f.name).join('、') || '无'}。未就绪：${unavailable.map((f) => f.name).join('、')}。`,
     })
   }
+  return checks
+}
+
+/**
+ * 「环境就绪度」卡片。
+ *
+ * 只在**有问题**时渲染（调用点判断 checks.length）—— 全都正常就没有这张卡，
+ * 因为那时它没有任何信息量。
+ */
+function readinessCard(checks) {
   return card({
     title: '环境就绪度',
     sub: `${checks.length} 项待处理`,

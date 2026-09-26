@@ -4,15 +4,41 @@
 # 逐个视图检查是否存在错误提示、关键内容是否渲染出来。
 #
 #   powershell -ExecutionPolicy Bypass -File tests\manual\ui-smoke.ps1
+#   powershell -ExecutionPolicy Bypass -File tests\manual\ui-smoke.ps1 -BaseUrl http://127.0.0.1:8891
 #
-# 前提：工作站服务已在 http://127.0.0.1:8787 运行。
+# 前提：工作站服务正在运行（双击 启动工作站.bat，或用 --serve --port=N 起一个）。
+#
+# 端口现在是**随机分配的**（避免撞车），所以不传 -BaseUrl 时会自动去问
+# 正在运行的那个进程占的是哪个端口。早先这里写死 8787（旧 Node 后端的默认值），
+# 结果连不上、Edge 渲染错误页，六个视图全部误报「缺内容」。
 
 param(
-  [string]$BaseUrl = 'http://127.0.0.1:8787',
+  [string]$BaseUrl = '',
   [int]$WaitMs = 9000
 )
 
 $ErrorActionPreference = 'Continue'
+
+# 自动发现端口：找 qingmu 进程监听的那个口
+if (-not $BaseUrl) {
+  $proc = Get-Process -Name 'qingmu-workstation', '清沐的虚拟歌姬工作站' -ErrorAction SilentlyContinue |
+          Select-Object -First 1
+  if ($proc) {
+    $conn = Get-NetTCPConnection -OwningProcess $proc.Id -State Listen -ErrorAction SilentlyContinue |
+            Select-Object -First 1
+    if ($conn) { $BaseUrl = "http://127.0.0.1:$($conn.LocalPort)" }
+  }
+  if (-not $BaseUrl) {
+    Write-Host '找不到正在运行的工作站。' -ForegroundColor Yellow
+    Write-Host '请先启动它（双击 启动工作站.bat），或用 -BaseUrl 指定地址。' -ForegroundColor Yellow
+    Write-Host '测试用的独立服务：' -ForegroundColor DarkGray
+    Write-Host '  app\desktop\target\debug\qingmu-workstation.exe --serve --port=8891' -ForegroundColor DarkGray
+    Write-Host '  ...ui-smoke.ps1 -BaseUrl http://127.0.0.1:8891' -ForegroundColor DarkGray
+    exit 2
+  }
+}
+Write-Host "目标：$BaseUrl" -ForegroundColor DarkGray
+
 $edge = @(
   "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
   "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
@@ -47,7 +73,11 @@ function Get-RenderedDom {
 }
 
 $views = @(
-  @{ id = 'dashboard'; name = '总览';       expect = @('欢迎回来', '本机编辑器', '环境就绪度', '格式支持', 'nav-item') },
+  # 注意：总览页的卡片是**条件渲染**的 —— 「环境就绪度」只在有问题时出现
+  # （缺 ffmpeg/yt-dlp、或某格式模块没就绪），全正常时没有这张卡。
+  # 所以这里只断言一定会有的东西；想验那张卡要造缺工具的环境。
+  # 「本机编辑器」「本机声库」两张卡已随探测功能一起删除，不要再断言它们。
+  @{ id = 'dashboard'; name = '总览';       expect = @('欢迎回来', '格式支持', '外部工具', 'nav-item') },
   @{ id = 'convert';   name = '工程转换';   expect = @('来源工程', '目标格式', '转换处理', '输出设置', 'dropzone') },
   @{ id = 'video';     name = '视频解析';   expect = @('video-parse-bar', '解析') },
   @{ id = 'audio';     name = '音频工具';   expect = @('op-card', 'audio-layout') },

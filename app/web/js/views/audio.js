@@ -3,6 +3,8 @@
  *
  * 左边：本机 ffmpeg 干实际活 —— 格式转换（导出 WAV/FLAC/MP3）、从视频抽音轨、
  *      变调（半音）、变速（倍率）、裁剪片段、响度标准化。
+ *      其中「裁剪片段」是可视化编辑器（波形 + 试听 + 拖端点 + 剪刀分段 + 分段导出），
+ *      实现在 components/waveEditor.js。
  * 右边：人声分离两条路 —— 在线 MVSEP（外链，需上传）与本机 UVR（离线，音频不出机器）。
  *
  * 长任务一律走 api.audioRun + watchJob，进度与日志实时显示，随时可取消。
@@ -13,6 +15,8 @@ import {
   h, mount, icon, toast, button, card, progressBar, alertBox,
   formatBytes, formatDuration,
 } from '../ui.js'
+import { parseTime, formatTime } from '../timecode.js'
+import { createWaveEditor, rawUrl } from '../components/waveEditor.js'
 import { pickDirectory, directoryInput } from '../components/dirPicker.js'
 
 const LS_KEY = 'fandiao.audio.settings'
@@ -23,7 +27,7 @@ const OPS = [
   { id: 'extract', name: '提取音频', desc: '把 MV / 视频的音轨抽出来', iconName: 'film' },
   { id: 'pitch', name: '变调', desc: '按半音升降，时长不变', iconName: 'music' },
   { id: 'tempo', name: '变速', desc: '按倍率快慢，音高不变', iconName: 'activity' },
-  { id: 'trim', name: '裁剪片段', desc: '截一段出来再导出', iconName: 'scissors' },
+  { id: 'trim', name: '裁剪片段', desc: '波形上拖端点、切片分段导出', iconName: 'scissors' },
   { id: 'normalize', name: '响度标准化', desc: '伴奏与干声拉到同一响度', iconName: 'wave' },
 ]
 
@@ -518,41 +522,115 @@ export async function render(ctx) {
     ])
   }
 
-  function trimField() {
-    const start = h('input.input', { type: 'number', min: '0', step: '0.1', value: String(settings.startSec), style: { width: '95px' } })
-    const end = h('input.input', { type: 'number', min: '0', step: '0.1', value: String(settings.endSec), style: { width: '95px' } })
-    const apply = () => {
-      settings.startSec = Math.max(0, Number(start.value) || 0)
-      settings.endSec = Math.max(0, Number(end.value) || 0)
-      save()
-      renderOutPath()
+  /* ------------------------------------------------------------ 裁剪编辑器 */
+
+  /**
+   * 波形编辑器只建一次。
+   * renderOpOptions() 会随动作切换反复重挂 opOptions，每次新建编辑器会漏掉
+   * ResizeObserver / audio 元素、并丢掉已经切好的分段 —— 所以这里建好留着复用。
+   */
+  let waveEditor = null
+  let editorEl = null
+
+  function buildEditor() {
+    const startEl = h('input.input.mono', {
+      value: formatTime(settings.startSec),
+      style: { width: '104px' },
+      spellcheck: 'false',
+      title: '支持 83 / 1:23 / 1:23.456 / 1:02:03',
+    })
+    const endEl = h('input.input.mono', {
+      value: formatTime(settings.endSec),
+      style: { width: '104px' },
+      spellcheck: 'false',
+      title: '支持 83 / 1:23 / 1:23.456 / 1:02:03',
+    })
+    const infoEl = h('span.tiny.dim')
+
+    waveEditor = createWaveEditor({
+      onChange: ({ start, end, count }) => {
+        settings.startSec = start
+        settings.endSec = end
+        save()
+        syncInputs()
+        infoEl.textContent = `${formatDuration(Math.max(0, end - start))} · 共 ${count} 段`
+        renderOutPath()
+      },
+      // 单段导出：文件名跟「开始处理」一致；多段时补 _02 这种序号，不然互相覆盖
+      onExport: (seg) => void run({ segments: [seg] }),
+      onExportAll: () => void run({ all: true }),
+    })
+
+    function syncInputs() {
+      if (!waveEditor) return
+      const sg = waveEditor.segments[waveEditor.selectedIndex]
+      if (!sg) return
+      // 正在输入的那一框别抢，等用户敲完 Enter / 失焦再同步
+      if (document.activeElement !== startEl) startEl.value = formatTime(sg.start)
+      if (document.activeElement !== endEl) endEl.value = formatTime(sg.end)
     }
-    start.addEventListener('change', apply)
-    end.addEventListener('change', apply)
-    const total = Number(probe?.durationSec) || 0
-    return h('div.col.gap-sm', [
-      h('div.row.gap-sm', [
-        h('span.small', { style: { width: '42px' } }, '秒'),
-        start,
-        h('span.dim', '~'),
-        end,
-        total
-          ? button('用整段', {
-              size: 'btn-sm',
-              variant: 'btn-ghost',
-              onClick: () => {
-                start.value = '0'
-                end.value = String(Math.floor(total))
-                apply()
-                renderOpOptions()
-              },
-            })
-          : null,
+
+    const applyField = (el, which) => {
+      const sec = parseTime(el.value)
+      if (sec === null) {
+        toast('时间看不懂。写成 1:23.456 这样（也可以只写 83）', 'warn')
+        syncInputs()
+        return
+      }
+      const i = waveEditor.selectedIndex
+      const sg = waveEditor.segments[i]
+      waveEditor.setSegment(i, which === 'start' ? sec : sg.start, which === 'end' ? sec : sg.end)
+    }
+
+    for (const [el, which] of [[startEl, 'start'], [endEl, 'end']]) {
+      el.addEventListener('change', () => applyField(el, which))
+      el.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') el.blur()
+      })
+    }
+
+    editorEl = h('div.col.gap-sm.wave-field', [
+      waveEditor.el,
+      h('div.row-wrap.gap-sm', [
+        h('span.small', { style: { width: '84px' } }, '起点 / 终点'),
+        startEl,
+        h('span.dim', '→'),
+        endEl,
+        button('整段', {
+          size: 'btn-sm',
+          variant: 'btn-ghost',
+          title: '把选区拉回整个文件',
+          onClick: () => {
+            const i = waveEditor.selectedIndex
+            waveEditor.setSegment(i, 0, waveEditor.duration)
+          },
+        }),
+        h('div.spacer'),
+        infoEl,
       ]),
-      h('div.field-hint', total
-        ? `这个文件总长 ${formatDuration(total)}。裁剪结果固定导出 WAV；「结束」要大于「开始」。`
-        : '裁剪结果固定导出 WAV；「结束」要大于「开始」。选了文件后这里会显示总时长，可以一键填成整段。'),
+      h('div.field-hint', [
+        '时间按「分:秒.毫秒」填，例如 1:23.456（直接写 83 也认）。',
+        '拖波形两端的把手裁剪，和输入框双向同步：拖完框里会变，改完框里波形跟着动。',
+        '剪刀模式下点波形等于在那里切开；快捷键 S = 在播放头切开，Ctrl+Z 撤销，Delete 删除选中段。',
+        '裁剪结果固定导出 WAV。',
+      ].join('')),
     ])
+
+    syncInputs()
+    infoEl.textContent = ''
+  }
+
+  function trimField() {
+    if (!waveEditor) buildEditor()
+    return editorEl
+  }
+
+  /** 输入文件 / 探测结果变了 → 把新素材交给编辑器 */
+  function syncEditor() {
+    if (!waveEditor) return
+    const path = settings.input.trim()
+    const usable = path && !probe?.error
+    waveEditor.setSource(usable ? rawUrl(path) : '', Number(probe?.durationSec) || 0, settings)
   }
 
   function normalizeField() {
@@ -610,6 +688,7 @@ export async function render(ctx) {
     }
     mount(opOptions, rows)
     mount(opHint, `当前操作：${OPS.find((o) => o.id === a)?.name ?? a}`)
+    syncEditor()
   }
 
   /* ------------------------------------------------------------ 输出 */
@@ -812,7 +891,45 @@ export async function render(ctx) {
     ]))
   }
 
-  async function run() {
+  /**
+   * 裁剪导出任务表：一段一个文件。
+   * 编辑器里已经切成多段时，文件名一律补 _01 _02 —— 不然单段导出会互相覆盖。
+   */
+  function trimJobs({ all = false, segments: pick = null } = {}) {
+    const segs = waveEditor
+      ? waveEditor.segments
+      : [{ start: Number(settings.startSec) || 0, end: Number(settings.endSec) || 0 }]
+    const sel = waveEditor ? waveEditor.selectedIndex : 0
+    const list = all
+      ? segs.map((sg, i) => ({ start: sg.start, end: sg.end, i }))
+      : (pick ?? [segs[clampIndex(sel, segs.length)]]).map((sg) => ({
+          start: sg.start,
+          end: sg.end,
+          // 单段导出带的是 index（分段列表里的序号），「开始处理」没带就用当前选中段
+          i: Number.isFinite(sg.index) ? sg.index : clampIndex(sel, segs.length),
+        }))
+
+    const { outDir, name } = resolveOutput()
+    const ext = extOf(name) ? `.${extOf(name)}` : ''
+    const numbered = segs.length > 1
+    return list.map((sg) => ({
+      action: 'trim',
+      options: { startSec: sg.start, endSec: sg.end },
+      output: joinPath(outDir, numbered ? `${stripExt(name)}_${String(sg.i + 1).padStart(2, '0')}${ext}` : name),
+    }))
+  }
+
+  function clampIndex(i, len) {
+    return Math.min(Math.max(0, Number(i) || 0), Math.max(0, len - 1))
+  }
+
+  /**
+   * @param {{all?:boolean, segments?:{start:number,end:number,index?:number}[]}} [what]
+   *   all      —— 导出全部分段（分段列表里的「全部导出」）
+   *   segments —— 只导出这几段（分段列表每行的「导出」）
+   *   都不传    —— 「开始处理」：裁剪时导出当前选中的那一段，其它动作照旧
+   */
+  async function run(what = {}) {
     const input = settings.input.trim()
     if (!input) {
       toast('请先选择要处理的音频文件', 'warn')
@@ -829,20 +946,27 @@ export async function render(ctx) {
       return
     }
     const action = settings.action
-    const options = buildOptions(action)
-    const problem = validate(action, options)
-    if (problem) {
-      toast(problem, 'warn')
-      return
-    }
-    const { outDir, output } = resolveOutput()
+    const { outDir } = resolveOutput()
     if (!outDir) {
       toast('请选择输出目录', 'warn')
       return
     }
-    if (output.toLowerCase() === input.toLowerCase()) {
-      toast('输出文件不能和输入文件同名，改一下文件名或目录', 'err')
+
+    const jobs = action === 'trim' ? trimJobs(what) : [{ action, output: resolveOutput().output, options: buildOptions(action) }]
+    if (!jobs.length) {
+      toast('没有可导出的分段', 'warn')
       return
+    }
+    for (const j of jobs) {
+      const problem = validate(j.action, j.options)
+      if (problem) {
+        toast(problem, 'warn')
+        return
+      }
+      if (j.output.toLowerCase() === input.toLowerCase()) {
+        toast('输出文件不能和输入文件同名，改一下文件名或目录', 'err')
+        return
+      }
     }
 
     runBtn.classList.add('loading')
@@ -851,6 +975,7 @@ export async function render(ctx) {
     const bar = progressBar(0, { size: 'lg' })
     const msg = h('div.small.muted', '正在提交任务…')
     const log = h('div.log', { style: { maxHeight: '220px' } })
+    const subEl = h('div.sub.truncate', baseName(jobs[0].output))
     let jobId = null
     const cancelBtn = button('取消', {
       size: 'btn-sm',
@@ -869,7 +994,7 @@ export async function render(ctx) {
     mount(jobHost, h('div.card', [
       h('div.card-head', [
         h('div.card-icon', [icon('activity', 16)]),
-        h('div', [h('h2', OPS.find((o) => o.id === action)?.name ?? '处理中'), h('div.sub.truncate', baseName(output))]),
+        h('div', [h('h2', OPS.find((o) => o.id === action)?.name ?? '处理中'), subEl]),
         h('div.spacer'),
         cancelBtn,
       ]),
@@ -877,32 +1002,46 @@ export async function render(ctx) {
     ]))
 
     try {
-      const r = await api.audioRun({ action, input, output, options })
-      jobId = r.jobId
-      if (!jobId) throw new Error('服务端没有返回任务号')
-      const outcome = await waitJob(jobId, (job) => {
-        bar.setBar(job.percent ?? 0, job.status === 'error' ? 'error' : job.status === 'done' ? 'done' : job.status === 'canceled' ? 'canceled' : '')
-        msg.textContent = job.message || '处理中…'
-        mount(log, (job.logs ?? []).join('\n'))
-        log.scrollTop = log.scrollHeight
-      })
-      if (disposed) return
-      if (outcome.status === 'done') {
-        const out = outcome.job?.result?.output ?? output
+      let done = 0
+      for (const [n, j] of jobs.entries()) {
+        subEl.textContent = jobs.length > 1 ? `${baseName(j.output)}（第 ${n + 1} / ${jobs.length} 段）` : baseName(j.output)
+        msg.textContent = '正在提交任务…'
+        const r = await api.audioRun({ action: j.action, input, output: j.output, options: j.options })
+        jobId = r.jobId
+        if (!jobId) throw new Error('服务端没有返回任务号')
+        const outcome = await waitJob(jobId, (job) => {
+          const pct = job.percent ?? 0
+          // 多段时进度条按整体算，不然每段都从头跑到尾，看着像卡住了
+          const overall = jobs.length > 1 ? ((n + pct / 100) / jobs.length) * 100 : pct
+          bar.setBar(overall, job.status === 'error' ? 'error' : job.status === 'done' ? 'done' : job.status === 'canceled' ? 'canceled' : '')
+          msg.textContent = job.message || '处理中…'
+          mount(log, (job.logs ?? []).join('\n'))
+          log.scrollTop = log.scrollHeight
+        })
+        if (disposed) return
+        if (outcome.status === 'done') {
+          done++
+          lastResult = { action: j.action, input, output: outcome.job?.result?.output ?? j.output }
+          continue
+        }
+        // 失败或取消就停：剩下的段多半也会失败，一次跑完更浪费时间
+        if (outcome.status === 'error') {
+          bar.setBar(100, 'error')
+          msg.textContent = outcome.error?.message ?? '处理失败'
+          mount(log, [(outcome.job?.logs ?? []).join('\n'), `✗ ${outcome.error?.message ?? '处理失败'}`].filter(Boolean).join('\n'))
+          toast(`处理失败：${outcome.error?.message ?? '未知错误'}`, 'err')
+        } else {
+          bar.setBar(100, 'canceled')
+          msg.textContent = '已取消'
+          toast('已取消', 'warn')
+        }
+        break
+      }
+      if (done === jobs.length) {
         bar.setBar(100, 'done')
-        msg.textContent = outcome.job?.message || '处理完成'
-        lastResult = { action, input, output: out }
+        msg.textContent = jobs.length > 1 ? `${jobs.length} 段都导出完了` : outcomeText(action)
         renderResult(lastResult)
-        toast(`处理完成：${baseName(out)}`, 'ok')
-      } else if (outcome.status === 'error') {
-        bar.setBar(100, 'error')
-        msg.textContent = outcome.error?.message ?? '处理失败'
-        mount(log, [(outcome.job?.logs ?? []).join('\n'), `✗ ${outcome.error?.message ?? '处理失败'}`].filter(Boolean).join('\n'))
-        toast(`处理失败：${outcome.error?.message ?? '未知错误'}`, 'err')
-      } else if (outcome.status === 'canceled') {
-        bar.setBar(100, 'canceled')
-        msg.textContent = '已取消'
-        toast('已取消', 'warn')
+        toast(jobs.length > 1 ? `已导出 ${jobs.length} 个分段` : `处理完成：${baseName(lastResult.output)}`, 'ok')
       }
     } catch (err) {
       toast(`提交任务失败：${err.message}`, 'err')
@@ -910,6 +1049,10 @@ export async function render(ctx) {
     } finally {
       runBtn.classList.remove('loading')
     }
+  }
+
+  function outcomeText(action) {
+    return action === 'trim' ? '裁剪完成' : '处理完成'
   }
 
   const runBtn = button('开始处理', { variant: 'btn-primary', size: 'btn-lg', iconName: 'zap', onClick: () => void run() })
@@ -931,7 +1074,7 @@ export async function render(ctx) {
           },
         }),
       ]),
-      h('div.tiny.dim', { style: { textAlign: 'center' } }, '处理在本机由 ffmpeg 完成，不联网、不上传；大文件会花点时间，进度和日志实时显示。'),
+      h('div.tiny.dim', { style: { textAlign: 'center' } }, '处理在本机由 ffmpeg 完成，不联网、不上传；大文件会花点时间，进度和日志实时显示。裁剪时这个按钮导出「当前选中的那一段」，要一次导出全部就在下面的分段列表里点「全部导出」。'),
     ]),
   ])
 
@@ -1070,6 +1213,8 @@ export async function render(ctx) {
 
   return function cleanup() {
     disposed = true
+    // 不销毁编辑器，换页之后试听还在响、rAF 还在跑
+    waveEditor?.destroy()
     for (const stop of [...stops]) {
       try {
         stop()

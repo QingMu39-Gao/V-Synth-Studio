@@ -255,6 +255,73 @@
 .split-sep { display: flex; align-items: center; gap: 9px; color: var(--text-3); font-size: 12px; }
 .split-sep .bar { flex: 1; height: 1px; background: var(--border); }
 
+/* 裁剪编辑器：波形时间轴 + 分段列表 */
+
+.wave-field { min-width: 0; }
+
+.wave-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  outline: none;
+}
+.wave-editor:focus-visible { border-color: var(--accent); }
+
+.wave-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+.wave-wrap {
+  width: 100%;
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+}
+
+.wave-canvas { display: block; width: 100%; cursor: grab; touch-action: none; }
+
+.wave-audio { display: block; width: 100%; max-width: 520px; }
+
+.wave-note { line-height: 1.6; }
+.wave-note.warn { color: var(--warn); }
+
+.seg-list { display: flex; flex-direction: column; gap: 4px; max-height: 240px; overflow-y: auto; }
+
+.seg-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 6px 9px;
+  font-size: 11.5px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xs);
+  background: var(--glass);
+  cursor: pointer;
+  transition: all var(--dur) var(--ease);
+}
+.seg-row:hover { background: var(--glass-hover); border-color: var(--border-strong); }
+.seg-row.selected { border-color: var(--accent); background: var(--accent-dim); }
+
+.seg-index {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 20px;
+  height: 20px;
+  font-size: 10.5px;
+  border-radius: 50%;
+  background: var(--bg-3);
+  color: var(--text-1);
+}
+.seg-row.selected .seg-index { background: var(--accent); color: var(--bg-0); }
+
+.seg-time { color: var(--text-0); }
+.seg-dur { color: var(--text-3); }
+
 /* ------------------------------------------------------------ 资源库 */
 
 .res-toolbar {
