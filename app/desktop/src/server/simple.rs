@@ -331,10 +331,32 @@ pub async fn fs_reveal(Json(body): Json<Value>) -> Result<Json<Value>, ApiError>
 /* ══════════════════════════════════ 任务 ══════════════════════════════════ */
 
 /// 任务表
-#[derive(Default)]
+///
+/// `tx` 是给 SSE 用的广播通道：任何任务状态变化都往里发一份完整快照，
+/// `/api/jobs/{id}/stream` 订阅它、按 id 过滤、推给前端。
+///
+/// 用**一个全局广播**而不是「每个任务一个通道」：任务数少、订阅者更少，
+/// 按 id 过滤的代价可以忽略，换来的是不用维护通道的创建与销毁。
 pub struct JobTable {
     pub items: BTreeMap<String, Value>,
     pub seq: u64,
+    pub tx: tokio::sync::broadcast::Sender<Value>,
+}
+
+impl Default for JobTable {
+    fn default() -> Self {
+        // 容量 256：进度更新很密（每次 set 都发一条），订阅者偶尔卡顿也不该丢消息。
+        // 真丢了也只是少刷一次，因为推的是完整快照而不是增量。
+        let (tx, _) = tokio::sync::broadcast::channel(256);
+        Self { items: BTreeMap::new(), seq: 0, tx }
+    }
+}
+
+impl JobTable {
+    /// 广播一份任务快照
+    pub fn publish(&self, job: &Value) {
+        let _ = self.tx.send(job.clone());
+    }
 }
 
 pub async fn jobs_list(State(st): State<Arc<AppState>>) -> Json<Value> {
@@ -401,9 +423,83 @@ pub async fn jobs_cancel(
     Ok(Json(ok(json!({ "job": job.clone() }))))
 }
 
-pub async fn jobs_stream() -> Response {
-    // 阶段 2 会换成真正的 SSE
-    (StatusCode::NOT_IMPLEMENTED, "SSE 在阶段 2 实现").into_response()
+/// 任务进度推送（SSE）。
+///
+/// 前端用 `new EventSource('/api/jobs/{id}/stream')` 订阅 —— **注意 id 在路径里**，
+/// 不是查询参数。早先这里注册成 `/api/jobs/stream` 导致前端 404、进度条不动。
+///
+/// 协议和 Node 版一致：
+///   - 连上先推一份当前快照（前端不必再单独请求一次）
+///   - 之后每次状态变化推一份完整快照（不是增量，丢一条也不会错位）
+///   - 状态变成 done/error/canceled 后推完最后一条就结束
+///   - 15 秒一次心跳注释行，防止中间层掐掉空闲连接
+pub async fn jobs_stream(
+    State(st): State<Arc<AppState>>,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<
+    axum::response::Sse<
+        impl futures_util::Stream<Item = Result<axum::response::sse::Event, std::convert::Infallible>>,
+    >,
+    ApiError,
+> {
+    use axum::response::sse::{Event, KeepAlive};
+    use std::convert::Infallible;
+
+    let (initial, rx) = {
+        let guard = st.jobs.lock().unwrap();
+        let job = guard
+            .items
+            .get(&id)
+            .cloned()
+            .ok_or_else(|| ApiError::not_found("任务不存在"))?;
+        // 先订阅再放开锁 —— 顺序反过来的话，两次之间的更新会丢
+        (job, guard.tx.subscribe())
+    };
+
+    let stream = futures_util::stream::unfold(
+        (rx, Some(initial), false),
+        move |(mut rx, pending, done)| {
+            let id = id.clone();
+            async move {
+                if done {
+                    return None;
+                }
+                // 第一条：订阅前的当前快照
+                if let Some(v) = pending {
+                    let terminal = is_terminal(&v);
+                    let ev = Event::default().data(v.to_string());
+                    return Some((Ok::<_, Infallible>(ev), (rx, None, terminal)));
+                }
+                // 之后：等其他任务的消息，按 id 过滤
+                loop {
+                    match rx.recv().await {
+                        Ok(v) => {
+                            if v.get("id").and_then(|x| x.as_str()) != Some(id.as_str()) {
+                                continue;
+                            }
+                            let terminal = is_terminal(&v);
+                            let ev = Event::default().data(v.to_string());
+                            return Some((Ok::<_, Infallible>(ev), (rx, None, terminal)));
+                        }
+                        // 订阅者跟不上被丢了消息：不是错误，继续等下一批
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => return None,
+                    }
+                }
+            }
+        },
+    );
+
+    Ok(axum::response::Sse::new(stream)
+        .keep_alive(KeepAlive::new().interval(std::time::Duration::from_secs(15))))
+}
+
+/// 任务是否已到终态（到了就该结束 SSE 连接）
+fn is_terminal(job: &Value) -> bool {
+    matches!(
+        job.get("status").and_then(|s| s.as_str()),
+        Some("done") | Some("error") | Some("canceled")
+    )
 }
 
 /* ══════════════════════════════════ 资源库 ══════════════════════════════════ */
@@ -483,6 +579,9 @@ pub struct ApiError {
 impl ApiError {
     pub fn bad_request(msg: impl Into<String>) -> Self {
         Self { status: StatusCode::BAD_REQUEST, message: msg.into() }
+    }
+    pub fn not_found(msg: impl Into<String>) -> Self {
+        Self { status: StatusCode::NOT_FOUND, message: msg.into() }
     }
     pub fn internal(msg: impl Into<String>) -> Self {
         Self { status: StatusCode::INTERNAL_SERVER_ERROR, message: msg.into() }

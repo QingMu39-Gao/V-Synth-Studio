@@ -338,12 +338,286 @@ fn unique_path(p: PathBuf) -> PathBuf {
 
 /* ══════════════════════════════════ 上传变体 ══════════════════════════════════ */
 
-pub async fn preview_upload() -> Result<Json<Value>, ApiError> {
-    Err(ApiError::bad_request("上传变体在阶段 2 后半实现（需要 multipart 支持）"))
+/*
+ * 前端传的是 **JSON 里的 base64**，不是 multipart ——
+ * `{ files: [{ name, base64 }] }`。所以不需要 axum 的 multipart 特性，
+ * 也不需要引 base64 crate：标准字母表解码手写二十来行就够。
+ *
+ * 流程和 Node 版一致：解码 → 落到临时目录（保持原文件名，输出名才不会带临时前缀）
+ * → 跑转换 → 无论成败都清理临时目录。
+ */
+
+/// 一个已经落盘的上传文件
+struct Uploaded {
+    /// 临时文件路径
+    path: PathBuf,
+    /// 清理用：它所在的那一批目录
+    batch_dir: PathBuf,
 }
 
-pub async fn run_upload() -> Result<Json<Value>, ApiError> {
-    Err(ApiError::bad_request("上传变体在阶段 2 后半实现（需要 multipart 支持）"))
+/// 标准字母表的 base64 解码。遇到非法字符返回 Err。
+///
+/// 只用标准字母表（+ /），不处理 URL-safe 变体 —— 前端用的是 btoa/FileReader，
+/// 出来的就是标准字母表。
+fn base64_decode(s: &str) -> Result<Vec<u8>, String> {
+    fn val(c: u8) -> Option<u8> {
+        match c {
+            b'A'..=b'Z' => Some(c - b'A'),
+            b'a'..=b'z' => Some(c - b'a' + 26),
+            b'0'..=b'9' => Some(c - b'0' + 52),
+            b'+' => Some(62),
+            b'/' => Some(63),
+            _ => None,
+        }
+    }
+
+    let mut out = Vec::with_capacity(s.len() / 4 * 3);
+    let mut buf = 0u32;
+    let mut bits = 0u32;
+    for &c in s.as_bytes() {
+        // 换行和空白是合法的填充，跳过
+        if c == b'\n' || c == b'\r' || c == b' ' || c == b'\t' {
+            continue;
+        }
+        if c == b'=' {
+            break;
+        }
+        let Some(v) = val(c) else {
+            return Err(format!("base64 里有非法字符：{}", c as char));
+        };
+        buf = (buf << 6) | v as u32;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((buf >> bits) as u8);
+        }
+    }
+    Ok(out)
+}
+
+/// 把上传的文件写到临时目录。返回落盘信息，失败时已写的部分由调用方清理。
+fn materialize_uploads(files: &[Value]) -> Result<Vec<Uploaded>, ApiError> {
+    if files.is_empty() {
+        return Err(ApiError::bad_request("没有收到文件"));
+    }
+    if files.len() > 200 {
+        return Err(ApiError::bad_request("一次最多处理 200 个文件"));
+    }
+
+    // 每批一个独立目录，避免并发请求互相覆盖
+    let batch_dir = std::env::temp_dir().join(format!(
+        "qingmu-uploads-{}-{}",
+        std::process::id(),
+        now_millis()
+    ));
+    std::fs::create_dir_all(&batch_dir).map_err(ApiError::from)?;
+
+    let mut out = Vec::new();
+    for f in files {
+        let raw_name = f.get("name").and_then(|v| v.as_str()).unwrap_or("untitled");
+        // 文件名里不能出现路径分隔符等字符，否则会写到别的目录去
+        let safe_name: String = raw_name
+            .chars()
+            .map(|c| {
+                if c.is_control() || "<>:\"/\\|?*".contains(c) {
+                    '_'
+                } else {
+                    c
+                }
+            })
+            .collect();
+
+        let b64 = f.get("base64").and_then(|v| v.as_str()).unwrap_or("");
+        let bytes = base64_decode(b64).map_err(ApiError::bad_request)?;
+        if bytes.is_empty() {
+            return Err(ApiError::bad_request(format!("文件 {safe_name} 内容为空")));
+        }
+        if bytes.len() > 80 * 1024 * 1024 {
+            return Err(ApiError::bad_request(format!(
+                "文件 {safe_name} 超过 80MB，请改用「从目录收集」直接读本地路径"
+            )));
+        }
+
+        let path = batch_dir.join(&safe_name);
+        std::fs::write(&path, &bytes).map_err(ApiError::from)?;
+        out.push(Uploaded { path, batch_dir: batch_dir.clone() });
+    }
+    Ok(out)
+}
+
+/// 删掉这一批的临时目录。失败不报错 —— 临时文件清不掉不该让请求失败。
+fn cleanup_uploads(files: &[Uploaded]) {
+    for f in files {
+        let _ = std::fs::remove_dir_all(&f.batch_dir);
+    }
+}
+
+/// 上传版预检：只取第一个文件做分析（和 Node 版一致）
+pub async fn preview_upload(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let files = body.get("files").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let uploaded = materialize_uploads(&files)?;
+    let first_original = files
+        .first()
+        .and_then(|f| f.get("name"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+
+    let root = st.root.clone();
+    let path = uploaded[0].path.clone();
+    let to = body.get("toFormat").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+    let result = tokio::task::spawn_blocking(move || -> Result<Value, String> {
+        let project = crate::libresvip::read_project(&root, &path)?;
+        let s = crate::libresvip::summarize(&project);
+        let mut findings = vec![json!({
+            "level": "info",
+            "message": format!("源工程：{} 轨 / {} 音符",
+                s["trackCount"].as_u64().unwrap_or(0), s["noteCount"].as_u64().unwrap_or(0)),
+        })];
+        if let Some(limits) = capability(&to) {
+            if !limits.pitch && s["pitchPoints"].as_u64().unwrap_or(0) > 0 {
+                findings.push(json!({ "level": "warn", "message": "目标格式不支持音高曲线，调好的滑音会丢失。" }));
+            }
+            if !limits.multi_track && s["trackCount"].as_u64().unwrap_or(0) > 1 {
+                findings.push(json!({ "level": "warn", "message": "目标格式是单轨的，多条轨道会被合并成 1 条。" }));
+            }
+        }
+        Ok(json!({
+            "findings": findings,
+            "input": { "name": first_original, "trackCount": s["trackCount"], "noteCount": s["noteCount"] },
+        }))
+    })
+    .await;
+
+    cleanup_uploads(&uploaded);
+
+    let value = result
+        .map_err(|e| ApiError::internal(format!("预检任务失败：{e}")))?
+        .map_err(ApiError::bad_request)?;
+    Ok(Json(ok(value)))
+}
+
+/// 上传版转换：落盘 → 丢进任务队列 → 清理
+pub async fn run_upload(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let to_format = body.get("toFormat").and_then(|v| v.as_str()).unwrap_or("");
+    if to_format.is_empty() {
+        return Err(ApiError::bad_request("没有选择目标格式"));
+    }
+    let files = body.get("files").and_then(|v| v.as_array()).cloned().unwrap_or_default();
+    let uploaded = materialize_uploads(&files)?;
+
+    let cfg = st.config_snapshot();
+    let out_dir = body
+        .get("outDir")
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .or_else(|| cfg.get("outputDir").and_then(|v| v.as_str()).map(String::from))
+        .unwrap_or_default();
+    let name_template = body
+        .get("nameTemplate")
+        .and_then(|v| v.as_str())
+        .unwrap_or("{name}")
+        .to_string();
+    let overwrite = body.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
+
+    let ext = crate::libresvip::list_formats(&st.root)
+        .as_array()
+        .and_then(|a| a.iter().find(|f| f.get("id").and_then(|v| v.as_str()) == Some(to_format)))
+        .and_then(|f| f.get("exts"))
+        .and_then(|e| e.as_array())
+        .and_then(|a| a.first())
+        .and_then(|v| v.as_str())
+        .map(String::from)
+        .ok_or_else(|| ApiError::bad_request(format!("LibreSVIP 不支持目标格式「{to_format}」")))?;
+
+    // 原始文件名（用于命名输出），临时路径只用来读
+    let inputs: Vec<(String, PathBuf)> = uploaded
+        .iter()
+        .enumerate()
+        .map(|(i, u)| {
+            let orig = files
+                .get(i)
+                .and_then(|f| f.get("name"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("untitled")
+                .to_string();
+            (orig, u.path.clone())
+        })
+        .collect();
+
+    let job_id = new_job(
+        &st,
+        "convert",
+        &format!("转换 {} 个上传的工程 → .{}", inputs.len(), ext),
+        to_format,
+    );
+
+    let st2 = st.clone();
+    let job_id2 = job_id.clone();
+    tokio::spawn(async move {
+        let total = inputs.len();
+        let (mut ok_count, mut fail_count) = (0usize, 0usize);
+
+        for (i, (orig, path)) in inputs.iter().enumerate() {
+            set_job(&st2, &job_id2, json!({
+                "percent": ((i as f64 / total as f64) * 100.0) as u32,
+                "message": format!("正在处理 {orig}"),
+            }));
+
+            let stem = Path::new(orig)
+                .file_stem()
+                .map(|s| s.to_string_lossy().to_string())
+                .unwrap_or_else(|| "output".into());
+            let mut out_path =
+                PathBuf::from(&out_dir).join(format!("{}.{ext}", name_template.replace("{name}", &stem)));
+            if !overwrite {
+                out_path = unique_path(out_path);
+            }
+
+            let root = st2.root.clone();
+            let inp = path.clone();
+            let outp = out_path.clone();
+            let written_name = out_path
+                .file_name()
+                .map(|n| n.to_string_lossy().to_string())
+                .unwrap_or_default();
+            let result =
+                tokio::task::spawn_blocking(move || crate::libresvip::convert(&root, &inp, &outp)).await;
+
+            match result {
+                Ok(Ok(r)) if r.ok => {
+                    ok_count += 1;
+                    log_job(&st2, &job_id2, &format!("  写出：{written_name}"));
+                }
+                Ok(Ok(r)) => {
+                    fail_count += 1;
+                    let detail = if r.stderr.is_empty() { r.stdout } else { r.stderr };
+                    log_job(&st2, &job_id2, &format!("  ✗ LibreSVIP 退出码 {}：{detail}", r.code));
+                }
+                Ok(Err(e)) => {
+                    fail_count += 1;
+                    log_job(&st2, &job_id2, &format!("  ✗ {e}"));
+                }
+                Err(e) => {
+                    fail_count += 1;
+                    log_job(&st2, &job_id2, &format!("  ✗ 任务调度失败：{e}"));
+                }
+            }
+        }
+
+        // 转换跑完才清理临时文件 —— 提前删掉 LibreSVIP 就读不到了
+        cleanup_uploads(&uploaded);
+        finish_job(&st2, &job_id2, &format!("完成：成功 {ok_count} / 失败 {fail_count}"));
+    });
+
+    Ok(Json(ok(json!({ "jobId": job_id }))))
 }
 
 /* ══════════════════════════════════ 任务表操作 ══════════════════════════════════ */
@@ -370,22 +644,36 @@ pub fn new_job(st: &Arc<AppState>, kind: &str, title: &str, _meta: &str) -> Stri
 
 pub fn set_job(st: &Arc<AppState>, id: &str, patch: Value) {
     let mut guard = st.jobs.lock().unwrap();
-    if let Some(job) = guard.items.get_mut(id) {
+    let snapshot = if let Some(job) = guard.items.get_mut(id) {
         if let (Some(dst), Some(src)) = (job.as_object_mut(), patch.as_object()) {
             for (k, v) in src {
                 dst.insert(k.clone(), v.clone());
             }
         }
+        Some(job.clone())
+    } else {
+        None
+    };
+    // 在锁内取快照、**锁外广播** —— 广播放在锁里的话，
+    // 订阅者一多就会把正在干活的任务线程堵住。
+    if let Some(j) = snapshot {
+        guard.publish(&j);
     }
 }
 
 pub fn log_job(st: &Arc<AppState>, id: &str, line: &str) {
     let mut guard = st.jobs.lock().unwrap();
-    if let Some(job) = guard.items.get_mut(id) {
+    let snapshot = if let Some(job) = guard.items.get_mut(id) {
         if let Some(logs) = job.get_mut("logs").and_then(|l| l.as_array_mut()) {
             // 时间戳格式和 Node 版一致：HH:MM:SS
             logs.push(json!(format!("[{}] {}", clock(), line)));
         }
+        Some(job.clone())
+    } else {
+        None
+    };
+    if let Some(j) = snapshot {
+        guard.publish(&j);
     }
 }
 

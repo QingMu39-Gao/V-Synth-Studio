@@ -47,27 +47,37 @@ fn cancel_flag(st: &Arc<AppState>, id: &str) -> Arc<net::Cancel> {
 
 /// 对应 Node 的 jobs.setProgress：percent/message 直接改，其余字段并进 progress 里。
 /// （前端读的是 `job.progress.speedText`，所以额外字段必须放在 progress 下面。）
+///
+/// 和 `convert::set_job` 一样：锁内取快照、**锁外广播** —— 下载进度更新很密，
+/// 不广播的话前端订阅 SSE 时进度条会一直不动。
 fn set_progress(st: &Arc<AppState>, id: &str, percent: Option<f64>, message: Option<&str>, extra: Value) {
     let Ok(mut guard) = st.jobs.lock() else { return };
-    let Some(job) = guard.items.get_mut(id) else {
-        return;
+    let snapshot = match guard.items.get_mut(id) {
+        Some(job) => {
+            if let Some(m) = job.as_object_mut() {
+                if let Some(p) = percent {
+                    if p >= 0.0 {
+                        m.insert("percent".into(), json!(p.clamp(0.0, 100.0)));
+                    }
+                }
+                if let Some(msg) = message {
+                    if !msg.is_empty() {
+                        m.insert("message".into(), json!(msg));
+                    }
+                }
+                let prog = m.entry("progress").or_insert_with(|| json!({}));
+                if let (Some(pm), Some(ex)) = (prog.as_object_mut(), extra.as_object()) {
+                    for (k, v) in ex {
+                        pm.insert(k.clone(), v.clone());
+                    }
+                }
+            }
+            Some(job.clone())
+        }
+        None => None,
     };
-    let Some(m) = job.as_object_mut() else { return };
-    if let Some(p) = percent {
-        if p >= 0.0 {
-            m.insert("percent".into(), json!(p.clamp(0.0, 100.0)));
-        }
-    }
-    if let Some(msg) = message {
-        if !msg.is_empty() {
-            m.insert("message".into(), json!(msg));
-        }
-    }
-    let prog = m.entry("progress").or_insert_with(|| json!({}));
-    if let (Some(pm), Some(ex)) = (prog.as_object_mut(), extra.as_object()) {
-        for (k, v) in ex {
-            pm.insert(k.clone(), v.clone());
-        }
+    if let Some(j) = snapshot {
+        guard.publish(&j);
     }
 }
 

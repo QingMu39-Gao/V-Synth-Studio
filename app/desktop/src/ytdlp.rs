@@ -148,8 +148,28 @@ fn clean_error(text: &str) -> String {
 
 /* ══════════════════════════════════ 解析信息 ══════════════════════════════════ */
 
+/*
+ * yt-dlp 的 JSON 里很多字段是**显式 null**（不是缺失），而 JS 的 `??` 把 null 当空处理。
+ * 照搬 `??` 的语义：null 和缺失一样，都走默认值。少这一层就会把 `0` 变成 `null`。
+ */
 fn num(v: Option<&Value>) -> Value {
-    v.cloned().unwrap_or(json!(0))
+    match v {
+        None | Some(Value::Null) => json!(0),
+        Some(v) => v.clone(),
+    }
+}
+
+fn text(v: Option<&Value>) -> Value {
+    match v {
+        None | Some(Value::Null) => json!(""),
+        Some(Value::String(s)) => json!(s),
+        Some(v) => v.clone(),
+    }
+}
+
+/// `a ?? b`：a 是 null/缺失时用 b
+fn first_of<'a>(a: Option<&'a Value>, b: Option<&'a Value>) -> Option<&'a Value> {
+    a.filter(|v| !v.is_null()).or_else(|| b.filter(|v| !v.is_null()))
 }
 
 fn normalize_info(info: &Value) -> Value {
@@ -172,12 +192,10 @@ fn normalize_info(info: &Value) -> Value {
                         (Some(w), Some(h)) => format!("{w}x{h}"),
                         _ => s("resolution").unwrap_or_else(|| "audio only".into()),
                     };
-                    let filesize = f
-                        .get("filesize")
-                        .filter(|v| !v.is_null())
-                        .or_else(|| f.get("filesize_approx"))
-                        .cloned()
-                        .unwrap_or(json!(0));
+                    let filesize = num(first_of(
+                        f.get("filesize"),
+                        f.get("filesize_approx"),
+                    ));
 
                     let mut m = Map::new();
                     if let Some(v) = f.get("format_id") {
@@ -226,53 +244,28 @@ fn normalize_info(info: &Value) -> Value {
         .unwrap_or_default();
 
     let mut m = Map::new();
-    m.insert("id".into(), info.get("id").cloned().unwrap_or(Value::Null));
-    m.insert(
-        "title".into(),
-        info.get("title").cloned().unwrap_or(json!("")),
-    );
+    // id 是原样透传：缺失就不写这个键（Node 那边 undefined 会被丢掉）
+    if let Some(v) = info.get("id") {
+        m.insert("id".into(), v.clone());
+    }
+    m.insert("title".into(), text(info.get("title")));
     m.insert(
         "uploader".into(),
-        info
-            .get("uploader")
-            .filter(|v| !v.is_null())
-            .or_else(|| info.get("channel"))
-            .cloned()
-            .unwrap_or(json!("")),
+        text(first_of(info.get("uploader"), info.get("channel"))),
     );
-    m.insert(
-        "durationSec".into(),
-        info.get("duration").cloned().unwrap_or(json!(0)),
-    );
-    m.insert(
-        "thumbnail".into(),
-        info.get("thumbnail").cloned().unwrap_or(json!("")),
-    );
+    m.insert("durationSec".into(), num(info.get("duration")));
+    m.insert("thumbnail".into(), text(info.get("thumbnail")));
     m.insert(
         "description".into(),
         json!(desc.chars().take(500).collect::<String>()),
     );
-    m.insert(
-        "webpageUrl".into(),
-        info.get("webpage_url").cloned().unwrap_or(json!("")),
-    );
+    m.insert("webpageUrl".into(), text(info.get("webpage_url")));
     m.insert(
         "extractor".into(),
-        info
-            .get("extractor_key")
-            .filter(|v| !v.is_null())
-            .or_else(|| info.get("extractor"))
-            .cloned()
-            .unwrap_or(json!("")),
+        text(first_of(info.get("extractor_key"), info.get("extractor"))),
     );
-    m.insert(
-        "uploadDate".into(),
-        info.get("upload_date").cloned().unwrap_or(json!("")),
-    );
-    m.insert(
-        "viewCount".into(),
-        info.get("view_count").cloned().unwrap_or(json!(0)),
-    );
+    m.insert("uploadDate".into(), text(info.get("upload_date")));
+    m.insert("viewCount".into(), num(info.get("view_count")));
     m.insert("formats".into(), Value::Array(formats));
     m.insert("subtitles".into(), Value::Array(subtitles));
     Value::Object(m)
@@ -522,6 +515,67 @@ fn handle_line(line: &str, on_progress: &OnDlProgress, files: &mut Vec<String>) 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn normalizes_ytdlp_info_the_same_way_node_does() {
+        /*
+         * 输入取自真实的 `yt-dlp -J <直链 mp4>` 输出（只留了用得上的字段）。
+         * 这份数据里 null 和「键不存在」是混着来的 —— 正是 JS 的 `??` 和 Rust 的
+         * `as_f64()` 最容易分叉的地方：`??` 把 null 当空，`as_f64()` 对 null 直接给 None，
+         * 一不留神就会把 Node 的 0/'' 变成 null。期望值是 Node 版实测输出。
+         */
+        let raw = json!({
+            "id": "mov_bbb",
+            "title": "mov_bbb",
+            "extractor": "generic",
+            "extractor_key": "Generic",
+            "upload_date": "20260926",
+            "webpage_url": "https://www.w3schools.com/html/mov_bbb.mp4",
+            "subtitles": {},
+            "formats": [{
+                "format_id": "mp4",
+                "url": "https://www.w3schools.com/html/mov_bbb.mp4",
+                "ext": "mp4",
+                "vcodec": null,
+                "tbr": null,
+                "resolution": null,
+                "filesize_approx": null,
+                "vbr": null
+            }]
+        });
+
+        let expected = json!({
+            "id": "mov_bbb",
+            "title": "mov_bbb",
+            "uploader": "",
+            "durationSec": 0,
+            "thumbnail": "",
+            "description": "",
+            "webpageUrl": "https://www.w3schools.com/html/mov_bbb.mp4",
+            "extractor": "Generic",
+            "uploadDate": "20260926",
+            "viewCount": 0,
+            "formats": [{
+                "formatId": "mp4",
+                "ext": "mp4",
+                "note": "",
+                "resolution": "audio only",
+                "height": 0,
+                "fps": 0,
+                "vcodec": "none",
+                "acodec": "none",
+                "filesize": 0,
+                "tbr": 0,
+                "isVideo": false,
+                "isAudio": false,
+                "hasVideo": false,
+                "hasAudio": false
+            }],
+            "subtitles": []
+        });
+
+        assert_eq!(normalize_info(&raw), expected);
+    }
 
     #[test]
     fn picks_the_most_useful_line_out_of_ytdlp_output() {

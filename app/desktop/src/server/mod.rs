@@ -88,7 +88,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/jobs", get(simple::jobs_list))
         .route("/api/jobs/get", get(simple::jobs_get))
         .route("/api/jobs/cancel", post(simple::jobs_cancel))
-        .route("/api/jobs/stream", get(simple::jobs_stream))
+        // 注意 id 在**路径**里，不是查询参数 —— 前端用 EventSource 订阅这个地址
+        .route("/api/jobs/{id}/stream", get(simple::jobs_stream))
         // ── 资源库 ────────────────────────────────────────
         .route("/api/resources", get(simple::resources))
         .route("/api/resources/check", post(simple::resources_check))
