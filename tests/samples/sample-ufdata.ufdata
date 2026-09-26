@@ -1,0 +1,41 @@
+{
+  "formatVersion": 1,
+  "project": {
+    "name": "Sample UtaFormatix Data",
+    "tracks": [
+      {
+        "name": "Lead",
+        "notes": [
+          { "key": 60, "tickOn": 0, "tickOff": 480, "lyric": "ら", "phoneme": "4 a" },
+          { "key": 62, "tickOn": 480, "tickOff": 960, "lyric": "り", "phoneme": "4 i" },
+          { "key": 64, "tickOn": 960, "tickOff": 1440, "lyric": "る", "phoneme": "4 M" },
+          { "key": 67, "tickOn": 1920, "tickOff": 2400, "lyric": "れ", "phoneme": "4 e" },
+          { "key": 65, "tickOn": 2400, "tickOff": 2880, "lyric": "ろ", "phoneme": "4 o" },
+          { "key": 62, "tickOn": 2880, "tickOff": 3840, "lyric": "り", "phoneme": "4 i" }
+        ],
+        "pitch": {
+          "ticks": [0, 240, 480, 720, 960, 1440, 1920, 2160, 2400, 2880, 3360, 3840],
+          "values": [0, 0.25, 0, -0.25, 0, 0, 0, -0.5, 0, 0, 0.5, 0],
+          "isAbsolute": false
+        }
+      },
+      {
+        "name": "Harmony",
+        "notes": [
+          { "key": 55, "tickOn": 0, "tickOff": 1920, "lyric": "あ" },
+          { "key": 57, "tickOn": 1920, "tickOff": 3840, "lyric": "ー" }
+        ],
+        "pitch": { "ticks": [], "values": [], "isAbsolute": true }
+      }
+    ],
+    "timeSignatures": [
+      { "measurePosition": 0, "numerator": 4, "denominator": 4 },
+      { "measurePosition": 2, "numerator": 3, "denominator": 4 }
+    ],
+    "tempos": [
+      { "tickPosition": 0, "bpm": 120 },
+      { "tickPosition": 1920, "bpm": 96 }
+    ],
+    "measurePrefix": 0
+  }
+}

@@ -1,0 +1,93 @@
+﻿# 前端冒烟测试
+#
+# 用 Edge/Chrome 无头模式真实加载页面并 dump 渲染后的 DOM，
+# 逐个视图检查是否存在错误提示、关键内容是否渲染出来。
+#
+#   powershell -ExecutionPolicy Bypass -File tests\manual\ui-smoke.ps1
+#
+# 前提：工作站服务已在 http://127.0.0.1:8787 运行。
+
+param(
+  [string]$BaseUrl = 'http://127.0.0.1:8787',
+  [int]$WaitMs = 9000
+)
+
+$ErrorActionPreference = 'Continue'
+$edge = @(
+  "$env:ProgramFiles\Microsoft\Edge\Application\msedge.exe",
+  "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+  "$env:ProgramFiles\Google\Chrome\Application\chrome.exe",
+  "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+) | Where-Object { Test-Path $_ } | Select-Object -First 1
+
+if (-not $edge) {
+  Write-Host "找不到 Edge 或 Chrome，无法做无头渲染测试。" -ForegroundColor Yellow
+  exit 2
+}
+Write-Host "浏览器：$edge" -ForegroundColor DarkGray
+
+function Get-RenderedDom {
+  param([string]$Url)
+  $domFile = Join-Path $env:TEMP "ui-smoke-dom.html"
+  $errFile = Join-Path $env:TEMP "ui-smoke-err.txt"
+  Remove-Item $domFile, $errFile -ErrorAction SilentlyContinue
+  $cmd = '"' + $edge + '" --headless=old --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=' + $WaitMs + ' "' + $Url + '" > "' + $domFile + '" 2> "' + $errFile + '"'
+  cmd /c $cmd | Out-Null
+  if (-not (Test-Path $domFile)) { return '' }
+  # 浏览器进程可能还没完全放手文件句柄，重试几次
+  for ($i = 0; $i -lt 10; $i++) {
+    try {
+      # 关键：cmd 重定向写出的是 UTF-8 字节，必须显式按 UTF-8 解码，否则中文会乱码
+      return [System.IO.File]::ReadAllText($domFile, [System.Text.Encoding]::UTF8)
+    } catch {
+      Start-Sleep -Milliseconds 400
+    }
+  }
+  return ''
+}
+
+$views = @(
+  @{ id = 'dashboard'; name = '总览';       expect = @('欢迎回来', '本机编辑器', '环境就绪度', '格式支持', 'nav-item') },
+  @{ id = 'convert';   name = '工程转换';   expect = @('来源工程', '目标格式', '转换处理', '输出设置', 'dropzone') },
+  @{ id = 'video';     name = '视频解析';   expect = @('video-parse-bar', '解析') },
+  @{ id = 'audio';     name = '音频工具';   expect = @('op-card', 'audio-layout') },
+  @{ id = 'resources'; name = '资源库';     expect = @('res-toolbar', 'res-grid') },
+  @{ id = 'settings';  name = '设置';       expect = @('settings-layout', 'settings-nav') }
+)
+
+$errorMarkers = @('视图加载失败', '视图渲染出错', '无法连接本地服务', '前端资源缺失')
+$failed = 0
+
+foreach ($v in $views) {
+  $url = "$BaseUrl/#/$($v.id)"
+  $dom = Get-RenderedDom -Url $url
+  if (-not $dom -or $dom.Length -lt 500) {
+    Write-Host ("  [失败] {0,-10} {1} —— 页面没有渲染出内容（DOM {2} 字节）" -f $v.id, $v.name, $dom.Length) -ForegroundColor Red
+    $script:failed++
+    continue
+  }
+
+  $errors = @()
+  foreach ($m in $errorMarkers) { if ($dom -match [regex]::Escape($m)) { $errors += $m } }
+
+  $missing = @()
+  foreach ($k in $v.expect) { if ($dom -notmatch [regex]::Escape($k)) { $missing += $k } }
+
+  if ($errors.Count -gt 0) {
+    Write-Host ("  [报错] {0,-10} {1} —— 页面出现错误提示：{2}" -f $v.id, $v.name, ($errors -join '、')) -ForegroundColor Red
+    $script:failed++
+  } elseif ($missing.Count -gt 0) {
+    Write-Host ("  [可疑] {0,-10} {1} —— 缺少预期内容：{2}（DOM {3} 字节）" -f $v.id, $v.name, ($missing -join '、'), $dom.Length) -ForegroundColor Yellow
+    $script:failed++
+  } else {
+    Write-Host ("  [通过] {0,-10} {1} —— DOM {2} 字节" -f $v.id, $v.name, $dom.Length) -ForegroundColor Green
+  }
+}
+
+Write-Host ""
+if ($failed -eq 0) {
+  Write-Host "全部视图渲染正常。" -ForegroundColor Green
+} else {
+  Write-Host "$failed 个视图存在问题。" -ForegroundColor Yellow
+  exit 1
+}

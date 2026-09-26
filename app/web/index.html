@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>清沐的虚拟歌姬工作站</title>
+<link rel="stylesheet" href="/css/base.css">
+<link rel="stylesheet" href="/css/components.css">
+<link rel="stylesheet" href="/css/views.css">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2339c5bb'/%3E%3Cpath d='M11 21V11l10 5-10 5z' fill='%2306131a'/%3E%3C/svg%3E">
+</head>
+<body>
+
+<div id="app">
+  <!-- 侧边栏 -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">沐</div>
+      <div class="brand-text">
+        <div class="brand-title">清沐的虚拟歌姬工作站</div>
+        <div class="brand-sub">QingMu's Vocal Workstation</div>
+      </div>
+    </div>
+
+    <nav class="nav" id="nav"></nav>
+
+    <div class="sidebar-foot">
+      <div class="row small">
+        <span class="status-dot" id="status-dot"></span>
+        <span class="muted" id="status-text">正在连接…</span>
+      </div>
+      <div class="tiny dim" id="version-text">v1.0.0</div>
+    </div>
+  </aside>
+
+  <!-- 主区域 -->
+  <main class="main">
+    <header class="header">
+      <div class="header-title">
+        <h1 id="view-title">总览</h1>
+        <div class="sub" id="view-sub"></div>
+      </div>
+      <div class="header-actions" id="header-actions"></div>
+    </header>
+    <div class="view" id="view"></div>
+  </main>
+</div>
+
+<div class="toaster" id="toaster"></div>
+<div id="modal-root"></div>
+
+<script type="module" src="/js/main.js"></script>
+</body>
+</html>

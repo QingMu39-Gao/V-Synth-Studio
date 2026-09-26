@@ -1,0 +1,37 @@
+# 换行与编码规则
+#
+# Windows 上的 git 默认可能把 LF 转成 CRLF。对 .bat 是必须的（cmd 解析不了 LF），
+# 对其它文件则无所谓。这里写死，避免不同机器 checkout 出不一样的东西。
+
+* text=auto
+
+# cmd 批处理必须是 CRLF，否则 cmd 会把命令拆错
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# PowerShell 脚本：CRLF（而且必须是 UTF-8 带 BOM，否则中文注释会让 5.1 解析失败）
+*.ps1 text eol=crlf
+
+# 脚本类保持 LF
+*.sh text eol=lf
+*.mjs text eol=lf
+*.js text eol=lf
+*.css text eol=lf
+*.html text eol=lf
+*.json text eol=lf
+*.md text eol=lf
+
+# 二进制
+*.png binary
+*.ico binary
+*.zip binary
+*.exe binary
+*.dll binary
+*.ust binary
+*.vsqx binary
+*.vpr binary
+*.ccs binary
+*.svp binary
+*.acep binary
+*.mid binary
+*.ufdata binary
