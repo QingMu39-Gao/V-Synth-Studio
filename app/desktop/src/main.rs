@@ -2,15 +2,22 @@
 //
 // 架构：
 //   一个进程搞定所有事 —— 窗口、HTTP 服务、转换编排、任务系统全在这里。
-//   不再有 node.exe 子进程（原来那套是 sidecar 模式，Node 负责业务逻辑）。
+//   没有 node.exe 子进程，也没有任何 sidecar 子进程。
 //
 // 两种运行方式：
 //   qingmu-workstation.exe                        开窗口（正常使用）
 //   qingmu-workstation.exe --serve --port=8787    只跑服务，不开窗口（开发/对照测试用）
 //
-// 后端实现和原 Node 版**完全相同的 31 个路由**，所以前端（app/web/）一行都没改。
+// ── 关于「为什么没有控制台窗口」──
+// 这里**始终**用 windows 子系统，debug 版也不例外。
+// 早先是 `cfg_attr(not(debug_assertions), ...)`，只有 release 版无窗口，
+// 结果开发时天天挂着一个黑框。
+//
+// 代价是看不到 stdout —— 所以日志改成写文件（见 log_line）。
+// 这反而更好用：日志能翻历史、能搜索，也不会因为关掉窗口就丢了。
+// `--serve` 模式如果想把输出打到终端，重定向即可（Start-Process -RedirectStandardOutput）。
 
-#![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
+#![windows_subsystem = "windows"]
 
 mod audio;
 mod bili;
@@ -19,6 +26,49 @@ mod libresvip;
 mod net;
 mod platform;
 mod server;
+
+/// 追加一行日志到 `<可写目录>/app.log`。
+///
+/// 为什么不用 stdout：程序是 windows 子系统（无控制台窗口），
+/// 打出去的东西没人看得见。写文件反而更好用 —— 能翻历史、能搜索，
+/// 也不会因为关掉窗口就丢了。
+///
+/// 刻意不引日志库：这里只有十来行输出，一个 `OpenOptions::append` 就够。
+fn log_line(msg: &str) {
+    use std::io::Write;
+
+    // 启动早期路径还没解析出来，退回临时目录，保证日志不丢
+    let dir = resolve_paths(None)
+        .map(|p| p.writable)
+        .unwrap_or_else(std::env::temp_dir);
+    let _ = std::fs::create_dir_all(&dir);
+
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    // 简单的时间戳：不引时间库，用「自纪元起的秒」也够定位
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(dir.join("app.log"))
+    {
+        let _ = writeln!(f, "[{ts}] {msg}");
+    }
+}
+
+/// 把日志同时写到文件和 stdout（stdout 在无控制台时会被丢弃，无害）。
+///
+/// 用宏而不是函数：`println!` 的格式化参数直接转发，不用先拼字符串。
+macro_rules! note {
+    ($($arg:tt)*) => {{
+        let s = format!($($arg)*);
+        crate::log_line(&s);
+        #[cfg(debug_assertions)]
+        println!("{s}");
+    }};
+}
+
 mod tools;
 
 mod ytdlp;
@@ -44,7 +94,7 @@ fn main() {
         let paths = match resolve_paths(None) {
             Some(p) => p,
             None => {
-                eprintln!("找不到程序文件（应该包含 app/web/index.html）");
+                note!("错误：找不到程序文件（应该包含 app/web/index.html）");
                 std::process::exit(1);
             }
         };
@@ -52,7 +102,7 @@ fn main() {
         let rt = tokio::runtime::Runtime::new().expect("创建 tokio 运行时失败");
         rt.block_on(async move {
             if let Err(e) = serve(paths, port).await {
-                eprintln!("服务启动失败：{e}");
+                note!("错误：服务启动失败：{e}");
                 std::process::exit(1);
             }
         });
@@ -88,7 +138,7 @@ fn main() {
             let paths_for_server = paths.clone();
             tauri::async_runtime::spawn(async move {
                 if let Err(e) = serve(paths_for_server, port).await {
-                    eprintln!("内嵌服务异常退出：{e}");
+                    note!("错误：内嵌服务异常退出：{e}");
                 }
             });
 
@@ -127,16 +177,11 @@ async fn serve(paths: AppPaths, port: u16) -> Result<(), String> {
         .await
         .map_err(|e| format!("端口 {port} 绑定失败：{e}"))?;
 
-    println!();
-    println!("  翻调工作站已启动（Rust 后端，单进程）");
-    println!("  ─────────────────────────────────");
-    println!("  地址：http://127.0.0.1:{port}");
-    println!("  根目录：{}", paths.root.display());
+    note!("翻调工作站已启动 —— 地址 http://127.0.0.1:{port}");
+    note!("  根目录：{}", crate::platform::clean_path(&paths.root));
     if paths.installed {
-        println!("  配置目录：{}", paths.writable.display());
+        note!("  配置目录：{}", crate::platform::clean_path(&paths.writable));
     }
-    println!("  停止服务：Ctrl+C");
-    println!();
 
     axum::serve(listener, app)
         .await
@@ -181,15 +226,37 @@ impl AppPaths {
 fn resolve_paths(resource_dir: Option<PathBuf>) -> Option<AppPaths> {
     let has_web = |d: &Path| d.join("app").join("web").join("index.html").is_file();
 
-    // ── 1. Tauri 资源目录（安装版）──
+    /*
+     * 判据不能只看「resource_dir 里有没有 app/web」。
+     *
+     * 绿色版运行时，Tauri 的 resource_dir() 返回的**就是 exe 所在目录** ——
+     * 那里当然有 app/web/index.html，于是会被误判成安装版，
+     * 配置就被写到 %APPDATA% 去了，而绿色版应该写在程序旁边的 app/data/。
+     *
+     * 所以真正的判据是「程序目录能不能写」：
+     *   - 能写（绿色版、解压在用户目录）→ 配置放旁边，整个目录可以拷着走
+     *   - 不能写（装在 Program Files）→ 配置放 %APPDATA%
+     */
+    let mut root_from_resource: Option<PathBuf> = None;
     if let Some(rd) = resource_dir {
         if has_web(&rd) {
+            root_from_resource = Some(rd);
+        }
+    }
+    if let Some(rd) = root_from_resource {
+        let local_data = rd.join("app").join("data");
+        if is_writable(&local_data) {
             return Some(AppPaths {
-                writable: user_data_dir(),
+                writable: local_data,
                 root: rd,
-                installed: true,
+                installed: false,
             });
         }
+        return Some(AppPaths {
+            writable: user_data_dir(),
+            root: rd,
+            installed: true,
+        });
     }
 
     // ── 2/3. 绿色版 / 开发：从 exe 和 cwd 往上找 ──
@@ -223,6 +290,24 @@ fn resolve_paths(resource_dir: Option<PathBuf>) -> Option<AppPaths> {
         }
     }
     None
+}
+
+/// 目录能不能写。
+///
+/// 判据是「真的建一个文件试试」而不是看只读属性 ——
+/// Program Files 下 ACL 才是拦路虎，只读位看不出来。
+fn is_writable(dir: &Path) -> bool {
+    if std::fs::create_dir_all(dir).is_err() {
+        return false;
+    }
+    let probe = dir.join(".write-probe");
+    match std::fs::write(&probe, b"") {
+        Ok(()) => {
+            let _ = std::fs::remove_file(&probe);
+            true
+        }
+        Err(_) => false,
+    }
 }
 
 /// 安装版的可写目录：`%APPDATA%\<identifier>\`
@@ -272,7 +357,7 @@ fn show_error(app: &tauri::AppHandle, message: &str) {
         use std::io::Write;
         let _ = writeln!(f, "{message}");
     }
-    eprintln!("{message}");
+    note!("错误：{message}");
 
     // 开一个窗口把原因显示出来（走内嵌的起始页，原因通过 hash 传过去）
     if let Ok(w) = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("index.html".into()))
