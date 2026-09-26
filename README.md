@@ -13,15 +13,51 @@
 
 ## 一、怎么启动
 
-双击 **`启动工作站.bat`** 即可。会弹出一个没有地址栏的应用窗口（用 Edge/Chrome 的应用模式），看起来就是个独立软件。
+双击 **`启动工作站.bat`**。它会打开一个原生桌面窗口（C# + WebView2 外壳），不是浏览器标签页。
 
 | 文件 | 用途 |
 |---|---|
-| `启动工作站.bat` | 启动（会显示日志窗口，关掉它=停止服务） |
+| `启动工作站.bat` | 启动（优先用桌面外壳；外壳不在时退回浏览器窗口模式） |
 | `启动工作站（无窗口）.vbs` | 后台启动，不显示黑色控制台窗口 |
 | `停止工作站.bat` | 停止后台服务 |
+| `清沐的虚拟歌姬工作站.exe` | 桌面外壳本体，双击它也行 |
 
-**环境要求**：只需要 **Node.js 18 以上**（[官网下载](https://nodejs.org/zh-cn)）。不需要 `npm install`，本项目没有任何第三方依赖。
+### 依赖
+
+| 依赖 | 是否必需 | 说明 |
+|---|---|---|
+| **Node.js 20+** | **必需** | [官网下载](https://nodejs.org/zh-cn)。不需要 `npm install` —— 本项目自身零第三方依赖 |
+| **LibreSVIP CLI** | **工程转换必需** | 40 种格式的转换引擎，见下 |
+| WebView2 运行时 | 桌面外壳需要 | Win10 1803+ / Win11 自带（装了 Edge 就有），不用单独装 |
+| ffmpeg / yt-dlp | 可选 | 视频下载与音频处理用，在「设置 → 外部工具」里一键获取 |
+| .NET Framework 4.x | 仅编译外壳时需要 | Windows 自带 `csc.exe`，**不需要装 Visual Studio** |
+
+### 配置 LibreSVIP（转换功能必需）
+
+工程转换整个交给 [LibreSVIP](https://github.com/SoulMelody/LibreSVIP)（MIT 协议），它支持 40 种工程格式。
+
+1. 下载 CLI 构建：`LibreSVIP-CLI-2.9.0.win-amd64.zip`
+   <https://github.com/SoulMelody/LibreSVIP/releases/>
+2. 解压，让路径长这样：
+
+```
+tools/
+└─ libresvip/
+   └─ libresvip-cli/
+      ├─ libresvip-cli.exe
+      └─ _internal/
+```
+
+放好后重启程序，「工程转换」页就会显示 40 种格式。**没放也能用**——只是转换页会退回内置的 9 种格式实现（能力弱得多）。
+
+### 编译桌面外壳（可选）
+
+```
+powershell -ExecutionPolicy Bypass -File app\shell\build.ps1
+```
+
+用 Windows 自带的 `csc.exe` 编译，产出根目录下的 `清沐的虚拟歌姬工作站.exe`。
+WebView2 的运行库已放在 `app/shell/lib/`，不需要额外下载。
 
 没有 Node？启动器会明确告诉你，不会静默失败。
 
@@ -41,39 +77,25 @@
 
 ### 1. 工程转换（核心，完全离线）
 
-支持在这些编辑器的工程之间互转：
+转换由 **[LibreSVIP](https://github.com/SoulMelody/LibreSVIP) 引擎**执行，支持 **40 种工程格式**（配好 CLI 后界面里会全部列出）：
 
-| 编辑器 | 格式 | 读取 | 写出 | 备注 |
-|---|---|---|---|---|
-| VOCALOID3 / 4 | `.vsqx` | ✅ | ✅ | 真实工程实测：3 轨 1068 音符、音高曲线、颤音全部往返正确 |
-| VOCALOID5 / 6 | `.vpr` | ✅ | ✅ | 真实工程 2 轨 561 / 4 轨 747 音符；**写出时会自动挂本机声库** |
-| VOCALOID2 | `.vsq` | ❌ | ❌ | 见下方「暂不支持的格式」 |
-| OpenUtau | `.ustx` | ✅ | ✅ | 真实 0.7 工程 964 音符往返正确 |
-| UTAU | `.ust` | ✅ | ✅ | 单轨格式；默认写 UTF-8，可选用 PowerShell 转码为 Shift-JIS |
-| Synthesizer V Studio | `.svp` | ✅ | ✅ | 真实 SynthV 2 工程 3 轨 360 音符；blick 换算误差 < 0.5 tick |
-| CeVIO CS / AI | `.ccs` | ✅ | ✅ | 真实工程 3 个样本 |
-| MIDI | `.mid` | ✅ | ✅ | 含歌词 meta 事件、弯音轮、running status |
-| MusicXML | `.musicxml` | ✅ | ✅ | 乐谱交换；小节中途变拍号会对齐到小节线 |
-| UtaFormatix 数据 | `.ufdata` | ✅ | ✅ | 与 UtaFormatix 网页版互通（已用官方 Python 实现交叉验证） |
-| ACE Studio | `.acep` | ❌ | ❌ | 见下方「暂不支持的格式」 |
-| DeepVocal | `.dv` | ❌ | ❌ | 见下方「暂不支持的格式」 |
+| 类别 | 格式 |
+|---|---|
+| VOCALOID | `.vsqx` `.vsq` `.vpr` `.vspx` `.vog` `.vvproj` `.xvsq` |
+| Synthesizer V | `.svp` `.s5p` |
+| UTAU / OpenUtau | `.ust` `.ustx` |
+| ACE / AI 歌声 | `.acep` `.acet` `.ace` `.aisp` |
+| 其它歌声编辑器 | `.ccs`（CeVIO）`.dv`（DeepVocal）`.dspx` `.ds`（DiffSinger）`.tlp` `.tlpx`（TuneLab）`.nn`（袅袅）`.mtp`（Muta）`.ps_project` `.ppsf` `.vshp` `.vfp` `.y77` 等 |
+| 通用交换 | `.mid` `.musicxml` `.ufdata` `.json`（OpenSVIP） |
+| 歌词 / 字幕 | `.lrc` `.ass` `.srt` `.svg` |
 
-> 实际可用状态以界面「格式支持」一栏为准：不可用的会置灰并把原因写在悬停提示里，不会假装能用。
-> 支持 `.ufdata` 意味着你可以和 UtaFormatix 网页版互通：拿不准的格式可以先用它转成 ufdata，再进这里精修。
+> 界面上「目标格式」一栏列出的就是它实际支持的全部格式，不会出现「列了但转不了」的情况。
+> 没配 LibreSVIP 时程序仍可启动，但转换会退回内置的 9 种格式实现——**能力弱得多，建议一定配上**。
 
-#### 暂不支持的三个格式（以及为什么）
-
-| 格式 | 真实结构 | 为什么不做 | 现在怎么绕过 |
-|---|---|---|---|
-| `.vsq`（VOCALOID2） | **是 MIDI 容器**，工程文本藏在 meta 事件里，还是 Shift-JIS 段式文本 | 字段语义需要真实样本核对，本机没有任何 `.vsq` 样本 | 用 **VOCALOID6 / VOCALOID4 Editor 打开 .vsq 另存为 .vpr 或 .vsqx**，再进工作站转换——官方解析一定比第三方猜测准 |
-| `.acep`（ACE Studio） | 专有加密 + 压缩容器 | 官方无字段规范（社区工具需先解密），本机安装目录为空、无样本 | 在 ACE Studio 里导出 MIDI 再转换 |
-| `.dv`（DeepVocal） | 二进制容器 | 只有第三方反向工程实现，无样本可验证 | 用 DeepVocal 导出 MIDI，或提供样本以启用读取 |
-
-这三个格式被**如实标记为不支持**，而不是写一个「看起来能用、实际打不开」的模块。只要把一个真实工程放进 `tests/samples/`（命名以 `sample-` 或 `real-sample-` 开头），读取功能就能据此补齐。
-
-**比 UtaFormatix 多的东西：**
+**这个程序在 LibreSVIP 之上做的事：**
 
 - **失真预检**：转换前逐项列出「目标格式装不下哪些数据」。例如把含音高曲线的 SynthV 工程转成 MusicXML 时，会直接告诉你音高曲线、参数曲线会丢——而不是转完才发现白调了。
+- **批量 + 可选输出目录 + 命名模板**：一次丢一堆工程进去，按模板命名，输出到指定目录。
 - **转换前自动挂声库**：转成 `.vpr` 时，会**自动检测本机已装的 VOCALOID 声库**，按歌手名匹配 compID 写进工程。
   `Miku(V2)`、`初音ミク`、`miku_v4x` 都能匹配到本机的 `MIKU_V4X_Original_EVEC`；`洛天依` 会优先挑中文声库而不是日文声库；
   `镜音リン` / `鏡音リン` / `镜音铃` 这类繁简与中英日混写也会自动归一。
