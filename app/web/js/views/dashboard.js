@@ -1,9 +1,9 @@
 /**
- * 总览视图：环境检测、快捷入口、编辑器启动
+ * 总览视图：环境检测、快捷入口
  */
 
 import { api, watchJob } from '../api.js'
-import { h, mount, icon, toast, button, card, statBlock, alertBox, progressBar, emptyState } from '../ui.js'
+import { h, mount, icon, toast, button, card } from '../ui.js'
 
 export async function render(ctx) {
   const { container, headerActions, state, navigate, refreshState } = ctx
@@ -35,11 +35,7 @@ export async function render(ctx) {
       hero(state, navigate),
       checks.length ? readinessCard(checks, navigate) : null,
       quickActions(navigate),
-      h('div.grid.grid-2', [
-        editorsCard(state),
-        toolsCard(state, ctx),
-      ]),
-      voicesCard(state, navigate),
+      toolsCard(state, ctx),
       formatsCard(state),
     ])
   )
@@ -49,7 +45,6 @@ export async function render(ctx) {
 
 function hero(state, navigate) {
   const formats = state.formats.filter((f) => f.available).length
-  const editors = state.editors.filter((e) => e.installed).length
   return h('div.hero', [
     h('div.hero-main', [
       h('h2', '欢迎回来'),
@@ -69,9 +64,6 @@ function hero(state, navigate) {
     h('div', { style: { textAlign: 'right', flexShrink: '0' } }, [
       h('div.stat-value.accent', { style: { fontSize: '30px' } }, String(formats)),
       h('div.stat-label', '可用格式'),
-      h('div', { style: { height: '12px' } }),
-      h('div.stat-value.purple', { style: { fontSize: '30px' } }, String(editors)),
-      h('div.stat-label', '已装编辑器'),
     ]),
   ])
 }
@@ -88,8 +80,6 @@ function computeChecks(state) {
       level: 'warn',
       title: '未安装 ffmpeg',
       detail: 'MV 下载后无法自动把视频流和音频流合并成 mp4，也不能导出 WAV/MP3、不能做变调变速。',
-      fix: 'install-ffmpeg',
-      fixLabel: '一键获取',
     })
   }
   if (!tools.ytdlp?.available) {
@@ -98,8 +88,6 @@ function computeChecks(state) {
       level: 'info',
       title: '未安装 yt-dlp',
       detail: 'B 站解析是本程序原生实现的，不受影响；但 YouTube 及其它上千个站点需要 yt-dlp 才能解析。',
-      fix: 'install-ytdlp',
-      fixLabel: '一键获取',
     })
   }
   const unavailable = formats.filter((f) => !f.available)
@@ -109,23 +97,6 @@ function computeChecks(state) {
       level: 'info',
       title: `有 ${unavailable.length} 种格式的转换模块尚未就绪`,
       detail: `可用：${formats.filter((f) => f.available).map((f) => f.name).join('、') || '无'}。未就绪：${unavailable.map((f) => f.name).join('、')}。`,
-      fix: null,
-    })
-  }
-  if (state.editors.filter((e) => e.installed).length === 0) {
-    checks.push({
-      id: 'editors',
-      level: 'info',
-      title: '没有检测到任何编辑器',
-      detail: '如果确实装了但没被认出来，可以在「设置 → 自定义程序」里手动指定 exe 路径。',
-      fix: 'settings',
-      fixLabel: '去设置',
-    })
-  }
-  return checks
-}
-
-function readinessCard(checks, navigate) {
   return card({
     title: '环境就绪度',
     sub: `${checks.length} 项待处理`,
@@ -137,43 +108,12 @@ function readinessCard(checks, navigate) {
           icon(c.level === 'warn' ? 'alert' : 'info', 14),
           h('div', [h('div.strong', { style: { marginBottom: '2px' } }, c.title), h('div', c.detail)]),
         ]),
-        c.fix
-          ? button(c.fixLabel ?? '处理', {
-              size: 'btn-sm',
-              variant: c.fix.startsWith('install') ? 'btn-primary' : '',
-              onClick: () => {
-                if (c.fix === 'settings') navigate('settings')
-                else installTool(c.fix.replace('install-', ''), navigate)
-              },
-            })
-          : null,
       ])
     )),
   })
 }
 
 /** 一键获取外部工具，带进度反馈 */
-async function installTool(which, navigate) {
-  try {
-    const { jobId } = await api.installTool(which)
-    toast(`正在获取 ${which}…`, 'info')
-    watchJob(jobId, {
-      onUpdate: (job) => {
-        const dot = document.getElementById('status-text')
-        if (dot) dot.textContent = `${job.message ?? ''} ${job.percent ? Math.round(job.percent) + '%' : ''}`
-      },
-      onDone: async (job) => {
-        toast(`${which} 已就绪`, 'ok')
-        const { refreshState: rs } = await import('../main.js')
-        await rs()
-        navigate('dashboard')
-      },
-      onError: (err) => toast(`${which} 获取失败：${err.message}`, 'err'),
-    })
-  } catch (err) {
-    toast(err.message, 'err')
-  }
-}
 
 function quickActions(navigate) {
   const items = [
@@ -191,53 +131,7 @@ function quickActions(navigate) {
   ))
 }
 
-function editorsCard(state) {
-  const editors = state.editors ?? []
-  const installed = editors.filter((e) => e.installed)
-  const missing = editors.filter((e) => !e.installed)
 
-  const renderApp = (e) => {
-    const initial = e.name.slice(0, 1)
-    return h(`div.app-card${e.installed ? '.installed' : '.missing'}`, [
-      h('div.app-dot', {
-        style: { background: e.installed ? `linear-gradient(135deg, ${e.color ?? '#39c5bb'}, ${e.color ?? '#39c5bb'}88)` : 'var(--bg-4)', color: e.installed ? '#06131a' : 'var(--text-3)' },
-      }, initial),
-      h('div.app-info', [
-        h('div.app-name.truncate', e.name),
-        h('div.app-meta.truncate', e.installed ? (e.how ?? '已检测到') : (e.vendor ?? '未检测到')),
-      ]),
-      e.installed
-        ? h('button.btn.btn-ghost.btn-icon.btn-sm', {
-            title: '启动',
-            onclick: async () => {
-              try {
-                await api.launch({ id: e.id })
-                toast(`已启动 ${e.name}`, 'ok')
-              } catch (err) {
-                toast(`启动失败：${err.message}`, 'err')
-              }
-            },
-          }, [icon('play', 14)])
-        : null,
-    ])
-  }
-
-  return card({
-    title: '本机编辑器',
-    sub: installed.length ? `已检测到 ${installed.length} 个` : '未检测到',
-    iconName: 'cpu',
-    actions: h('span.chip', `${editors.length} 个候选`),
-    body: h('div.col', [
-      h('div.app-grid', installed.map(renderApp)),
-      missing.length
-        ? h('details', { style: { marginTop: '6px' } }, [
-            h('summary', { style: { cursor: 'pointer', fontSize: '12px', color: 'var(--text-3)' } }, `未检测到的 ${missing.length} 个`),
-            h('div.app-grid', { style: { marginTop: '10px' } }, missing.map(renderApp)),
-          ])
-        : null,
-    ]),
-  })
-}
 
 function toolsCard(state, ctx) {
   const tools = state.tools ?? {}
@@ -282,74 +176,9 @@ function toolsCard(state, ctx) {
                 onclick: () => api.fsReveal(r.info.path, true).catch((e) => toast(e.message, 'err')),
               }, [icon('folder', 13)])
             : null
-          : (r.key === 'python' ? null : button('获取', { size: 'btn-sm', iconName: 'download', onClick: () => installTool(r.key, ctx.navigate) })),
+          : (r.key === 'python' ? null : h('span.small.muted', '随包分发')),
       ])
     )),
-  })
-}
-
-/**
- * 本机声库：转 .vpr 时会用这里的 compID 自动挂上对应声库
- * （否则转出来的 VOCALOID 工程打开后是空歌手）
- */
-function voicesCard(state, navigateRef) {
-  const voices = state.voices ?? { vocaloid: [], openutau: [], synthv: [], total: 0 }
-  const banks = [...(voices.vocaloid ?? []), ...(voices.openutau ?? []), ...(voices.synthv ?? [])]
-  const gotoVoices = () => navigateRef('settings', { section: 'voices' })
-  if (!banks.length) {
-    return card({
-      title: '本机声库',
-      sub: '未检测到',
-      iconName: 'music',
-      iconColor: 'pink',
-      actions: button('手动指定目录', { size: 'btn-sm', variant: 'btn-primary', iconName: 'folder', onClick: gotoVoices }),
-      body: h('div.col', [
-        h('div.small.muted', voices.hint || '没有检测到声库。VOCALOID 声库正常安装时会登记到注册表，一般都能自动识别；便携版或手动拷贝的声库请在「设置 → 声库目录」里指定它所在的根目录。'),
-      ]),
-    })
-  }
-
-  // 按「所属产品」分组，避免 24 个变体平铺成一坨
-  const byProduct = new Map()
-  for (const b of banks) {
-    const key = b.group || b.name.replace(/(_V[0-9]X?|_[A-Z]{3,4})+$/i, '').replace(/_(Original|Sweet|Soft|Dark|Solid|Power|Warm|Cold|Serious|Straight|Whisper|Natural|Normal|Meng|Ning|Wan|EVEC).*$/i, '')
-    if (!byProduct.has(key)) byProduct.set(key, [])
-    byProduct.get(key).push(b)
-  }
-  const products = [...byProduct.entries()].sort((a, b) => b[1].length - a[1].length)
-
-  return card({
-    title: '本机声库',
-    sub: `检测到 ${banks.length} 个` + (voices.registryCount ? `（其中 ${voices.registryCount} 个来自注册表登记）` : ''),
-    iconName: 'music',
-    iconColor: 'pink',
-    actions: h('div.row.gap-sm', [
-      button('声库目录设置', { size: 'btn-sm', iconName: 'gear', onClick: gotoVoices }),
-      h('button.btn.btn-ghost.btn-sm', {
-        title: '重新扫描',
-        onclick: async () => {
-          const { refreshState: rs } = await import('../main.js')
-          await rs()
-          toast('已重新扫描声库', 'ok')
-        },
-      }, [icon('refresh', 13), '重新扫描']),
-    ]),
-    body: h('div.col', [
-      h('div.tiny.dim', '转成 VOCALOID5/6 工程（.vpr）时，会按歌手名自动匹配这里的声库并写入 compID，这样打开工程就能直接出声——否则歌手栏会是空的。'),
-      h('div.grid.grid-2', products.map(([name, list]) =>
-        h('div', [
-          h('div.row.gap-sm', { style: { marginBottom: '5px' } }, [
-            h('span.strong.small', name || '其它'),
-            h('span.chip', String(list.length)),
-          ]),
-          h('div.chip-group', list.map((b) =>
-            h('span.chip', { title: `${b.name}\ncompID: ${b.compID}\n${b.dir}` }, [
-              b.name.replace(name + '_', '').replace(/^_/, '') || b.name,
-            ])
-          )),
-        ])
-      )),
-    ]),
   })
 }
 

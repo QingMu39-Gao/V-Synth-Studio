@@ -59,25 +59,7 @@
 .quick-card h3 { font-size: 13.5px; }
 .quick-card p { font-size: 11.5px; color: var(--text-3); margin: 0; line-height: 1.5; }
 
-/* 编辑器网格 */
-.app-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(216px, 1fr)); gap: 11px; }
-
-.app-card {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 12px 13px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--glass);
-  transition: all var(--dur) var(--ease);
-  position: relative;
-}
-.app-card.installed { border-color: rgba(255, 255, 255, 0.11); }
-.app-card.missing { opacity: 0.5; }
-.app-card:hover { border-color: var(--border-strong); background: var(--glass-hover); }
-.app-card.installed:hover { border-color: var(--accent); }
-
+/* 程序图标（设置 → 自定义程序） */
 .app-dot {
   width: 32px; height: 32px;
   border-radius: 8px;
@@ -86,10 +68,6 @@
   flex-shrink: 0;
   color: #06131a;
 }
-
-.app-info { flex: 1; min-width: 0; }
-.app-info .app-name { font-size: 12.5px; font-weight: 500; }
-.app-info .app-meta { font-size: 10.5px; color: var(--text-3); }
 
 /* ------------------------------------------------------------ 转换 */
 

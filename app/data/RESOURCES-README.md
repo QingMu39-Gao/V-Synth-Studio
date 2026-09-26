@@ -12,13 +12,13 @@
 | 文件 | 归属 | 说明 |
 | --- | --- | --- |
 | `resources.json` | 数据 | 资源库数据本体，前端唯一读取的数据源 |
-| `check-links.mjs` | 工具 | 链接校验脚本（零依赖，只用 Node 内置 `fetch`） |
-| `apply-link-report.mjs` | 工具 | 把校验报告回填进 `resources.json` 的 `verified` 字段 |
 | `RESOURCES-README.md` | 文档 | 本文件 |
-| `build-pinyin.mjs` / `pinyin.json` / `config.json` | 其它模块 | 与资源库无关，请勿改动 |
+| `pinyin.json` / `config.json` | 其它模块 | 与资源库无关，请勿改动 |
 
-> `check-links.mjs` 自身也支持 `--write` 回填，适用于快速维护；
-> `apply-link-report.mjs` 是更稳妥的标准流程（先出报告、人工过目、再回填）。
+> **链接校验工具已不存在**。原先同目录下有 `check-links.mjs`（批量校验链接）和
+> `apply-link-report.mjs`（把报告回填进 `verified` 字段）两个 Node 脚本，
+> 它们随 Node 后端一起删除了。现在 `resources.json` 里的 `verifySummary`
+> 是最后一次校验的结果快照；要重新校验需要另写工具。
 
 当前 `resources.json` 为 **7 个分组 / 121 条条目**，全部带 `desc` 与 `official` 标记。
 
@@ -137,53 +137,16 @@ Musopen、Pixabay、Dreamtonics 官网、爱给网、Booth 这类**完全正常*
 
 ## 4. 维护方式
 
-### 4.1 标准校验流程
-
-```powershell
-# 1) 校验全部链接，生成报告
-node app/server/data/check-links.mjs --report app/server/data/_report-final.json
-
-# 2) 过目报告后，回填 verified 字段
-node app/server/data/apply-link-report.mjs app/server/data/_report-final.json
-```
-
-校验报告 `_report-final.json` 是**中间产物**，仓库里不保留；重新校验会再次生成它，
-`apply-link-report.mjs` 默认就是读这个路径，所以两步可以照上面直接跑。
-
-### 4.2 常用参数
-
-```powershell
-node check-links.mjs                          # 只校验并打印汇总（有失效/存疑时退出码 1）
-node check-links.mjs --write                  # 校验并直接回填（退出码 0）
-node check-links.mjs --urls probe.txt         # 只探测候选清单，不动数据
-node check-links.mjs --timeout 18000 --concurrency 4   # 网络差时放慢、加长超时
-node check-links.mjs --report out.json --json # 导出报告并打印 JSON
-```
-
-候选清单格式（每行一条，`#` 开头为注释）：
-
-```
-id | url | 名称
-mvsep | https://mvsep.com/zh | MVSEP
-```
-
-### 4.3 新增条目
-
-1. 在对应 `groups[].items[]` 中按 2.2 的字段补一条，`id` 取小写短横线形式且组内唯一；
-2. `verified` 可先留空对象，交由校验脚本回填（**不要手写猜测的状态码**）；
-3. 跑 4.1 两步，确认该条 `verdict` 为 `ok` 或 `warn`；
-4. 若为 `dead`，**删除或替换该条**，不要留着凑数。
-
-**招募第三方脚本/插件前，先确认它是真的存在**：先搜索、再打开作者仓库/发布页看 README 与最近提交时间，
-最后才写进数据。不要凭印象拼仓库名——写错的链接会直接变成死链。
-
-### 4.4 新增分组
-
-`groups[]` 追加对象，`id`/`icon` 需与前端约定一致；分组顺序即前端展示顺序。
-前端对未识别的 `icon` 会回退到 `library`，但**新增分组前先确认这一栏真的值得单独成栏**。
-
----
-
+> **链接校验工具已移除**。
+>
+> 原先这个目录下有两个 Node 脚本 —— `check-links.mjs`（批量校验链接有效性）
+> 和 `apply-link-report.mjs`（把校验报告回填进 `verified` 字段）。它们随
+> Node 后端一起删除了。
+>
+> `resources.json` 里的 `verifySummary` 是**最后一次校验的结果快照**，
+> 不是实时状态。链接会随时间失效，要重新校验需要另写一个工具 ——
+> 逻辑很简单：并发请求每条 `url`，把结果按分组统计后写回 `verifySummary`，
+> 顺便按需更新各条目的 `verified` 字段。
 ## 5. 收录原则
 
 1. **只收官方、开源、免费或官方试用渠道。**

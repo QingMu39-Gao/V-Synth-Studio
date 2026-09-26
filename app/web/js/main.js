@@ -84,7 +84,7 @@ export async function navigate(id, params = {}) {
   const def = VIEWS.find((v) => v.id === id)
   if (!def) return
   // 记住当前参数：boot() 在拿到状态后会再导航一次，若不带上参数
-  // 就会出现「用 #/settings/voices 进来，一闪又回到默认节」这种问题
+  // 就会出现「用 #/settings/tools 进来，一闪又回到默认节」这种问题
   lastParams = { ...params }
   if (currentCleanup) {
     try {
@@ -147,11 +147,6 @@ export async function refreshState({ silent = true } = {}) {
       formats: data.formats ?? [],
       editors: data.editors ?? [],
       tools: data.tools ?? {},
-      /*
-       * 声库必须拷进来。之前漏了这一行：服务端明明已经扫到 24 个声库，
-       * 总览页的「本机声库」卡片却因为 state.voices 是 undefined 而显示「未检测到」。
-       */
-      voices: data.voices ?? { vocaloid: [], openutau: [], synthv: [], total: 0, scannedDirs: [], userDirs: [] },
       transformOps: data.transformOps ?? [],
       audioFormats: data.audioFormats ?? {},
       config: data.config ?? {},
@@ -171,10 +166,9 @@ export async function refreshState({ silent = true } = {}) {
 function padStatus() {
   const dot = document.getElementById('status-dot')
   const text = document.getElementById('status-text')
-  const installedEditors = state.editors.filter((e) => e.installed).length
   const availableFormats = state.formats.filter((f) => f.available).length
   if (dot) dot.style.background = 'var(--ok)'
-  if (text) text.textContent = `${availableFormats} 种格式 · ${installedEditors} 个编辑器`
+  if (text) text.textContent = `${availableFormats} 种格式`
   const vt = document.getElementById('version-text')
   if (vt) {
     const missing = []
@@ -213,7 +207,7 @@ window.addEventListener('hashchange', () => {
   const m = location.hash.match(/^#\/(\w+)(?:\/([\w-]+))?/)
   const id = m?.[1]
   if (!id) return
-  // 第二段是可选参数，例如 #/settings/voices 直达设置里的声库目录一节
+  // 第二段是可选参数，例如 #/settings/tools 直达设置里的某一节
   if (id !== currentView || m[2]) navigate(id, m[2] ? { section: m[2] } : {})
 })
 

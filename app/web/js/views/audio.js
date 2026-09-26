@@ -1016,7 +1016,7 @@ export async function render(ctx) {
 
   async function launchUvr(path) {
     try {
-      await api.launch(path ? { path } : { id: 'uvr' })
+      await api.launch({ path })
       toast('已启动 Ultimate Vocal Remover', 'ok')
     } catch (err) {
       toast(`启动失败：${err.message}`, 'err')

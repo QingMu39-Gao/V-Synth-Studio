@@ -1,7 +1,7 @@
 /**
  * 设置视图
  *
- * 六块内容：路径 / 声库目录 / 视频下载 / 外部工具 / 自定义程序 / 关于
+ * 五块内容：路径 / 视频下载 / 外部工具 / 自定义程序 / 关于
  * 配置存在服务端 app/data/config.json，通过 /api/config 读写；
  * 默认下载画质只是前端的记忆值（localStorage），真实画质在下载时会重新选。
  *
@@ -11,9 +11,9 @@
 
 import { api, watchJob } from '../api.js'
 import {
-  h, mount, icon, toast, promptDialog, confirmDialog, modal, button, card, progressBar, statBlock, alertBox,
+  h, mount, icon, toast, promptDialog, confirmDialog, modal, button, card, progressBar, statBlock,
 } from '../ui.js'
-import { directoryInput, pickDirectory } from '../components/dirPicker.js'
+import { directoryInput } from '../components/dirPicker.js'
 
 const LS_QUALITY = 'fandiao.settings.quality'
 const LS_SECTION = 'fandiao.settings.section'
@@ -27,7 +27,6 @@ const QUALITY_QN = {
 
 const SECTIONS = [
   { id: 'paths', label: '路径', iconName: 'folder', title: '路径', sub: '下载与转换结果默认存到哪里' },
-  { id: 'voices', label: '声库目录', iconName: 'music', title: '声库目录', sub: '自动检测本机声库；检测不到时可以手动指定目录' },
   { id: 'video', label: '视频下载', iconName: 'video', title: '视频下载', sub: 'B 站 Cookie、代理、画质与线程' },
   { id: 'tools', label: '外部工具', iconName: 'package', title: '外部工具', sub: 'ffmpeg / yt-dlp / Python 的检测与获取' },
   { id: 'programs', label: '自定义程序', iconName: 'cpu', title: '自定义程序', sub: '把常用软件挂进来，随时启动' },
@@ -125,7 +124,7 @@ function toolRow(key, name, desc, info, installFn) {
               iconName: 'external',
               onClick: () => api.fsOpen({ url: 'https://www.python.org/downloads/windows/' }).catch((err) => toast(err.message, 'err')),
             })
-          : button('一键获取', { size: 'btn-sm', variant: 'btn-primary', iconName: 'download', onClick: () => installFn?.(key) }),
+          : h('span.small.muted', '随包分发'),
     ]),
   ])
 }
@@ -211,7 +210,7 @@ export async function render(ctx) {
 
   let cfg = { ...(state.config ?? {}) }
   let section = (() => {
-    // 支持用 #/settings/voices 这样的地址直达某一节（也方便自测）
+    // 支持用 #/settings/tools 这样的地址直达某一节（也方便自测）
     const fromUrl = String(ctx.params?.section ?? '').trim()
     if (fromUrl && SECTIONS.some((s) => s.id === fromUrl)) return fromUrl
     try {
@@ -554,7 +553,6 @@ export async function render(ctx) {
         sub: `已检测到 · ${e.vendor ?? ''} ${e.how ? `· ${e.how}` : ''}`.trim(),
         path: e.path,
         color: e.color,
-        launchId: e.id,
       })),
       ...custom
         .filter((p) => !detected.some((e) => e.path && p.path && e.path.toLowerCase() === String(p.path).toLowerCase()))
@@ -648,7 +646,7 @@ export async function render(ctx) {
     ]
   }
 
-  function programRow({ name, sub, path, color = '#8b95a5', launchId, removable, onRemove }) {
+  function programRow({ name, sub, path, color = '#8b95a5', removable, onRemove }) {
     return h('div.row-wrap', { style: { padding: '10px 0', borderTop: '1px solid var(--border)' } }, [
       h('div.app-dot', {
         style: {
@@ -670,37 +668,20 @@ export async function render(ctx) {
         path ? h('div.tiny.mono.truncate', { title: path, style: { color: 'var(--text-3)' } }, path) : null,
       ]),
       h('div.row.gap-sm', [
-        launchId
+        path
           ? button('启动', {
               size: 'btn-sm',
               iconName: 'play',
-              onClick: async (e) => {
-                const btn = e.currentTarget
-                btn.classList.add('loading')
+              onClick: async () => {
                 try {
-                  await api.launch({ id: launchId })
+                  await api.launch({ path })
                   toast(`已启动 ${name}`, 'ok')
                 } catch (err) {
                   toast(err.message, 'err')
-                } finally {
-                  btn.classList.remove('loading')
                 }
               },
             })
-          : path
-            ? button('启动', {
-                size: 'btn-sm',
-                iconName: 'play',
-                onClick: async () => {
-                  try {
-                    await api.launch({ path })
-                    toast(`已启动 ${name}`, 'ok')
-                  } catch (err) {
-                    toast(err.message, 'err')
-                  }
-                },
-              })
-            : null,
+          : null,
         path
           ? button('定位文件', {
               size: 'btn-sm',
@@ -773,193 +754,16 @@ export async function render(ctx) {
     ]
   }
 
-  /* ---------------- 声库目录 ---------------- */
-
-  function voicesSection() {
-    const v = state.voices ?? { vocaloid: [], openutau: [], synthv: [], total: 0 }
-    const userDirs = Array.isArray(cfg.voiceDirs) ? [...cfg.voiceDirs] : []
-    const banks = [...(v.vocaloid ?? []), ...(v.openutau ?? []), ...(v.synthv ?? [])]
-
-    const listBox = h('div')
-    const probeBox = h('div')
-
-    function renderList() {
-      mount(listBox, null)
-      if (!banks.length) {
-        listBox.appendChild(alertBox('warn',
-          '没有检测到任何声库。VOCALOID 声库正常安装时会登记到注册表，一般都能自动识别；' +
-          '如果用的是便携版或被手动拷贝过，请在下面手动添加声库所在目录。',
-          '未检测到声库'))
-        return
-      }
-      // 按引擎 + 产品分组，避免几十个音色变体平铺
-      const groups = new Map()
-      for (const b of banks) {
-        const key = b.engine === 'vocaloid'
-          ? (b.name.replace(/_(Original|Sweet|Soft|Dark|Solid|Power|Warm|Cold|Serious|Straight|Whisper|Natural|Normal|Meng|Ning|Wan|EVEC).*$/i, '') || b.name)
-          : b.engine === 'openutau' ? 'OpenUtau 歌手' : 'Synthesizer V 声库'
-        if (!groups.has(key)) groups.set(key, [])
-        groups.get(key).push(b)
-      }
-      listBox.appendChild(h('div.col', [...groups.entries()].map(([name, list]) =>
-        h('div', [
-          h('div.row.gap-sm', { style: { marginBottom: '6px' } }, [
-            h('span.strong.small', name),
-            h('span.chip', String(list.length)),
-            h('span.tiny.dim', list[0].source ? `来源：${[...new Set(list.map((x) => x.source))].join(' / ')}` : ''),
-          ]),
-          h('div.chip-group', list.map((b) =>
-            h('span.chip.accent', { title: `${b.name}\ncompID: ${b.compID ?? '-'}\n${b.dir ?? ''}` },
-              [icon('music', 11), b.name])
-          )),
-        ])
-      )))
-    }
-
-    renderList()
-
-    const addBtn = button('添加声库目录', {
-      variant: 'btn-primary',
-      iconName: 'plus',
-      onClick: () => pickDirectory({
-        title: '选择声库所在目录（例如 VOCALOID 的 VoiceDB 根目录）',
-        initial: userDirs[0] ?? '',
-        onPick: async (dir) => {
-          // 先试探：立刻告诉用户这里面有几个声库，而不是加完才发现是空目录
-          mount(probeBox, h('div.small.muted', '正在检查该目录…'))
-          try {
-            const r = await api.post('/api/voices/probe', { dir })
-            mount(probeBox, r.found
-              ? alertBox('ok', `在该目录（含子目录）里找到 <b>${r.found}</b> 个声库：<br>${[
-                  ...r.vocaloid.map((x) => `VOCALOID · ${x.name}`),
-                  ...r.openutau.map((x) => `OpenUtau · ${x.name}`),
-                  ...r.synthv.map((x) => `SynthV · ${x.name}`),
-                ].slice(0, 12).join('<br>')}${r.found > 12 ? '<br>…' : ''}`, '目录检查通过')
-              : alertBox('warn', '这个目录下没有找到声库。请选到<b>包含 compID 目录或声库文件夹的那一层</b>（例如 <code>H:\\VoiceDB</code>），而不是某一个音色文件夹里面。', '没找到声库'))
-            if (r.found) {
-              const next = [...new Set([...userDirs, dir])]
-              await save({ voiceDirs: next }, `已添加声库目录，共扫描到 ${r.totalAfterAdd} 个声库`)
-              const fresh = await api.get('/api/voices', { force: 1 }).catch(() => null)
-              if (fresh) {
-                state.voices = { ...state.voices, ...fresh }
-                renderPane()
-              }
-            }
-          } catch (err) {
-            mount(probeBox, alertBox('err', err.message, '检查失败'))
-          }
-        },
-      }),
-    })
-
-    const rescanBtn = button('重新扫描', {
-      iconName: 'refresh',
-      onClick: async (e) => {
-        const btn = e.currentTarget
-        btn.classList.add('loading')
-        try {
-          const fresh = await api.get('/api/voices', { force: 1 })
-          state.voices = { ...state.voices, ...fresh }
-          await refreshState({ silent: true })
-          renderPane()
-          toast(`重新扫描完成：共 ${fresh.total} 个声库`, fresh.total ? 'ok' : 'warn')
-        } catch (err) {
-          toast(err.message, 'err')
-        } finally {
-          btn.classList.remove('loading')
-        }
-      },
-    })
-
-    return [
-      h('div.card', [
-        h('div.card-head', [
-          h('div.card-icon.pink', [icon('music', 16)]),
-          h('div', [
-            h('h2', '检测结果'),
-            h('div.sub', `共 ${banks.length} 个` +
-              (v.registryCount ? `（其中 ${v.registryCount} 个来自注册表登记）` : '')),
-          ]),
-          h('div.spacer'),
-          rescanBtn,
-        ]),
-        h('div.col', [
-          h('div.tiny.dim', '转成 VOCALOID 工程（.vpr）时，会按歌手名在这里自动匹配声库并写入 compID —— 否则打开工程时歌手栏是空的。'),
-          v.hint ? alertBox('info', v.hint) : null,
-          listBox,
-        ]),
-      ]),
-
-      h('div.card', [
-        h('div.card-head', [
-          h('div.card-icon.purple', [icon('folder', 16)]),
-          h('div', [h('h2', '手动指定目录'), h('div.sub', '自动检测不到时用这个')]),
-        ]),
-        h('div.col', [
-          h('div.tiny.dim', 'VOCALOID 声库装在注册表登记过的位置时会自动识别，跟你装在哪块盘无关。若你的声库是便携版、或从别的机器拷过来的，在这里指定它所在的<b>根目录</b>即可。'),
-          userDirs.length
-            ? h('div.list', userDirs.map((d, i) => h('div.list-item', [
-                icon('folder', 14),
-                h('span.truncate.mono.small', { style: { flex: '1' }, title: d }, d),
-                h('button.btn.btn-ghost.btn-sm', {
-                  onclick: () => api.fsReveal(d, false).catch((err) => toast(err.message, 'err')),
-                }, [icon('external', 12), '打开']),
-                h('button.btn.btn-danger.btn-sm', {
-                  onclick: async () => {
-                    const next = userDirs.filter((_, idx) => idx !== i)
-                    if (await save({ voiceDirs: next }, '已移除该目录')) renderPane()
-                  },
-                }, [icon('trash', 12), '移除']),
-              ])))
-            : h('div.tiny.dim', '（还没有手动添加任何目录）'),
-          h('div.row', [addBtn]),
-          probeBox,
-        ]),
-      ]),
-
-      h('div.card', [
-        h('div.card-head', [
-          h('div.card-icon.info', [icon('search', 16)]),
-          h('div', [h('h2', '试匹配歌手名'), h('div.sub', '验证工程里的歌手名能不能对上本机声库')]),
-        ]),
-        (() => {
-          const input = h('input.input', { placeholder: '例如 初音ミク / Miku(V2) / 洛天依 / 镜音リン', style: { flex: '1' } })
-          const out = h('div')
-          const test = async () => {
-            const singer = input.value.trim()
-            if (!singer) return
-            mount(out, h('div.small.muted', '查询中…'))
-            try {
-              const r = await api.post('/api/voices/match', { singer })
-              mount(out, r.matched
-                ? alertBox('ok', `匹配到 <b>${r.bankName}</b><br>compID：<code>${r.compID}</code><br>依据：${r.reason}（匹配度 ${r.score}）`, '能对上')
-                : alertBox('warn', `本机没有找到与「${singer}」对应的声库。转 .vpr 时会按名称生成一个占位 compID，在 VOCALOID 里手动选一次声库即可。`, '对不上'))
-            } catch (err) {
-              mount(out, alertBox('err', err.message))
-            }
-          }
-          input.addEventListener('keydown', (e) => { if (e.key === 'Enter') test() })
-          return h('div.col', [
-            h('div.row', [input, button('测试', { variant: 'btn-primary', iconName: 'search', onClick: test })]),
-            h('div.tiny.dim', '支持中/日/英混写：初音ミク、初音未来、Miku(V2) 都能对上 MIKU_V4X_*；洛天依会优先挑中文声库；繁简差异也会自动归一。'),
-            out,
-          ])
-        })(),
-      ]),
-    ]
-  }
-
   /* ---------------- 渲染 ---------------- */
 
   function renderPane() {
     const def = SECTIONS.find((s) => s.id === section)
     const body =
       section === 'paths' ? pathsSection()
-        : section === 'voices' ? voicesSection()
-          : section === 'video' ? videoSection()
-            : section === 'tools' ? toolsSection()
-              : section === 'programs' ? programsSection()
-                : aboutSection()
+        : section === 'video' ? videoSection()
+          : section === 'tools' ? toolsSection()
+            : section === 'programs' ? programsSection()
+              : aboutSection()
 
     mount(pane,
       h('div', [
