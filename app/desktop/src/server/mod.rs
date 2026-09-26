@@ -27,21 +27,31 @@ pub use simple::{load_config, quiet_command, ApiError};
 
 /// 全局共享状态。极简 —— 只有真的需要跨请求共享的东西才放进来。
 pub struct AppState {
-    /// 程序根目录（含 app/web/index.html 的那一层）
+    /// 只读资源根目录（含 app/web/、app/data/、tools/）
     pub root: PathBuf,
-    /// 配置（读写 app/data/config.json）
+    /// 可写目录 —— 配置写这里。
+    /// 绿色版就是 `app/data/`；安装版在 `%APPDATA%` 下，
+    /// 因为 Program Files 是只读的（写它需要管理员权限）。
+    pub writable: PathBuf,
+    /// 是否安装版 —— 界面上给恢复提示时用得上
+    pub installed: bool,
+    /// 配置
     pub config: Mutex<Value>,
     /// 进程启动时间，/api/health 用
     pub started: Instant,
-    /// 任务表（阶段 2 用）
+    /// 任务表
     pub jobs: Mutex<crate::server::simple::JobTable>,
 }
 
 impl AppState {
-    pub fn new(root: PathBuf) -> Arc<Self> {
-        let config = load_config(&root);
+    pub fn new(paths: crate::AppPaths) -> Arc<Self> {
+        // 可写目录可能还不存在（首次运行安装版），先建出来
+        let _ = std::fs::create_dir_all(&paths.writable);
+        let config = load_config(&paths.writable);
         Arc::new(Self {
-            root,
+            root: paths.root,
+            writable: paths.writable,
+            installed: paths.installed,
             config: Mutex::new(config),
             started: Instant::now(),
             jobs: Mutex::new(Default::default()),
@@ -52,7 +62,7 @@ impl AppState {
         self.config.lock().map(|c| c.clone()).unwrap_or_else(|_| json!({}))
     }
 
-    /// 数据目录（app/data）—— 配置、资源库、拼音词典都放这里
+    /// 只读数据目录（app/data）—— 资源库、拼音词典。配置在 writable，见上。
     pub fn data_dir(&self) -> PathBuf {
         self.root.join("app").join("data")
     }

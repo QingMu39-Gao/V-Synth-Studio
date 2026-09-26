@@ -1,7 +1,10 @@
 # 打包说明（MSI / NSIS）
 
-**现在还不能直接打包。** 照当前配置跑 `build.ps1 -Bundle` 会装出一个跑不起来的程序。
-这份文档记录原因和要补的东西。
+**代码侧已就绪**（2026-09 更新）。路径定位改成了「先问 Tauri 的 `resource_dir()`，
+再往上找 exe 旁边」，可写数据也分出来了。`tauri.conf.json` 的 `resources` 已配好。
+
+**还没实测过**：这台机器没装 `tauri-cli`，也没跑过 `build.ps1 -Bundle`。
+第一次打包时请重点验证下面两件事（`docs/PACKAGING.md` 末尾有清单）。
 
 ## 卡在哪
 
@@ -20,9 +23,44 @@
 
 所以 `tauri.conf.json` 里的 `resources` 现在是空的。
 
-## 打包前要做的两件事
+## 已做的事
 
-### 1. 解决路径定位
+### 1. 路径定位（已改）
+
+`main.rs::resolve_paths()` 现在按这个顺序找：
+
+1. **Tauri 的 `resource_dir()`** —— 安装版走这条
+2. **从 exe 往上找** —— 绿色版走这条
+3. **当前工作目录往上找** —— `cargo run` 走这条
+
+判据是 `app/web/index.html` 存在。找到哪个，就用哪个当只读资源根目录。
+
+### 2. 可写数据分离（已改）
+
+**这是装到 `Program Files` 后最容易踩的坑**：那里是只读的（写它要管理员权限），
+而 `config.json` 是运行时写的 —— 不分离的话，「保存设置」会直接失败。
+
+| 内容 | 位置 | 说明 |
+|---|---|---|
+| `app/web/`、`tools/` | 只读资源根目录 | 随包分发，不改 |
+| `resources.json`、`pinyin.json` | `<根>/app/data/` | 只读，随包分发 |
+| `config.json` | **可写目录** | 绿色版 = `<根>/app/data/`；安装版 = `%APPDATA%\com.qingmu.vocalworkstation\` |
+
+`/api/state` 里多了个 `installed` 字段，界面可据此区分两种形态给提示。
+
+### 3. 打包资源（已配）
+
+`tauri.conf.json` 的 `resources` 现在包含 `app/web`、`app/data` 的三个只读文件、`tools`。
+**`config.json` 刻意不在里面** —— 它是运行时数据，不该随包分发。
+
+## 第一次打包要验证的事
+
+1. **装完之后界面能打开**（路径定位对不对）
+2. **改一个设置、重启，设置还在**（可写目录对不对 —— 这条最容易挂）
+3. **转换能跑**（`tools/libresvip/` 找得到）
+4. **ffmpeg 能用**（`tools/ffmpeg/` 找得到）
+
+## 原始的分析（保留）
 
 两个方向，选一个：
 

@@ -24,7 +24,13 @@
       "icons/icon.ico"
     ],
 
-    "resources": [],
+    "resources": {
+      "../../app/web": "app/web",
+      "../../app/data/resources.json": "app/data/resources.json",
+      "../../app/data/pinyin.json": "app/data/pinyin.json",
+      "../../app/data/RESOURCES-README.md": "app/data/RESOURCES-README.md",
+      "../../tools": "tools"
+    },
 
     "windows": {
       "webviewInstallMode": {

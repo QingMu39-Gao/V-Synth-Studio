@@ -69,14 +69,18 @@ pub fn default_config(root: &Path) -> Value {
     })
 }
 
-fn config_path(root: &Path) -> PathBuf {
-    root.join("app").join("data").join("config.json")
+/// 配置文件路径。
+///
+/// 参数是**可写目录**而不是程序根目录：安装版装在 Program Files 下，
+/// 那里只读，配置得写到 %APPDATA%。
+fn config_path(writable: &Path) -> PathBuf {
+    writable.join("config.json")
 }
 
 /// 读配置。文件不存在就用默认值（和 Node 版行为一致）。
-pub fn load_config(root: &Path) -> Value {
-    let mut base = default_config(root);
-    if let Ok(text) = fs::read_to_string(config_path(root)) {
+pub fn load_config(writable: &Path) -> Value {
+    let mut base = default_config(writable);
+    if let Ok(text) = fs::read_to_string(config_path(writable)) {
         if let Ok(saved) = serde_json::from_str::<Value>(&text) {
             if let (Some(base_map), Some(saved_map)) = (base.as_object_mut(), saved.as_object()) {
                 for (k, v) in saved_map {
@@ -90,7 +94,7 @@ pub fn load_config(root: &Path) -> Value {
         m.remove("_root");
     }
     // 迁移：旧默认输出目录（程序目录下的 output/）改成系统下载目录
-    migrate_legacy_dirs(&mut base, root);
+    migrate_legacy_dirs(&mut base, writable);
     base
 }
 
@@ -110,8 +114,8 @@ fn migrate_legacy_dirs(cfg: &mut Value, root: &Path) {
     }
 }
 
-pub fn save_config(root: &Path, cfg: &Value) -> std::io::Result<()> {
-    let p = config_path(root);
+pub fn save_config(writable: &Path, cfg: &Value) -> std::io::Result<()> {
+    let p = config_path(writable);
     if let Some(dir) = p.parent() {
         fs::create_dir_all(dir)?;
     }
@@ -136,7 +140,7 @@ pub async fn config_post(
             dst.insert(k.clone(), v.clone());
         }
     }
-    save_config(&st.root, &cfg).map_err(ApiError::from)?;
+    save_config(&st.writable, &cfg).map_err(ApiError::from)?;
     if let Ok(mut guard) = st.config.lock() {
         *guard = cfg.clone();
     }
@@ -162,6 +166,8 @@ pub async fn state(State(st): State<Arc<AppState>>) -> Json<Value> {
             "toolsDir": st.tools_dir().to_string_lossy(),
         },
         "platform": crate::platform::node_platform_name(),
+        // 安装版（Program Files）还是绿色版（解压即用）—— 界面给恢复提示时用得上
+        "installed": st.installed,
     })))
 }
 
@@ -523,7 +529,6 @@ pub async fn resources_check() -> Json<Value> {
 /// **支持 Range 请求**：播放器要靠它才能拖动进度条跳到任意位置。
 /// 不支持 Range 的话，只能从头听，拖一下就断。
 pub async fn fs_raw(
-    State(st): State<Arc<AppState>>,
     Query(q): Query<PathQuery>,
     headers: axum::http::HeaderMap,
 ) -> Response {
