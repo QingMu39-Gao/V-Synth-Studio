@@ -9,9 +9,9 @@
  * 用户没动过输入框时绝不把它提交回去（否则会把真实 Cookie 覆盖成「已设置」）。
  */
 
-import { api, watchJob } from '../api.js'
+import { api } from '../api.js'
 import {
-  h, mount, icon, toast, promptDialog, confirmDialog, modal, button, card, progressBar, statBlock,
+  h, mount, icon, toast, promptDialog, confirmDialog, modal, button, card, statBlock,
 } from '../ui.js'
 import { directoryInput } from '../components/dirPicker.js'
 
@@ -28,7 +28,7 @@ const QUALITY_QN = {
 const SECTIONS = [
   { id: 'paths', label: '路径', iconName: 'folder', title: '路径', sub: '下载与转换结果默认存到哪里' },
   { id: 'video', label: '视频下载', iconName: 'video', title: '视频下载', sub: 'B 站 Cookie、代理、画质与线程' },
-  { id: 'tools', label: '外部工具', iconName: 'package', title: '外部工具', sub: 'ffmpeg / yt-dlp / Python 的检测与获取' },
+  { id: 'tools', label: '外部工具', iconName: 'package', title: '外部工具', sub: 'ffmpeg / yt-dlp / Python 的检测' },
   { id: 'programs', label: '自定义程序', iconName: 'cpu', title: '自定义程序', sub: '把常用软件挂进来，随时启动' },
   { id: 'about', label: '关于', iconName: 'info', title: '关于', sub: '版本与本机信息' },
 ]
@@ -83,7 +83,7 @@ function passwordInput({ value = '', placeholder = '' } = {}) {
   return { el: h('div.input-group', [input, eye, clr]), input }
 }
 
-function toolRow(key, name, desc, info, installFn) {
+function toolRow(key, name, desc, info) {
   const available = !!info?.available
   const version = shortVersion(info?.version)
   const path = info?.path ?? ''
@@ -129,64 +129,6 @@ function toolRow(key, name, desc, info, installFn) {
   ])
 }
 
-/** 正在运行的任务订阅，离开视图时统一收掉 */
-const jobStops = []
-
-/**
- * 一键获取外部工具
- * 进度卡挂在 box 上（不放进切区块时会重建的面板里），装完调 onReady 重新检测
- */
-function install(which, { box, onReady } = {}) {
-  const label = which === 'ffmpeg' ? 'ffmpeg' : 'yt-dlp'
-  if (!box) return
-  const bar = progressBar(0, { size: 'lg' })
-  const msg = h('div.small.muted', '正在请求服务端…')
-  const log = h('div.log', { style: { maxHeight: '140px' } })
-  mount(box, h('div.card', [
-    h('div.card-head', [
-      h('div.card-icon.pink', [icon('download', 16)]),
-      h('h2', `获取 ${label}`),
-      h('div.spacer'),
-      button('收起', { size: 'btn-sm', variant: 'btn-ghost', iconName: 'x', onClick: () => mount(box, null) }),
-    ]),
-    h('div.col', [bar, msg, log]),
-  ]))
-  ;(async () => {
-    try {
-      const { jobId } = await api.installTool(which)
-      const stop = watchJob(jobId, {
-        onUpdate: (job) => {
-          bar.setBar(job.percent ?? 0, '')
-          msg.textContent = job.message ?? '处理中…'
-          if (job.logs?.length) {
-            mount(log, job.logs.join('\n'))
-            log.scrollTop = log.scrollHeight
-          }
-        },
-        onDone: (job) => {
-          bar.setBar(100, 'done')
-          msg.textContent = job.message ?? `${label} 已就绪`
-          toast(`${label} 已就绪`, 'ok')
-          onReady?.()
-        },
-        onError: (err) => {
-          bar.setBar(0, 'error')
-          msg.textContent = `获取失败：${err.message}`
-          toast(`${label} 获取失败：${err.message}`, 'err')
-        },
-        onCancel: () => {
-          bar.setBar(0, 'canceled')
-          msg.textContent = '已取消'
-        },
-      })
-      jobStops.push(stop)
-    } catch (err) {
-      msg.textContent = err.message
-      toast(err.message, 'err')
-    }
-  })()
-}
-
 function cookieHelp() {
   return h('div.col', [
     h('div.small.muted', 'SESSDATA 是 B 站登录态里的一段值，填进来之后才能下 1080P+、大会员画质、番剧与部分字幕弹幕。'),
@@ -229,12 +171,8 @@ export async function render(ctx) {
 
   const navEl = h('div.settings-nav')
   const pane = h('div.col.gap-lg')
-  const installBox = h('div')
 
   mount(container, h('div.settings-layout', [navEl, pane]))
-
-  /** 一键获取：进度卡放在 installBox，装完自动重新检测 + 重绘 */
-  const startInstall = (which) => install(which, { box: installBox, onReady: refresh })
 
   function renderNav() {
     mount(navEl, SECTIONS.map((s) =>
@@ -259,18 +197,6 @@ export async function render(ctx) {
     const conf = await api.config()
     cfg = { ...(conf.config ?? {}) }
     return cfg
-  }
-
-  /** 保存 / 获取工具之后：重新读配置、重新检测、刷新全局状态，再重绘 */
-  async function refresh() {
-    try {
-      await reload()
-      await api.detect(true).catch(() => null)
-      await refreshState({ silent: true })
-      renderPane()
-    } catch (err) {
-      toast(err.message, 'err')
-    }
   }
 
   /** 统一保存：成功 toast + 刷新全局状态 */
@@ -516,7 +442,7 @@ export async function render(ctx) {
     return [
       card({
         title: '外部工具',
-        sub: '不随程序分发，按需获取到本机 tools 目录',
+        sub: 'ffmpeg / yt-dlp 随程序分发，这里只做检测',
         iconName: 'package',
         iconColor: 'purple',
         actions: detectBtn,
@@ -525,14 +451,14 @@ export async function render(ctx) {
             ? h('div.alert.alert-warn', [
                 icon('alert', 16),
                 h('div.alert-body', [
-                  h('strong', `还缺 ${missing.map((m) => (m === 'ytdlp' ? 'yt-dlp' : m)).join(' / ')}`),
-                  h('div', '音频导出、变调变速、非 B 站站点下载会不可用。点下面的「一键获取」，从官方发布地址下载，不走第三方镜像。'),
+                  h('strong', `未检测到 ${missing.map((m) => (m === 'ytdlp' ? 'yt-dlp' : m)).join(' / ')}`),
+                  h('div', '音频导出、变调变速、非 B 站站点下载会不可用。ffmpeg / yt-dlp 随程序分发，不需要联网下载；若这里显示未检测到，说明 tools 目录缺失或不完整 —— 从压缩包里把 tools 整个目录重新解压到程序根目录即可。'),
                 ]),
               ])
             : h('div.alert.alert-ok', [icon('check', 16), h('div.alert-body', [h('div', '三个外部工具都齐了，音频与下载功能完整可用。')])]),
-          toolRow('ffmpeg', 'ffmpeg', '音视频合并、导出 WAV/MP3、变调变速、响度标准化', tools.ffmpeg, startInstall),
-          toolRow('ytdlp', 'yt-dlp', 'YouTube 等上千站点的解析与下载（B 站走内置解析，不需要它）', tools.ytdlp, startInstall),
-          toolRow('python', 'Python', '可选：部分脚本与 yt-dlp 的模块模式会用到', tools.python, startInstall),
+          toolRow('ffmpeg', 'ffmpeg', '音视频合并、导出 WAV/MP3、变调变速、响度标准化', tools.ffmpeg),
+          toolRow('ytdlp', 'yt-dlp', 'YouTube 等上千站点的解析与下载（B 站走内置解析，不需要它）', tools.ytdlp),
+          toolRow('python', 'Python', '可选：部分脚本与 yt-dlp 的模块模式会用到', tools.python),
           h('div.tiny.dim', { style: { marginTop: '6px' } },
             `工具目录：${state.paths?.toolsDir ?? '未读取到'}（已装工具的可执行文件都在这里，不写注册表、不写系统 PATH）`),
         ]),
@@ -770,8 +696,7 @@ export async function render(ctx) {
         h('h2', { style: { fontSize: '16px', margin: '0 0 4px' } }, def?.title ?? ''),
         h('div.small.muted', def?.sub ?? ''),
       ]),
-      ...body,
-      installBox
+      ...body
     )
   }
 
@@ -800,13 +725,6 @@ export async function render(ctx) {
   }
 
   return () => {
-    for (const stop of jobStops.splice(0)) {
-      try {
-        stop()
-      } catch {
-        /* ignore */
-      }
-    }
     mount(pane, null)
     mount(headerActions, null)
   }

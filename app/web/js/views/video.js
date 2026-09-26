@@ -45,7 +45,7 @@ function saveSettings(s) {
 }
 
 export async function render(ctx) {
-  const { container, headerActions, state, navigate, refreshState, params } = ctx
+  const { container, headerActions, state, navigate, params } = ctx
   const settings = loadSettings()
   if (!settings.outDir) settings.outDir = state.paths?.downloadDir || state.paths?.outputDir || ''
 
@@ -303,64 +303,16 @@ export async function render(ctx) {
     mount(noticeBox, rows.length ? h('div.col.gap-sm', rows) : null)
   }
 
-  function toolNotice({ level, title, detail, which, actionLabel }) {
-    const bar = progressBar(0)
-    const msg = h('div.tiny.dim', '')
-    const prog = h('div.col', { style: { display: 'none', marginTop: '8px' } }, [bar, msg])
-    const btn = button(actionLabel ?? `一键获取 ${which}`, {
-      size: 'btn-sm',
-      variant: 'btn-primary',
-      iconName: 'download',
-      onClick: () => {
-        prog.style.display = ''
-        installTool(which, { bar, msg }, btn)
-      },
-    })
+  function toolNotice({ level, title, detail, which }) {
     return h(`div.finding.${level}`, [
       icon(level === 'warn' ? 'alert' : 'info', 14),
       h('div', { style: { flex: '1', minWidth: '0' } }, [
         h('div.strong', title),
         h('div', detail),
-        prog,
-        h('div.row.gap-sm', { style: { marginTop: '8px' } }, [btn]),
+        h('div.tiny.dim', { style: { marginTop: '6px' } },
+          `${which === 'ytdlp' ? 'yt-dlp' : which} 随程序分发，不需要联网下载；若这里显示未检测到，从压缩包里把 tools 目录重新解压到程序根目录即可。`),
       ]),
     ])
-  }
-
-  async function installTool(which, refs = {}, btn = null) {
-    btn?.classList.add('loading')
-    try {
-      const { jobId } = await api.installTool(which)
-      toast(`正在获取 ${which}，大约 40–80 MB…`, 'info')
-      subscribe(jobId, {
-        onUpdate: (job) => {
-          refs.bar?.setBar(job.percent ?? 0)
-          if (refs.msg) refs.msg.textContent = job.message ?? '处理中…'
-        },
-        onDone: async () => {
-          toast(`${which} 已就绪`, 'ok')
-          try {
-            await refreshState()
-          } catch {
-            /* 状态刷新失败不影响工具可用 */
-          }
-          renderNotices()
-          renderHeader()
-          renderResult()
-        },
-        onError: (err) => {
-          btn?.classList.remove('loading')
-          toast(`${which} 获取失败：${err.message}`, 'err')
-        },
-        onCancel: () => {
-          btn?.classList.remove('loading')
-          toast(`${which} 的获取已取消`, 'warn')
-        },
-      })
-    } catch (err) {
-      btn?.classList.remove('loading')
-      toast(`获取 ${which} 失败：${err.message}`, 'err')
-    }
   }
 
   /* ------------------------------------------------------------ 解析 */

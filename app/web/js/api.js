@@ -50,7 +50,6 @@ export const api = {
 
   detect: (force) => request(`/api/tools/detect${force ? '?force=1' : ''}`, { timeout: 60000 }),
   launch: (payload) => request('/api/tools/launch', { method: 'POST', body: payload }),
-  installTool: (which) => request('/api/tools/install', { method: 'POST', body: { which } }),
 
   fsRoots: () => request('/api/fs/roots'),
   fsList: (path) => request(`/api/fs/list?path=${encodeURIComponent(path ?? '')}`),

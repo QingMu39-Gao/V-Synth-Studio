@@ -56,7 +56,20 @@ import { pickDirectory, directoryInput } from '../components/dirPicker.js'
 
 ## 4. 状态与接口
 
-`state` 字段：`formats[]`（含 `available/canRead/canWrite/exts/fidelity`）、`editors[]`（含 `installed/path/color`）、`tools.{ffmpeg,ytdlp,python}`、`audioFormats{}`、`config`、`paths.{root,outputDir,downloadDir,toolsDir}`、`platform`。
+`state` 字段：`formats[]`（含 `available/canRead/canWrite/exts`）、`editors[]`（含 `installed/path/color`，**现在只有 UVR 一项**）、`tools.{ffmpeg,ytdlp,python}`、`audioFormats{}`、`config`、`paths.{root,outputDir,downloadDir,toolsDir}`、`platform`。
+
+> **`state.voices` 已移除**。声库探测整个删掉了 —— 它只被用来「显示装了什么」，
+> 转换路径从头到尾没调用过。新页面不要再引用这个字段。
+>
+> **`state.editors` 只剩 UVR**。原来 16 个编辑器里只有 UVR 被真正用到
+> （音频页的人声分离要跳过去）。不要再写「编辑器列表」这类界面 ——
+> 用户桌面本来就有快捷方式，从工作站启动别的编辑器没有意义。
+>
+> **外部工具（ffmpeg / yt-dlp）随程序打包分发**，不再联网下载。
+> `/api/tools/install` 恒定返回 400 并说明怎么从压缩包恢复；
+> 界面上不要提供「一键获取」按钮，改成说明文字。
+> 但 `tools?.ffmpeg?.available` 这类**能力判断要保留** ——
+> 工具真缺失时靠它禁用功能并给出提示，这是有用的降级路径。
 
 `api` 可用方法（后端已实现，参数即请求体）：
 
@@ -97,7 +110,7 @@ api.saveConfig(patch)
 - 全部文案中文，语气务实、不要营销腔。
 - **任何失败都要能被用户看到**：`try/catch` + `toast(err.message, 'err')`，不要静默吞异常。
 - 长任务一律用 `watchJob` 显示进度条 + 日志，不要在界面线程里假死等待。
-- 缺少外部依赖（ffmpeg / yt-dlp）时，不要只报错：给出「一键获取」按钮（`api.installTool`）或指向设置页。
+- 缺少外部依赖（ffmpeg / yt-dlp）时，不要只报错：说明**怎么恢复**（工具随程序分发，从压缩包重新解压 `tools/` 目录），并禁用依赖它的功能。**不要引导用户去下载** —— 境内下不动，这个程序从一开始就不该让用户自己折腾环境。
 - 界面要「流畅」：切换视图不要闪烁，列表用 `.stagger` 做交错入场，操作后给即时反馈（按钮 `.loading`、toast）。
 - 语法自检（必须做）：`Copy-Item app\web\js\views\xxx.js $env:TEMP\check.mjs; node --check $env:TEMP\check.mjs`
   （浏览器专用 API 无法在 Node 跑，只需要通过语法解析）。

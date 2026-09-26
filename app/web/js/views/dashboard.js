@@ -2,7 +2,7 @@
  * 总览视图：环境检测、快捷入口
  */
 
-import { api, watchJob } from '../api.js'
+import { api } from '../api.js'
 import { h, mount, icon, toast, button, card } from '../ui.js'
 
 export async function render(ctx) {
@@ -97,6 +97,8 @@ function computeChecks(state) {
       level: 'info',
       title: `有 ${unavailable.length} 种格式的转换模块尚未就绪`,
       detail: `可用：${formats.filter((f) => f.available).map((f) => f.name).join('、') || '无'}。未就绪：${unavailable.map((f) => f.name).join('、')}。`,
+    })
+  }
   return card({
     title: '环境就绪度',
     sub: `${checks.length} 项待处理`,
@@ -112,8 +114,6 @@ function computeChecks(state) {
     )),
   })
 }
-
-/** 一键获取外部工具，带进度反馈 */
 
 function quickActions(navigate) {
   const items = [
@@ -157,7 +157,7 @@ function toolsCard(state, ctx) {
   ]
   return card({
     title: '外部工具',
-    sub: '不随程序分发，按需获取',
+    sub: 'ffmpeg / yt-dlp 随程序分发，这里只做检测',
     iconName: 'package',
     iconColor: 'purple',
     body: h('div.col', rows.map((r) =>

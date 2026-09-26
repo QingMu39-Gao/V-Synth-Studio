@@ -87,7 +87,7 @@ function joinPath(dir, name) {
 }
 
 export async function render(ctx) {
-  const { container, headerActions, state, navigate, refreshState, params } = ctx
+  const { container, headerActions, state, navigate, params } = ctx
   const settings = loadSettings()
   if (params?.input) settings.input = String(params.input)
 
@@ -825,7 +825,7 @@ export async function render(ctx) {
       return
     }
     if (!state.tools?.ffmpeg?.available) {
-      toast('音频处理需要 ffmpeg，请先点上面的「一键获取 ffmpeg」', 'warn')
+      toast('未检测到 ffmpeg：它随程序分发，不需要联网下载。若 tools 目录缺失，从压缩包里重新把 tools 解压到程序根目录。', 'warn')
       return
     }
     const action = settings.action
@@ -939,71 +939,24 @@ export async function render(ctx) {
 
   const toolBox = h('div')
 
-  async function installFfmpeg(refs, btn) {
-    btn?.classList.add('loading')
-    try {
-      const { jobId } = await api.installTool('ffmpeg')
-      toast('正在获取 ffmpeg，约 40–80 MB…', 'info')
-      const outcome = await waitJob(jobId, (job) => {
-        refs.bar?.setBar(job.percent ?? 0)
-        if (refs.msg) refs.msg.textContent = job.message ?? '处理中…'
-      })
-      if (disposed) return
-      if (outcome.status === 'done') {
-        toast('ffmpeg 已就绪，可以开始处理了', 'ok')
-        try {
-          await refreshState()
-        } catch {
-          /* 刷不到状态也不影响已装好的 ffmpeg */
-        }
-        renderTools()
-        renderHeader()
-        renderProbe()
-        void probeFile(false)
-      } else if (outcome.status === 'error') {
-        toast(`获取 ffmpeg 失败：${outcome.error?.message ?? '未知错误'}`, 'err')
-      } else {
-        toast('已取消获取 ffmpeg', 'warn')
-      }
-    } catch (err) {
-      toast(`获取 ffmpeg 失败：${err.message}`, 'err')
-    } finally {
-      btn?.classList.remove('loading')
-    }
-  }
-
   function renderTools() {
     if (state.tools?.ffmpeg?.available) {
       mount(toolBox, null)
       return
     }
-    const bar = progressBar(0)
-    const msg = h('div.tiny.dim', '')
-    const prog = h('div.col', { style: { display: 'none', marginTop: '8px' } }, [bar, msg])
-    const btn = button('一键获取 ffmpeg', {
-      variant: 'btn-primary',
-      size: 'btn-lg',
-      iconName: 'download',
-      onClick: () => {
-        prog.style.display = ''
-        void installFfmpeg({ bar, msg }, btn)
-      },
-    })
     mount(toolBox, h('div.card', [
       h('div.card-head', [
         h('div.card-icon.warn', [icon('alert', 16)]),
-        h('div', [h('h2', '缺少 ffmpeg'), h('div.sub', '下面这些操作全靠它，装上才能用')]),
+        h('div', [h('h2', '未检测到 ffmpeg'), h('div.sub', '下面这些操作全靠它')]),
         h('div.spacer'),
-        h('span.chip.err', '未安装'),
+        h('span.chip.err', '未检测到'),
       ]),
       h('div.col.gap-sm', [
-        alertBox('err', '格式转换、提取音轨、变调、变速、裁剪、响度标准化、读取媒体信息都需要 ffmpeg。点下面的按钮会自动下载一份放到本程序的 tools 目录，不动系统环境变量。', '先装 ffmpeg'),
+        alertBox('err', '格式转换、提取音轨、变调、变速、裁剪、响度标准化、读取媒体信息都需要 ffmpeg。ffmpeg 随程序分发，不需要联网下载；若这里显示未检测到，说明 tools 目录缺失或不完整 —— 从压缩包里把 tools 整个目录重新解压到程序根目录即可。', '怎么恢复'),
         h('div.row-wrap.gap-sm', [
-          btn,
           button('去设置看看', { size: 'btn-lg', iconName: 'gear', onClick: () => navigate('settings') }),
         ]),
-        prog,
-        h('div.tiny.dim', '也可以自己装 ffmpeg 并加到 PATH，或者在「设置 → 外部工具」里指定路径。'),
+        h('div.tiny.dim', '也可以自己装一份 ffmpeg 并加到系统 PATH，程序会自动检测到。'),
       ]),
     ]))
   }
