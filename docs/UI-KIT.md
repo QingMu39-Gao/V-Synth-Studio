@@ -89,7 +89,7 @@ api.audioRun({ action, input, output, options })
 api.resources(reload)                    // { groups: [{ id,name,icon,description,items:[{name,url,home,tags,region,cost,desc,tip,verified}] }] }
 api.checkLinks(ids)                      // 返回 { jobId }，结果在 job.result.results
 // 工具 / 文件
-api.detect(force)、api.launch({ id|path })、api.installTool('ytdlp'|'ffmpeg')
+api.detect(force)、api.launch({ path })
 api.fsList(path)、api.fsRoots()、api.fsReveal(path, select)、api.fsOpen({ path|url })
 api.saveConfig(patch)
 ```
@@ -112,7 +112,25 @@ api.saveConfig(patch)
 - 长任务一律用 `watchJob` 显示进度条 + 日志，不要在界面线程里假死等待。
 - 缺少外部依赖（ffmpeg / yt-dlp）时，不要只报错：说明**怎么恢复**（工具随程序分发，从压缩包重新解压 `tools/` 目录），并禁用依赖它的功能。**不要引导用户去下载** —— 境内下不动，这个程序从一开始就不该让用户自己折腾环境。
 - 界面要「流畅」：切换视图不要闪烁，列表用 `.stagger` 做交错入场，操作后给即时反馈（按钮 `.loading`、toast）。
-- 语法自检（必须做）：`Copy-Item app\web\js\views\xxx.js $env:TEMP\check.mjs; node --check $env:TEMP\check.mjs`
+- 语法自检（必须做，且**必须复制成 `.mjs` 再 check**）：
+
+  ```powershell
+  Copy-Item app\web\js\views\xxx.js $env:TEMP\check.mjs
+  node --check $env:TEMP\check.mjs
+  ```
+
+  ⚠️ **不要直接 `node --check xxx.js`，它是假通过的。** 实测（Node v24.18.0）：
+  一个故意写坏的 `.js` 返回退出码 0 且无输出，同一个文件改名成 `.mjs` 才报出
+  `SyntaxError`。原因与 Node 对 `.js` 的模块类型判定有关。
+
+  这个坑真实发生过：`dashboard.js` 的 `computeChecks` 少了一个 `})`，
+  `node --check *.js` 全绿，但**整个总览页加载失败**（浏览器报
+  `SyntaxError: Unexpected identifier`），问题在 HEAD 里待了一轮才被发现。
+
+  **所以除了语法检查，改完视图一定要用浏览器实际打开一次** —— 语法检查只保证能解析，
+  保证不了渲染。headless Edge 可以：
+  `msedge --headless=old --dump-dom "http://127.0.0.1:端口/#/dashboard"`
+  （本机 `--headless=new` 会报 "Multiple targets" 起不来）
   （浏览器专用 API 无法在 Node 跑，只需要通过语法解析）。
 - 服务端已在 `http://127.0.0.1:8787` 运行，可用
   `Invoke-RestMethod` 直接验证你要调的接口真实返回结构。
