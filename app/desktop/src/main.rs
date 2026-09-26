@@ -12,12 +12,16 @@
 
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod audio;
+mod bili;
 mod data;
 mod libresvip;
+mod net;
 mod platform;
 mod server;
 mod tools;
 mod voices;
+mod ytdlp;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;

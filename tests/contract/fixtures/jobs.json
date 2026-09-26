@@ -1,4 +1,23 @@
 {
   "ok": true,
-  "jobs": []
+  "jobs": [
+    {
+      "id": "<ID>",
+      "type": "audio",
+      "title": "音频处理：nope",
+      "status": "error",
+      "percent": 2,
+      "message": "未知的音频操作：nope",
+      "createdAt": "<NUM>"
+    },
+    {
+      "id": "<ID>",
+      "type": "download",
+      "title": "下载 not-a-link",
+      "status": "error",
+      "percent": 0,
+      "message": "无法识别的链接。支持：BV 号、av 号、b23.tv 短链、bilibili.com/video/... 、番剧 ep/ss 链接",
+      "createdAt": "<NUM>"
+    }
+  ]
 }

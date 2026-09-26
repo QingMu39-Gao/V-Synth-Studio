@@ -2507,6 +2507,7 @@ name = "qingmu-workstation"
 version = "1.0.0"
 dependencies = [
  "axum",
+ "flate2",
  "futures-util",
  "libc",
  "reqwest 0.12.28",

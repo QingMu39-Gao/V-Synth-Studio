@@ -413,7 +413,7 @@ fn iso_now() -> String {
 }
 
 /// Howard Hinnant 的 civil_from_days（公历换算，不引 chrono）
-fn civil_from_days(z: i64) -> (i64, u32, u32) {
+pub fn civil_from_days(z: i64) -> (i64, u32, u32) {
     let z = z + 719468;
     let era = if z >= 0 { z } else { z - 146096 } / 146097;
     let doe = (z - era * 146097) as u64;

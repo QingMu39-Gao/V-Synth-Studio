@@ -70,7 +70,7 @@ pub fn default_config(root: &Path) -> Value {
 }
 
 fn config_path(root: &Path) -> PathBuf {
-    root.join("app").join("server").join("data").join("config.json")
+    root.join("app").join("data").join("config.json")
 }
 
 /// 读配置。文件不存在就用默认值（和 Node 版行为一致）。
@@ -377,11 +377,28 @@ pub struct JobQuery {
     pub id: Option<String>,
 }
 
-pub async fn jobs_cancel(State(st): State<Arc<AppState>>) -> Json<Value> {
-    // ponytail: 取消目前只是标记状态；真正的进程终止在阶段 2 接上
+pub async fn jobs_cancel(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    /*
+     * 真正把任务标成 canceled：长任务（下载 / 音频处理）在循环里读这个状态，
+     * 读到就中断并掐掉子进程。没有额外的取消通道 —— 任务表本身就是通道。
+     */
+    let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
     let mut guard = st.jobs.lock().unwrap();
-    let _ = &mut guard;
-    Json(ok(json!({ "canceled": true })))
+    let job = guard
+        .items
+        .get_mut(id)
+        .ok_or_else(|| ApiError::internal("任务不存在"))?;
+    let status = job.get("status").and_then(|v| v.as_str()).unwrap_or("");
+    if !matches!(status, "done" | "error" | "canceled") {
+        if let Some(m) = job.as_object_mut() {
+            m.insert("status".into(), json!("canceled"));
+            m.insert("message".into(), json!("已取消"));
+        }
+    }
+    Ok(Json(ok(json!({ "job": job.clone() }))))
 }
 
 pub async fn jobs_stream() -> Response {
@@ -483,6 +500,8 @@ impl IntoResponse for ApiError {
         let mut m = Map::new();
         m.insert("ok".into(), Value::Bool(false));
         m.insert("error".into(), Value::String(self.message));
+        // Node 版的 sendError 一定会带 code（没有就是 null），前端 api.js 也会读它
+        m.insert("code".into(), Value::Null);
         (self.status, Json(Value::Object(m))).into_response()
     }
 }

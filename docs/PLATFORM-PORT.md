@@ -1,16 +1,57 @@
 # 平台移植地图（macOS）
 
-> 这份文档是**审计出来的**，不是凭印象写的。数据来自对 `app/server/` 下全部 `.mjs` 的
-> 逐行扫描（匹配 `powershell` / `HKCU:` / `HKLM:` / `.exe` / `win32` / `C:\` 等模式）。
+> **2026-09 重要更新**：后端已从 Node 重写为 **Rust**（`app/desktop/src/`，约 3,100 行，
+> 替代原来的 `app/server/` 19,019 行）。下面第一节的 Node 清单只对**尚未删除的 Node 后端**
+> 有效；新的平台边界在第二节。Node 后端在全部路由验证通过前保留作对照。
 
-## 结论先说
+---
+
+## 一、现状（Rust 后端）
+
+后端现在是 Tauri 应用**进程内**的一部分，没有 node.exe。平台相关代码**全部集中在 `app/desktop/src/platform.rs`**：
+
+| 功能 | 现在的实现 | macOS 需要 |
+|---|---|---|
+| 下载目录 | 读注册表 `User Shell Folders`，退回 `USERPROFILE\Downloads` | `$HOME/Downloads`（更简单，删掉注册表那段即可） |
+| 文件管理器定位 | `explorer /select,` | `open -R`（代码里已经写了 cfg 分支） |
+| 打开文件 | `explorer` | `open`（同上，已分支） |
+| 回收站 | PowerShell `Shell.Application` | `trash` 命令或 `NSFileManager` |
+| 平台名 | `node_platform_name()` 返回 `win32`/`darwin` | 已按 Node 命名返回 `darwin`，不用改 |
+| 路径规范化 | 剥 `\\?\` 前缀 | `clean_path()` 里的 `#[cfg(windows)]` 块自然跳过 |
+
+**编译器探测**（`src/tools.rs`）里的 16 个编辑器路径表是 Windows 专有的。macOS 上那张表要整体换成 `/Applications/*.app` 的扫描 —— 但那是**数据**，不是逻辑。
+
+**声库探测**（`src/voices.rs`）里读注册表的部分用 `#[cfg(windows)]` 隔离，非 Windows 返回空数组（macOS 上确实没有 VOCALOID）。
+
+**外部工具**（ffmpeg / yt-dlp）走 `find_binary()` + PATH，基础逻辑跨平台；只有"一键获取"的下载源是各平台一份（`app/server/core/audio.mjs` 里的 URL 表 —— 那部分还在 Node 侧，尚未移植到 Rust）。
+
+## 二、还没移植的部分
+
+`app/server/` 里这些**仍在使用**（阶段 4 之前），移植时要一并处理：
+
+| 文件 | 处数 | 内容 |
+|---|---|---|
+| `core/tools.mjs` | 56 | 编辑器路径表（已在 Rust 侧重写，Node 侧是旧的） |
+| `core/voices.mjs` | 21 | 注册表声库探测（已在 Rust 侧重写） |
+| `core/audio.mjs` | 11 | ffmpeg 路径与一键安装（**待移植**） |
+| `core/formats/ust.mjs` | 4 | Shift-JIS 转码走 PowerShell（**待移植**，macOS 换 `iconv`） |
+| `net/ytdlp.mjs` | 3 | `yt-dlp.exe` 下载源（**待移植**） |
+| `core/paths.mjs` | 3 | 已由 `platform.rs` 取代 |
+
+---
+
+## 三、历史：Node 后端时代的清单（已过时，保留作参考）
+
+以下内容是重写前对 `app/server/` 的审计，**只对那个已不再默认启用的 Node 后端有效**。
+
+### 结论
 
 **核心是跨平台的，外壳曾经不是（现在换成 Tauri 了）。**
 
 | 部分 | 跨平台状况 |
 |---|---|
 | 前端（`app/web/`） | **完全跨平台** —— 纯 HTML/CSS/JS，一行都不用改 |
-| Node 后端核心（34 个文件） | **完全跨平台** —— 含全部格式模块、转换引擎、任务系统、HTTP 层、下载器、B 站解析 |
+| Node 后端核心 | **完全跨平台** —— 含全部格式模块、转换引擎、任务系统、HTTP 层、下载器、B 站解析 |
 | 桌面外壳（`app/desktop/`，Tauri） | **跨平台** —— Windows 用 WebView2，macOS 用 WKWebView |
 | 平台相关代码（13 个文件，约 120 处） | **需要各写一份** |
 

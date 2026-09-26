@@ -5,13 +5,13 @@
   "notice": "安全提示：盗版（「学习版」「破解版」「绿色版」）声库编辑器与声库压缩包，是木马、挖矿程序、勒索软件的高发区，尤其是「无数字签名 + 二次打包 + 带启动器 exe」的组合。本库只收录官方、开源与免费试用渠道。任何来源不明的 exe/7z/rar 在运行前，请先用 VirusTotal 比对哈希；国内机器请同时用火绒/Defender 全盘扫描。",
   "groups": [
     {
-      "id": "stem-separation",
+      "id": "<ID>",
       "name": "人声分离 / 伴奏提取",
       "icon": "wave",
       "description": "翻调第一步：把人声与伴奏拆开，拿到干净的人声轨做音高参考、拿到伴奏轨做后期对轨。在线站点省事但要把干音上传到别人服务器，离线方案吃显卡但素材不出本机。",
       "items": [
         {
-          "id": "mvsep",
+          "id": "<ID>",
           "name": "MVSEP",
           "url": "https://mvsep.com/zh",
           "home": "mvsep.com",
@@ -33,7 +33,7 @@
           }
         },
         {
-          "id": "uvr5",
+          "id": "<ID>",
           "name": "Ultimate Vocal Remover 5 (UVR5)",
           "url": "https://github.com/Anjok07/ultimatevocalremovergui",
           "home": "github.com/Anjok07",
@@ -56,7 +56,7 @@
           }
         },
         {
-          "id": "uvr-models",
+          "id": "<ID>",
           "name": "UVR 模型库（官方 release）",
           "url": "https://github.com/TRvlvr/model_repo/releases",
           "home": "github.com/TRvlvr",
@@ -77,7 +77,7 @@
           }
         },
         {
-          "id": "demucs",
+          "id": "<ID>",
           "name": "Demucs（Meta 官方）",
           "url": "https://github.com/facebookresearch/demucs",
           "home": "github.com/facebookresearch",
@@ -99,7 +99,7 @@
           }
         },
         {
-          "id": "demucs-onnx",
+          "id": "<ID>",
           "name": "demucs.onnx（ONNX 移植）",
           "url": "https://github.com/sevagh/demucs.onnx",
           "home": "github.com/sevagh",
@@ -121,7 +121,7 @@
           }
         },
         {
-          "id": "spleeter",
+          "id": "<ID>",
           "name": "Spleeter（Deezer 官方）",
           "url": "https://github.com/deezer/spleeter",
           "home": "github.com/deezer",
@@ -143,7 +143,7 @@
           }
         },
         {
-          "id": "open-unmix",
+          "id": "<ID>",
           "name": "Open-Unmix (UMX)",
           "url": "https://github.com/sigsep/open-unmix-pytorch",
           "home": "github.com/sigsep",
@@ -164,7 +164,7 @@
           }
         },
         {
-          "id": "audio-separator",
+          "id": "<ID>",
           "name": "audio-separator（Python 库）",
           "url": "https://github.com/nomadkaraoke/python-audio-separator",
           "home": "github.com/nomadkaraoke",
@@ -186,7 +186,7 @@
           }
         },
         {
-          "id": "vocalremover-org",
+          "id": "<ID>",
           "name": "Vocal Remover（在线）",
           "url": "https://vocalremover.org/zh/",
           "home": "vocalremover.org",
@@ -209,7 +209,7 @@
           }
         },
         {
-          "id": "moises",
+          "id": "<ID>",
           "name": "Moises",
           "url": "https://moises.ai/",
           "home": "moises.ai",
@@ -232,7 +232,7 @@
           }
         },
         {
-          "id": "lalal",
+          "id": "<ID>",
           "name": "LALAL.AI",
           "url": "https://www.lalal.ai/",
           "home": "lalal.ai",
@@ -256,13 +256,13 @@
       ]
     },
     {
-      "id": "free-audio",
+      "id": "<ID>",
       "name": "免费音源 / 伴奏 / 素材音乐",
       "icon": "music",
       "description": "找可合法使用的伴奏、纯音乐、音效与 loop。翻调最怕的是「视频做完了被判侵权」，所以每条都标了授权类型，并明确写清能不能下 WAV。",
       "items": [
         {
-          "id": "fma",
+          "id": "<ID>",
           "name": "Free Music Archive",
           "url": "https://freemusicarchive.org/",
           "home": "freemusicarchive.org",
@@ -284,7 +284,7 @@
           }
         },
         {
-          "id": "musopen",
+          "id": "<ID>",
           "name": "Musopen",
           "url": "https://musopen.org/",
           "home": "musopen.org",
@@ -307,7 +307,7 @@
           }
         },
         {
-          "id": "ccmixter",
+          "id": "<ID>",
           "name": "ccMixter",
           "url": "https://ccmixter.org/",
           "home": "ccmixter.org",
@@ -329,7 +329,7 @@
           }
         },
         {
-          "id": "jamendo",
+          "id": "<ID>",
           "name": "Jamendo",
           "url": "https://www.jamendo.com/",
           "home": "jamendo.com",
@@ -351,7 +351,7 @@
           }
         },
         {
-          "id": "freesound",
+          "id": "<ID>",
           "name": "Freesound",
           "url": "https://freesound.org/",
           "home": "freesound.org",
@@ -373,7 +373,7 @@
           }
         },
         {
-          "id": "pixabay-music",
+          "id": "<ID>",
           "name": "Pixabay Music",
           "url": "https://pixabay.com/music/",
           "home": "pixabay.com",
@@ -396,7 +396,7 @@
           }
         },
         {
-          "id": "chosic",
+          "id": "<ID>",
           "name": "Chosic",
           "url": "https://www.chosic.com/free-music/all/",
           "home": "chosic.com",
@@ -419,7 +419,7 @@
           }
         },
         {
-          "id": "looperman",
+          "id": "<ID>",
           "name": "Looperman",
           "url": "https://www.looperman.com/",
           "home": "looperman.com",
@@ -441,7 +441,7 @@
           }
         },
         {
-          "id": "bbc-sfx",
+          "id": "<ID>",
           "name": "BBC Sound Effects",
           "url": "https://sound-effects.bbcrewind.co.uk/",
           "home": "sound-effects.bbcrewind.co.uk",
@@ -463,7 +463,7 @@
           }
         },
         {
-          "id": "mixkit",
+          "id": "<ID>",
           "name": "Mixkit",
           "url": "https://mixkit.co/free-stock-music/",
           "home": "mixkit.co",
@@ -484,7 +484,7 @@
           }
         },
         {
-          "id": "free-stock-music",
+          "id": "<ID>",
           "name": "Free Stock Music",
           "url": "https://www.free-stock-music.com/",
           "home": "free-stock-music.com",
@@ -506,7 +506,7 @@
           }
         },
         {
-          "id": "zapsplat",
+          "id": "<ID>",
           "name": "ZapSplat",
           "url": "https://www.zapsplat.com/",
           "home": "zapsplat.com",
@@ -529,7 +529,7 @@
           }
         },
         {
-          "id": "sonniss",
+          "id": "<ID>",
           "name": "Sonniss GDC 音效包",
           "url": "https://sonniss.com/gameaudiogdc",
           "home": "sonniss.com",
@@ -552,7 +552,7 @@
           }
         },
         {
-          "id": "tosound",
+          "id": "<ID>",
           "name": "淘声网",
           "url": "https://www.tosound.com/",
           "home": "tosound.com",
@@ -574,7 +574,7 @@
           }
         },
         {
-          "id": "aigei-music",
+          "id": "<ID>",
           "name": "爱给网（音乐区）",
           "url": "https://www.aigei.com/music/",
           "home": "aigei.com",
@@ -597,7 +597,7 @@
           }
         },
         {
-          "id": "aigei-sound",
+          "id": "<ID>",
           "name": "爱给网（音效区）",
           "url": "https://www.aigei.com/sound/",
           "home": "aigei.com",
@@ -619,7 +619,7 @@
           }
         },
         {
-          "id": "86pm",
+          "id": "<ID>",
           "name": "86pm 素材网",
           "url": "https://www.86pm.com/",
           "home": "86pm.com",
@@ -642,7 +642,7 @@
           }
         },
         {
-          "id": "kugou",
+          "id": "<ID>",
           "name": "酷狗音乐",
           "url": "https://www.kugou.com/",
           "home": "kugou.com",
@@ -666,13 +666,13 @@
       ]
     },
     {
-      "id": "character-art",
+      "id": "<ID>",
       "name": "歌姬立绘 / 官方素材 / 音源资料",
       "icon": "image",
       "description": "找歌姬官方立绘、LOGO、声库一览与音源资料库。这一栏只放「能直接看到角色形象、声库规格、音源设定」的页面，利用規約与授权条款类页面不再收录（条款会更新，需要时请到各版权方官网现查）。",
       "items": [
         {
-          "id": "piapro",
+          "id": "<ID>",
           "name": "Piapro（Crypton 官方素材站）",
           "url": "https://piapro.net/intl/zh-hans.html",
           "home": "piapro.net",
@@ -694,7 +694,7 @@
           }
         },
         {
-          "id": "vsinger",
+          "id": "<ID>",
           "name": "Vsinger 官方（洛天依等）",
           "url": "https://vsinger.com/",
           "home": "vsinger.com",
@@ -716,7 +716,7 @@
           }
         },
         {
-          "id": "vsinger-luotianyi",
+          "id": "<ID>",
           "name": "洛天依官方角色页",
           "url": "https://vsinger.com/vsinger/",
           "home": "vsinger.com",
@@ -737,7 +737,7 @@
           }
         },
         {
-          "id": "dt-voice-databases",
+          "id": "<ID>",
           "name": "SynthV 声库一览",
           "url": "https://dreamtonics.com/voice-databases/",
           "home": "dreamtonics.com",
@@ -759,7 +759,7 @@
           }
         },
         {
-          "id": "ah-voiceroid",
+          "id": "<ID>",
           "name": "VOICEROID 官方",
           "url": "https://www.ah-soft.com/voiceroid/",
           "home": "ah-soft.com",
@@ -780,7 +780,7 @@
           }
         },
         {
-          "id": "coeiroink",
+          "id": "<ID>",
           "name": "COEIROINK",
           "url": "https://coeiroink.com/",
           "home": "coeiroink.com",
@@ -802,7 +802,7 @@
           }
         },
         {
-          "id": "kagura-booth",
+          "id": "<ID>",
           "name": "かぐら式（UTAU 素材）",
           "url": "https://kagura.booth.pm/",
           "home": "kagura.booth.pm",
@@ -825,7 +825,7 @@
           }
         },
         {
-          "id": "booth",
+          "id": "<ID>",
           "name": "BOOTH",
           "url": "https://booth.pm/",
           "home": "booth.pm",
@@ -847,7 +847,7 @@
           }
         },
         {
-          "id": "utau-wiki-characters",
+          "id": "<ID>",
           "name": "UTAU@wiki（音源与原音设定资料）",
           "url": "https://w.atwiki.jp/utauwiki/pages/1.html",
           "home": "w.atwiki.jp",
@@ -870,7 +870,7 @@
           }
         },
         {
-          "id": "dreamtonics",
+          "id": "<ID>",
           "name": "Dreamtonics 官网",
           "url": "https://dreamtonics.com/",
           "home": "dreamtonics.com",
@@ -894,13 +894,13 @@
       ]
     },
     {
-      "id": "editors",
+      "id": "<ID>",
       "name": "编辑器获取（官方 / 免费 / 开源 / 试用）",
       "icon": "app",
       "description": "只收录官方、开源、免费与官方试用渠道。盗版（「学习版」「破解版」「激活器」）不在本库范围内——那类压缩包是木马与挖矿程序的主要投放渠道，且商用投稿会留下法律风险。",
       "items": [
         {
-          "id": "openutau",
+          "id": "<ID>",
           "name": "OpenUtau（开源免费）",
           "url": "https://github.com/openutau/OpenUtau",
           "home": "github.com/openutau",
@@ -923,7 +923,7 @@
           }
         },
         {
-          "id": "openutau-releases",
+          "id": "<ID>",
           "name": "OpenUtau 官方发布页",
           "url": "https://github.com/openutau/OpenUtau/releases",
           "home": "github.com/openutau",
@@ -944,7 +944,7 @@
           }
         },
         {
-          "id": "utau",
+          "id": "<ID>",
           "name": "UTAU 官方站（飴屋／菖蒲）",
           "url": "https://utau2008.xrea.jp/",
           "home": "utau2008.xrea.jp",
@@ -966,7 +966,7 @@
           }
         },
         {
-          "id": "voicevox",
+          "id": "<ID>",
           "name": "VOICEVOX（免费开源）",
           "url": "https://voicevox.hiroshiba.jp/",
           "home": "voicevox.hiroshiba.jp",
@@ -989,7 +989,7 @@
           }
         },
         {
-          "id": "voicevox-engine",
+          "id": "<ID>",
           "name": "VOICEVOX ENGINE（开发者向）",
           "url": "https://github.com/VOICEVOX/voicevox",
           "home": "github.com/VOICEVOX",
@@ -1011,7 +1011,7 @@
           }
         },
         {
-          "id": "neutrino",
+          "id": "<ID>",
           "name": "Neutrino（免费 AI 歌声合成）",
           "url": "https://neutrino.v2mcdev.com/",
           "home": "neutrino.v2mcdev.com",
@@ -1033,7 +1033,7 @@
           }
         },
         {
-          "id": "svstudio",
+          "id": "<ID>",
           "name": "Synthesizer V Studio 2（官方页）",
           "url": "https://dreamtonics.com/synthesizer-v-studio-2/",
           "home": "dreamtonics.com",
@@ -1056,7 +1056,7 @@
           }
         },
         {
-          "id": "svstudio-basic",
+          "id": "<ID>",
           "name": "Synthesizer V Studio Basic（免费版）",
           "url": "https://dreamtonics.com/synthesizer-v-studio-basic/",
           "home": "dreamtonics.com",
@@ -1079,7 +1079,7 @@
           }
         },
         {
-          "id": "svstudio-resources",
+          "id": "<ID>",
           "name": "SynthV Studio 资源与文档页",
           "url": "https://dreamtonics.com/svstudio-2-resources/",
           "home": "dreamtonics.com",
@@ -1101,7 +1101,7 @@
           }
         },
         {
-          "id": "ace-studio",
+          "id": "<ID>",
           "name": "ACE Studio（官方，含免费额度）",
           "url": "https://acestudio.cn/",
           "home": "acestudio.cn",
@@ -1123,7 +1123,7 @@
           }
         },
         {
-          "id": "deepvocal",
+          "id": "<ID>",
           "name": "DeepVocal（免费）",
           "url": "https://www.deep-vocal.com/",
           "home": "deep-vocal.com",
@@ -1145,7 +1145,7 @@
           }
         },
         {
-          "id": "nnsvs",
+          "id": "<ID>",
           "name": "NNSVS（开源，神经歌声合成）",
           "url": "https://github.com/r9y9/nnsvs",
           "home": "github.com/r9y9",
@@ -1168,7 +1168,7 @@
           }
         },
         {
-          "id": "diffsinger",
+          "id": "<ID>",
           "name": "DiffSinger（开源，扩散模型歌声合成）",
           "url": "https://github.com/openvpi/DiffSinger",
           "home": "github.com/openvpi",
@@ -1190,7 +1190,7 @@
           }
         },
         {
-          "id": "openvpi",
+          "id": "<ID>",
           "name": "OpenVPI 官方文档",
           "url": "https://openvpi.github.io/",
           "home": "openvpi.github.io",
@@ -1211,7 +1211,7 @@
           }
         },
         {
-          "id": "cevio",
+          "id": "<ID>",
           "name": "CeVIO 官方站",
           "url": "https://cevio.jp/",
           "home": "cevio.jp",
@@ -1233,7 +1233,7 @@
           }
         },
         {
-          "id": "cevio-downloads",
+          "id": "<ID>",
           "name": "CeVIO 官方下载页",
           "url": "https://cevio.jp/downloads/",
           "home": "cevio.jp",
@@ -1254,7 +1254,7 @@
           }
         },
         {
-          "id": "vocaloid",
+          "id": "<ID>",
           "name": "VOCALOID 官方站",
           "url": "https://www.vocaloid.com/",
           "home": "vocaloid.com",
@@ -1278,13 +1278,13 @@
       ]
     },
     {
-      "id": "plugins",
+      "id": "<ID>",
       "name": "第三方脚本与插件",
       "icon": "puzzle",
       "description": "翻调效率的真正来源：SynthV 脚本（歌词/音素转换、音高与颤音生成、参数批量处理）、OpenUtau 的 phonemizer 与引擎、VOCALOID Job Plugin、UTAU 原音设定与拆音工具。多为社区开源项目，逐条标了官方/社区，装前看清适用版本。",
       "items": [
         {
-          "id": "vlabeler",
+          "id": "<ID>",
           "name": "vLabeler（对齐标注工具）",
           "url": "https://github.com/sdercolin/vlabeler",
           "home": "github.com/sdercolin",
@@ -1306,7 +1306,7 @@
           }
         },
         {
-          "id": "utaformatix",
+          "id": "<ID>",
           "name": "UtaFormatix（在线格式转换）",
           "url": "https://github.com/sdercolin/utaformatix3",
           "home": "github.com/sdercolin",
@@ -1328,7 +1328,7 @@
           }
         },
         {
-          "id": "world-vocoder",
+          "id": "<ID>",
           "name": "WORLD（声码器，官方）",
           "url": "https://github.com/mmorise/World",
           "home": "github.com/mmorise",
@@ -1350,7 +1350,7 @@
           }
         },
         {
-          "id": "pyworld",
+          "id": "<ID>",
           "name": "pyworld（WORLD 的 Python 封装）",
           "url": "https://github.com/JeremyCCHsu/Python-Wrapper-for-World-Vocoder",
           "home": "github.com/JeremyCCHsu",
@@ -1372,7 +1372,7 @@
           }
         },
         {
-          "id": "rvc",
+          "id": "<ID>",
           "name": "RVC（检索式语音转换）",
           "url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
           "home": "github.com/RVC-Project",
@@ -1394,7 +1394,7 @@
           }
         },
         {
-          "id": "so-vits-svc",
+          "id": "<ID>",
           "name": "so-vits-svc（歌声转换）",
           "url": "https://github.com/svc-develop-team/so-vits-svc",
           "home": "github.com/svc-develop-team",
@@ -1416,7 +1416,7 @@
           }
         },
         {
-          "id": "dt-svstudio-scripts",
+          "id": "<ID>",
           "name": "Dreamtonics 官方脚本仓库（svstudio-scripts）",
           "url": "https://github.com/Dreamtonics/svstudio-scripts",
           "home": "github.com/Dreamtonics",
@@ -1439,7 +1439,7 @@
           }
         },
         {
-          "id": "dt-scripting-manual",
+          "id": "<ID>",
           "name": "Dreamtonics 脚本 API 手册",
           "url": "https://resource.dreamtonics.com/scripting/",
           "home": "resource.dreamtonics.com",
@@ -1462,7 +1462,7 @@
           }
         },
         {
-          "id": "real-voice",
+          "id": "<ID>",
           "name": "real-voice（真实唱法参数迁移）",
           "url": "https://github.com/hataori-p/real-voice",
           "home": "github.com/hataori-p",
@@ -1485,7 +1485,7 @@
           }
         },
         {
-          "id": "sv-articulation-scripts",
+          "id": "<ID>",
           "name": "SynthesizerV_ArticulationScripts（发音批量设置）",
           "url": "https://github.com/aike/SynthesizerV_ArticulationScripts",
           "home": "github.com/aike",
@@ -1508,7 +1508,7 @@
           }
         },
         {
-          "id": "dcuny-synthv-scripts",
+          "id": "<ID>",
           "name": "dcuny/synth-v-scripts（脚本合集）",
           "url": "https://github.com/dcuny/synth-v-scripts",
           "home": "github.com/dcuny",
@@ -1531,7 +1531,7 @@
           }
         },
         {
-          "id": "synthv-suzu-scripts",
+          "id": "<ID>",
           "name": "synthv-suzu-scripts（Suzumof 脚本集）",
           "url": "https://github.com/suzumooof/synthv-suzu-scripts",
           "home": "github.com/suzumooof",
@@ -1554,7 +1554,7 @@
           }
         },
         {
-          "id": "sv-turbo49-scripts",
+          "id": "<ID>",
           "name": "SVScripts / Turbo49（音高曲线自动生成）",
           "url": "https://github.com/Turbo49/SVScripts",
           "home": "github.com/Turbo49",
@@ -1577,7 +1577,7 @@
           }
         },
         {
-          "id": "synthv-to-language-phoneme",
+          "id": "<ID>",
           "name": "synthv-to-language-phoneme-plugin（歌词转音素）",
           "url": "https://github.com/gaf1990/synthv-to-language-phoneme-plugin",
           "home": "github.com/gaf1990",
@@ -1600,7 +1600,7 @@
           }
         },
         {
-          "id": "honki-synthv-translator",
+          "id": "<ID>",
           "name": "synthv_translator（命令行歌词转音素）",
           "url": "https://github.com/honki-bobo/synthv_translator",
           "home": "github.com/honki-bobo",
@@ -1623,7 +1623,7 @@
           }
         },
         {
-          "id": "synthv-enhanced-lyrics-editor",
+          "id": "<ID>",
           "name": "synthv-enhanced-lyrics-editor（歌词批量编辑）",
           "url": "https://github.com/gaf1990/synthv-enhanced-lyrics-editor",
           "home": "github.com/gaf1990",
@@ -1646,7 +1646,7 @@
           }
         },
         {
-          "id": "synthv-lyrics-to-notes",
+          "id": "<ID>",
           "name": "synthv-lyrics-to-notes（歌词转音符）",
           "url": "https://github.com/mnieuwhof/synthv-lyrics-to-notes",
           "home": "github.com/mnieuwhof",
@@ -1669,7 +1669,7 @@
           }
         },
         {
-          "id": "slidingwall-synthv-dictionaries",
+          "id": "<ID>",
           "name": "Slidingwall 跨语言发音词典（SynthV）",
           "url": "https://github.com/Slidingwall/synthv-dictionaries",
           "home": "github.com/Slidingwall",
@@ -1692,7 +1692,7 @@
           }
         },
         {
-          "id": "synthv-zh-dict-dialect",
+          "id": "<ID>",
           "name": "zh-dict-synthv（中文方言扩展词典）",
           "url": "https://github.com/Guest-615695028/zh-dict-synthv",
           "home": "github.com/Guest-615695028",
@@ -1715,7 +1715,7 @@
           }
         },
         {
-          "id": "synthv-korean-dicts",
+          "id": "<ID>",
           "name": "korean-dicts-synthv（韩语用户词典）",
           "url": "https://github.com/latticenail/korean-dicts-synthv",
           "home": "github.com/latticenail",
@@ -1738,7 +1738,7 @@
           }
         },
         {
-          "id": "synthv-musescore-lyrics",
+          "id": "<ID>",
           "name": "musescore_to_synthv（谱面歌词导入）",
           "url": "https://github.com/schef/musescore_to_synthv",
           "home": "github.com/schef",
@@ -1761,7 +1761,7 @@
           }
         },
         {
-          "id": "synthv-note-pitch-panel",
+          "id": "<ID>",
           "name": "synthv-note-pitch-panel（音名面板）",
           "url": "https://github.com/narnarnars-dev/synthv-note-pitch-panel",
           "home": "github.com/narnarnars-dev",
@@ -1784,7 +1784,7 @@
           }
         },
         {
-          "id": "svstudio2-pitch-delta-extractor",
+          "id": "<ID>",
           "name": "pitch-delta-extractor（渲染音高提取）",
           "url": "https://github.com/Umi7899/svstudio2-pitch-delta-extractor",
           "home": "github.com/Umi7899",
@@ -1807,7 +1807,7 @@
           }
         },
         {
-          "id": "synthv-auto-harmony",
+          "id": "<ID>",
           "name": "synthv-auto-harmony（自动和声生成）",
           "url": "https://github.com/karinMusaka/synthv-auto-harmony",
           "home": "github.com/karinMusaka",
@@ -1830,7 +1830,7 @@
           }
         },
         {
-          "id": "synthv-solfege",
+          "id": "<ID>",
           "name": "synthv_solfege（唱名歌词生成）",
           "url": "https://github.com/schef/synthv_solfege",
           "home": "github.com/schef",
@@ -1853,7 +1853,7 @@
           }
         },
         {
-          "id": "openutau-repo-plugins",
+          "id": "<ID>",
           "name": "OpenUtau 官方仓库（引擎与插件机制）",
           "url": "https://github.com/openutau/OpenUtau",
           "home": "github.com/openutau",
@@ -1876,7 +1876,7 @@
           }
         },
         {
-          "id": "ou-dictionary-editor",
+          "id": "<ID>",
           "name": "OpenUtau Dictionary Editor（音素词典编辑器）",
           "url": "https://github.com/Cadlaxa/OpenUtau-Dictionary-Editor",
           "home": "github.com/Cadlaxa",
@@ -1899,7 +1899,7 @@
           }
         },
         {
-          "id": "ou-yaml-dictionaries",
+          "id": "<ID>",
           "name": "OpenUtau YAML 词典合集（多语言）",
           "url": "https://github.com/Cadlaxa/Openutau-Yaml-Dictionaries",
           "home": "github.com/Cadlaxa",
@@ -1922,7 +1922,7 @@
           }
         },
         {
-          "id": "ou-ja-to-ko-phonemizer",
+          "id": "<ID>",
           "name": "JAtoKO Phonemizer（日语音源唱韩语）",
           "url": "https://github.com/yashoujiru1192/JAtoKOPhonemizer",
           "home": "github.com/yashoujiru1192",
@@ -1945,7 +1945,7 @@
           }
         },
         {
-          "id": "ou-chinese-to-jp-phonetic",
+          "id": "<ID>",
           "name": "ChineseToJPPhonetic（中文歌词转日语音素）",
           "url": "https://github.com/WaruKizu/ChineseToJPPhonetic",
           "home": "github.com/WaruKizu",
@@ -1968,7 +1968,7 @@
           }
         },
         {
-          "id": "ou-cantonese-plugins",
+          "id": "<ID>",
           "name": "AzairoNS 粤语插件集（OpenUtau）",
           "url": "https://github.com/AzairoNS/CantonesePlugins",
           "home": "github.com/AzairoNS",
@@ -1991,7 +1991,7 @@
           }
         },
         {
-          "id": "vd-vocaloid-dictionaries",
+          "id": "<ID>",
           "name": "Slidingwall 跨语种词典 + VOCALOID Job Plugin",
           "url": "https://github.com/Slidingwall/vocaloid-dictionaries",
           "home": "github.com/Slidingwall",
@@ -2014,7 +2014,7 @@
           }
         },
         {
-          "id": "btp-jobplugins",
+          "id": "<ID>",
           "name": "btp-jobplugins（VOCALOID Job Plugin 集）",
           "url": "https://github.com/but80/btp-jobplugins",
           "home": "github.com/but80",
@@ -2036,7 +2036,7 @@
           }
         },
         {
-          "id": "generate-harmony",
+          "id": "<ID>",
           "name": "GenerateHarmony（单旋律一键生成和声）",
           "url": "https://github.com/chomstudio/GenerateHarmony",
           "home": "github.com/chomstudio",
@@ -2058,7 +2058,7 @@
           }
         },
         {
-          "id": "vocaloid-copy-notes-with-param",
+          "id": "<ID>",
           "name": "音符参数同步复制 Job Plugin",
           "url": "https://github.com/atonyxu/VOCALOID-CopyNotesWithParam-JobPlugin",
           "home": "github.com/atonyxu",
@@ -2081,7 +2081,7 @@
           }
         },
         {
-          "id": "jobplugin-helper",
+          "id": "<ID>",
           "name": "VOCALOID Job Plugin Helper（开发辅助）",
           "url": "https://github.com/atonyxu/vocaloid-jobplugin-helper",
           "home": "github.com/atonyxu",
@@ -2104,7 +2104,7 @@
           }
         },
         {
-          "id": "jobplugin-chn-docs",
+          "id": "<ID>",
           "name": "VOCALOID Job Plugin API 中文参考",
           "url": "https://github.com/atonyxu/vocaloid-jobplugin-chn",
           "home": "github.com/atonyxu",
@@ -2127,7 +2127,7 @@
           }
         },
         {
-          "id": "setparam-guide",
+          "id": "<ID>",
           "name": "setParam 中文导入教程（原音设定辅助）",
           "url": "https://utaudb.sakura.ne.jp/knowledge.php?id=26",
           "home": "utaudb.sakura.ne.jp",
@@ -2150,7 +2150,7 @@
           }
         },
         {
-          "id": "moresampler2",
+          "id": "<ID>",
           "name": "moresampler2（社区重构版引擎）",
           "url": "https://github.com/Astel123457/moresampler2",
           "home": "github.com/Astel123457",
@@ -2173,7 +2173,7 @@
           }
         },
         {
-          "id": "enunu",
+          "id": "<ID>",
           "name": "ENUNU（给 UTAU 音源加神经网络引擎）",
           "url": "https://github.com/oatsu-gh/ENUNU",
           "home": "github.com/oatsu-gh",
@@ -2196,7 +2196,7 @@
           }
         },
         {
-          "id": "oatsu-utau-plugins",
+          "id": "<ID>",
           "name": "oatsu UTAU 插件集（utaupy 系）",
           "url": "https://github.com/oatsu-gh/utau_plugins",
           "home": "github.com/oatsu-gh",
@@ -2219,7 +2219,7 @@
           }
         },
         {
-          "id": "utau-bulk-envelope",
+          "id": "<ID>",
           "name": "utauBulkEnvelopeEditor（批量包络编辑）",
           "url": "https://github.com/riipah/utauBulkEnvelopeEditor",
           "home": "github.com/riipah",
@@ -2242,7 +2242,7 @@
           }
         },
         {
-          "id": "cvvc-vccv-helper",
+          "id": "<ID>",
           "name": "CVVC/VCCV 歌词辅助插件",
           "url": "https://github.com/ViolaBuddy/CVVC_VCCV_Helper",
           "home": "github.com/ViolaBuddy",
@@ -2265,7 +2265,7 @@
           }
         },
         {
-          "id": "utau-kua",
+          "id": "<ID>",
           "name": "utau-kua（日语音源唱中文）",
           "url": "https://github.com/DYXDQ/utau-kua",
           "home": "github.com/DYXDQ",
@@ -2288,7 +2288,7 @@
           }
         },
         {
-          "id": "vlabeler-overlaps-plugin",
+          "id": "<ID>",
           "name": "vLabeler 重叠检查插件",
           "url": "https://github.com/mark-gl/vlabeler-overlaps-plugin",
           "home": "github.com/mark-gl",
@@ -2311,7 +2311,7 @@
           }
         },
         {
-          "id": "vocal2midi",
+          "id": "<ID>",
           "name": "Vocal2Midi（人声转 MIDI + 歌词注入）",
           "url": "https://github.com/Xiantaidu/Vocal2Midi",
           "home": "github.com/Xiantaidu",
@@ -2334,7 +2334,7 @@
           }
         },
         {
-          "id": "utsu",
+          "id": "<ID>",
           "name": "utsu（开源歌声合成前端）",
           "url": "https://github.com/titinko/utsu",
           "home": "github.com/titinko",
@@ -2358,13 +2358,13 @@
       ]
     },
     {
-      "id": "learning",
+      "id": "<ID>",
       "name": "教程与文档",
       "icon": "book",
       "description": "从入门到进阶的学习入口，优先官方文档（最准），其次是长期可用的社区入口与检索页——单个教程视频容易失效，搜索页能一直用。",
       "items": [
         {
-          "id": "openutau-docs-wiki",
+          "id": "<ID>",
           "name": "OpenUtau 官方文档（Wiki）",
           "url": "https://github.com/openutau/OpenUtau/wiki",
           "home": "github.com/openutau",
@@ -2385,7 +2385,7 @@
           }
         },
         {
-          "id": "svstudio-manual",
+          "id": "<ID>",
           "name": "SynthV Studio 2 官方手册",
           "url": "https://dreamtonics.com/svstudio2-manual/",
           "home": "dreamtonics.com",
@@ -2407,7 +2407,7 @@
           }
         },
         {
-          "id": "cevio-guide",
+          "id": "<ID>",
           "name": "CeVIO 官方帮助",
           "url": "https://cevio.jp/guide/",
           "home": "cevio.jp",
@@ -2429,7 +2429,7 @@
           }
         },
         {
-          "id": "bilibili-openutau",
+          "id": "<ID>",
           "name": "B 站 OpenUtau 教程检索",
           "url": "https://search.bilibili.com/all?keyword=OpenUtau%20%E6%95%99%E7%A8%8B",
           "home": "search.bilibili.com",
@@ -2450,7 +2450,7 @@
           }
         },
         {
-          "id": "bilibili-synthv",
+          "id": "<ID>",
           "name": "B 站 SynthV 调教检索",
           "url": "https://search.bilibili.com/all?keyword=Synthesizer%20V%20%E8%B0%83%E6%95%99",
           "home": "search.bilibili.com",
@@ -2471,7 +2471,7 @@
           }
         },
         {
-          "id": "bilibili-utau",
+          "id": "<ID>",
           "name": "B 站 UTAU 调教入门检索",
           "url": "https://search.bilibili.com/all?keyword=UTAU%20%E8%B0%83%E6%95%99%E5%85%A5%E9%97%A8",
           "home": "search.bilibili.com",
@@ -2492,7 +2492,7 @@
           }
         },
         {
-          "id": "bilibili-fanchang",
+          "id": "<ID>",
           "name": "B 站「翻调」综合检索",
           "url": "https://search.bilibili.com/all?keyword=%E7%BF%BB%E8%B0%83",
           "home": "search.bilibili.com",
@@ -2513,7 +2513,7 @@
           }
         },
         {
-          "id": "bilibili-mixing",
+          "id": "<ID>",
           "name": "B 站混音教程检索",
           "url": "https://search.bilibili.com/all?keyword=%E6%B7%B7%E9%9F%B3%20%E6%95%99%E7%A8%8B",
           "home": "search.bilibili.com",
@@ -2537,13 +2537,13 @@
       ]
     },
     {
-      "id": "safety",
+      "id": "<ID>",
       "name": "安全提示：盗版声库与木马风险",
       "icon": "shield",
       "description": "这一栏不是资源清单，是保命指南。翻调圈最典型的翻车方式不是调得不好，而是为了省几百块下了「学习版」，结果机器被挖矿、账号被盗、工程文件被加密。以下是要点与查毒入口。",
       "items": [
         {
-          "id": "virustotal",
+          "id": "<ID>",
           "name": "VirusTotal（多引擎在线查毒）",
           "url": "https://www.virustotal.com/gui/home/upload",
           "home": "virustotal.com",
@@ -2565,7 +2565,7 @@
           }
         },
         {
-          "id": "virustotal-docs",
+          "id": "<ID>",
           "name": "VirusTotal 工作原理说明",
           "url": "https://docs.virustotal.com/docs/how-it-works",
           "home": "docs.virustotal.com",
@@ -2586,7 +2586,7 @@
           }
         },
         {
-          "id": "hybrid-analysis",
+          "id": "<ID>",
           "name": "Hybrid Analysis（行为沙箱）",
           "url": "https://hybrid-analysis.com/",
           "home": "hybrid-analysis.com",
@@ -2608,7 +2608,7 @@
           }
         },
         {
-          "id": "any-run",
+          "id": "<ID>",
           "name": "ANY.RUN（交互式沙箱）",
           "url": "https://any.run/",
           "home": "any.run",
@@ -2631,7 +2631,7 @@
           }
         },
         {
-          "id": "jotti",
+          "id": "<ID>",
           "name": "Jotti 在线查毒",
           "url": "https://virusscan.jotti.org/",
           "home": "virusscan.jotti.org",
@@ -2652,7 +2652,7 @@
           }
         },
         {
-          "id": "huorong",
+          "id": "<ID>",
           "name": "火绒安全（国内杀软）",
           "url": "https://www.huorong.cn/",
           "home": "huorong.cn",
@@ -2673,7 +2673,7 @@
           }
         },
         {
-          "id": "cert-org-cn",
+          "id": "<ID>",
           "name": "CNCERT 国家互联网应急中心",
           "url": "https://www.cert.org.cn/",
           "home": "cert.org.cn",
@@ -2694,7 +2694,7 @@
           }
         },
         {
-          "id": "12321",
+          "id": "<ID>",
           "name": "12321 网络不良信息举报中心",
           "url": "https://www.12321.cn/",
           "home": "12321.cn",
@@ -2715,7 +2715,7 @@
           }
         },
         {
-          "id": "kaspersky-resource",
+          "id": "<ID>",
           "name": "卡巴斯基资源中心",
           "url": "https://www.kaspersky.com/resource-center",
           "home": "kaspersky.com",
@@ -2736,7 +2736,7 @@
           }
         },
         {
-          "id": "trendmicro-news",
+          "id": "<ID>",
           "name": "趋势科技安全新闻",
           "url": "https://www.trendmicro.com/vinfo/us/security/news/",
           "home": "trendmicro.com",

@@ -23,13 +23,13 @@ use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
 
-pub use simple::{load_config, quiet_command, save_config, ApiError};
+pub use simple::{load_config, quiet_command, ApiError};
 
 /// 全局共享状态。极简 —— 只有真的需要跨请求共享的东西才放进来。
 pub struct AppState {
     /// 程序根目录（含 app/web/index.html 的那一层）
     pub root: PathBuf,
-    /// 配置（读写 app/server/data/config.json，和 Node 版同一个文件）
+    /// 配置（读写 app/data/config.json）
     pub config: Mutex<Value>,
     /// 进程启动时间，/api/health 用
     pub started: Instant,
@@ -52,9 +52,9 @@ impl AppState {
         self.config.lock().map(|c| c.clone()).unwrap_or_else(|_| json!({}))
     }
 
-    /// 数据目录（app/server/data）
+    /// 数据目录（app/data）—— 配置、资源库、拼音词典都放这里
     pub fn data_dir(&self) -> PathBuf {
-        self.root.join("app").join("server").join("data")
+        self.root.join("app").join("data")
     }
 
     /// 外部工具目录（tools/）

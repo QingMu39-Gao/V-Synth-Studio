@@ -1,0 +1,18 @@
+{
+  "ok": true,
+  "info": {
+    "available": true,
+    "probed": true,
+    "durationSec": 1,
+    "sizeBytes": 88278,
+    "bitrate": 706224,
+    "formatName": "wav",
+    "audio": {
+      "codec": "pcm_s16le",
+      "sampleRate": 44100,
+      "channels": 1,
+      "bitrate": 705600
+    },
+    "video": null
+  }
+}

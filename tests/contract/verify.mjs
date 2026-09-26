@@ -14,9 +14,14 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { tmpdir } from 'node:os'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const FIXTURES = join(__dirname, 'fixtures')
+
+/** 必须和 capture.mjs 算出同样的路径 */
+const SAMPLES = join(__dirname, '..', 'samples')
+const WORK = join(tmpdir(), 'qingmu-contract')
 
 const PORT = Number(process.argv[2] ?? 0) || 8788
 const BASE = `http://127.0.0.1:${PORT}`
@@ -31,15 +36,19 @@ function normalize(value, keyPath = '') {
     return out
   }
   if (typeof value === 'string') {
+    // B 站签名取流地址每次都不一样（和 capture.mjs 同一套规则）
+    if (/^https?:\/\//.test(value) && /deadline=|upsig=/.test(value)) return '<URL>'
     if (/^[A-Za-z]:\\/.test(value) || value.startsWith('/')) {
       if (/port|url|address/i.test(keyPath)) return '<URL>'
       return '<PATH>'
     }
     if (/^\d{4}-\d{2}-\d{2}T/.test(value)) return '<TIME>'
+    if (/(^|[.\[])(jobId|id)$/i.test(keyPath)) return '<ID>'
     return value
   }
   if (typeof value === 'number') {
     if (/pid|port|uptime|startedAt|at$|Time$/i.test(keyPath)) return '<NUM>'
+    if (/(^|[.\[])(view|like|coin|favorite|share|reply|danmaku)$/i.test(keyPath)) return '<NUM>'
     return value
   }
   return value
@@ -144,6 +153,15 @@ const INTENDED = [
     match: /\.aliases(\[\d+\])?:/,
     why: '别名集合在个别声库上差一个 token；匹配是「命中任一别名」，不影响结果',
   },
+  {
+    /*
+     * /api/jobs 返回的是**进程内**的任务表：Node 那边跑完一轮抓取后任务还留着，
+     * Rust 这边是刚起来的进程，重启后自然是空的。数量对不上不代表接口有问题，
+     * 所以只放过长度这一条 —— 下面每条任务仍然逐字段比较。
+     */
+    match: /^jobs\.jobs: 长度不符/,
+    why: '/api/jobs 是进程内状态，两边进程活的时间不一样；只比形状，不比条数',
+  },
 ]
 
 function isIntended(diffLine) {
@@ -164,6 +182,18 @@ const ROUTES = {
   voices: '/api/voices',
   'fs-list-c': '/api/fs/list?path=' + encodeURIComponent('C:\\\\'),
   'fs-list-tools': '/api/fs/list?path=' + encodeURIComponent(process.cwd()),
+}
+
+/** POST 路由：夹具名 → [路径, 请求体]。清单必须和 capture.mjs 的 POST_ROUTES 一致。 */
+const POST_ROUTES = {
+  'video-parse-bili': ['/api/video/parse', { url: 'https://www.bilibili.com/video/BV1GJ411x7h7' }],
+  'video-parse-nourl': ['/api/video/parse', { url: '' }],
+  'video-download-nourl': ['/api/video/download', { url: '' }],
+  'video-download-badbv': ['/api/video/download', { url: 'not-a-link', source: 'bilibili', outDir: WORK, mode: 'audio' }],
+  'audio-probe-tone': ['/api/audio/probe', { input: join(SAMPLES, 'tone-1s.wav') }],
+  'audio-probe-nofile': ['/api/audio/probe', { input: join(WORK, 'no-such-file.wav') }],
+  'audio-run-noinput': ['/api/audio/run', { action: 'convert', input: '', output: '' }],
+  'audio-run-badaction': ['/api/audio/run', { action: 'nope', input: join(SAMPLES, 'tone-1s.wav'), output: join(WORK, 'out.wav') }],
 }
 
 async function main() {
@@ -195,19 +225,27 @@ async function main() {
   const files = readdirSync(FIXTURES).filter((f) => f.endsWith('.json') && !f.startsWith('_'))
   for (const file of files) {
     const name = file.replace(/\.json$/, '')
-    const route = ROUTES[name]
+    const expected = JSON.parse(readFileSync(join(FIXTURES, file), 'utf8'))
+    const post = POST_ROUTES[name]
+    const route = post ? post[0] : ROUTES[name]
     if (!route) {
-      console.log(`  ○ ${name.padEnd(16)} 没有对应的路由定义，跳过`)
+      console.log(`  ○ ${name.padEnd(20)} 没有对应的路由定义，跳过`)
       continue
     }
 
-    const expected = JSON.parse(readFileSync(join(FIXTURES, file), 'utf8'))
     let actual
     try {
-      const res = await fetch(BASE + route, { signal: AbortSignal.timeout(30000) })
+      const res = await fetch(BASE + route, post
+        ? {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(post[1]),
+            signal: AbortSignal.timeout(150000),
+          }
+        : { signal: AbortSignal.timeout(30000) })
       actual = normalize(await res.json())
     } catch (err) {
-      console.log(`  ✗ ${name.padEnd(16)} 请求失败：${err.message}`)
+      console.log(`  ✗ ${name.padEnd(20)} 请求失败：${err.message}`)
       fail += 1
       continue
     }
@@ -219,10 +257,10 @@ async function main() {
 
     if (diffs.length === 0) {
       const note = intended.length ? `（另有 ${intended.length} 处有意差异）` : ''
-      console.log(`  ✓ ${name.padEnd(16)} 一致${note}`)
+      console.log(`  ✓ ${name.padEnd(20)} 一致${note}`)
       pass += 1
     } else {
-      console.log(`  ✗ ${name.padEnd(16)} ${diffs.length} 处差异${intended.length ? `（另有 ${intended.length} 处有意差异）` : ''}`)
+      console.log(`  ✗ ${name.padEnd(20)} ${diffs.length} 处差异${intended.length ? `（另有 ${intended.length} 处有意差异）` : ''}`)
       for (const d of diffs.slice(0, 8)) console.log(`      ${d}`)
       if (diffs.length > 8) console.log(`      …还有 ${diffs.length - 8} 处`)
       allDiffs[name] = diffs

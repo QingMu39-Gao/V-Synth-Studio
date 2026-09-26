@@ -104,7 +104,7 @@ pub fn audio_formats() -> Value {
 /// 故意不在这里解析那份 315 KB 的 JSON —— 只在真正用到（歌词转拼音）时才读。
 /// 所以 `chars` 在解析前是 0，`cached` 表示有没有缓存过。前端只是显示状态，不影响功能。
 pub fn pinyin_summary(root: &Path) -> Value {
-    let path = root.join("app").join("server").join("data").join("pinyin.json");
+    let path = root.join("app").join("data").join("pinyin.json");
     match std::fs::metadata(&path) {
         Ok(md) => json!({
             "loaded": true,

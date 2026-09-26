@@ -23,6 +23,10 @@ tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
 futures-util = "0.3"
 
+# B 站弹幕接口返回的是裸 deflate（没有 Content-Encoding 头），要自己解。
+# 它本来就在依赖树里（tauri 带着 flate2），不是为这个功能新拉的。
+flate2 = "1"
+
 # 从 LibreSVIP 插件的 .yapsy-plugin 里读格式元数据（其实是个 INI）
 # 不引 INI 库 —— 那个格式只有 key = value，自己解析十行就够
 
@@ -42,8 +46,12 @@ windows-sys = { version = "0.59", features = [
 ] }
 
 [profile.release]
-# 发布版压体积：桌面外壳本身没什么计算量，优化体积比优化速度划算
+# 发布版压体积：这个外壳没有计算密集的活儿，压体积比压速度划算。
+#
+# 但不用 `lto = true` + `codegen-units = 1` —— 那是最慢的组合，
+# 一千个依赖 crate 要编几十分钟，而体积只比 thin LTO 小几个百分点。
+# thin LTO 拿到绝大部分收益，构建时间少一大截。
 opt-level = "s"
-lto = true
-codegen-units = 1
+lto = "thin"
+codegen-units = 16
 strip = true

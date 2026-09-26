@@ -2,7 +2,7 @@
  * 设置视图
  *
  * 六块内容：路径 / 声库目录 / 视频下载 / 外部工具 / 自定义程序 / 关于
- * 配置存在服务端 app/server/data/config.json，通过 /api/config 读写；
+ * 配置存在服务端 app/data/config.json，通过 /api/config 读写；
  * 默认下载画质只是前端的记忆值（localStorage），真实画质在下载时会重新选。
  *
  * 注意：服务端返回的 bilibiliCookie 是脱敏字符串「已设置」，
@@ -200,7 +200,7 @@ function cookieHelp() {
     ]),
     h('div.small.dim', '也可以按 F12 → Network，随便点开一个请求，在 Cookie 请求头里找 SESSDATA= 后面那段。'),
     h('div.divider'),
-    h('div.small.muted', 'Cookie 只写进本机的 app/server/data/config.json，不会上传到任何服务器；它等同于你的登录凭证，别截图、别外发。'),
+    h('div.small.muted', 'Cookie 只写进本机的 app/data/config.json，不会上传到任何服务器；它等同于你的登录凭证，别截图、别外发。'),
   ])
 }
 

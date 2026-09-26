@@ -2,7 +2,7 @@
   "ok": true,
   "formats": [
     {
-      "id": "ace",
+      "id": "<ID>",
       "name": "ACE Virtual Singer",
       "exts": [
         "ace"
@@ -13,7 +13,7 @@
       "canWrite": true
     },
     {
-      "id": "acep",
+      "id": "<ID>",
       "name": "ACE Studio",
       "exts": [
         "acep",
@@ -25,7 +25,7 @@
       "canWrite": true
     },
     {
-      "id": "aisp",
+      "id": "<ID>",
       "name": "AISingers",
       "exts": [
         "aisp"
@@ -36,7 +36,7 @@
       "canWrite": true
     },
     {
-      "id": "ass",
+      "id": "<ID>",
       "name": "ASS",
       "exts": [
         "ass"
@@ -47,7 +47,7 @@
       "canWrite": true
     },
     {
-      "id": "ccs",
+      "id": "<ID>",
       "name": "CeVIO",
       "exts": [
         "ccs"
@@ -58,7 +58,7 @@
       "canWrite": true
     },
     {
-      "id": "ds",
+      "id": "<ID>",
       "name": "DiffSinger",
       "exts": [
         "ds"
@@ -69,7 +69,7 @@
       "canWrite": true
     },
     {
-      "id": "dspx",
+      "id": "<ID>",
       "name": "DSPX",
       "exts": [
         "dspx"
@@ -80,7 +80,7 @@
       "canWrite": true
     },
     {
-      "id": "dv",
+      "id": "<ID>",
       "name": "DeepVocal",
       "exts": [
         "dv",
@@ -92,7 +92,7 @@
       "canWrite": true
     },
     {
-      "id": "json",
+      "id": "<ID>",
       "name": "JsonSvip",
       "exts": [
         "json"
@@ -103,7 +103,7 @@
       "canWrite": true
     },
     {
-      "id": "lrc",
+      "id": "<ID>",
       "name": "LRC",
       "exts": [
         "lrc"
@@ -114,7 +114,7 @@
       "canWrite": true
     },
     {
-      "id": "mid",
+      "id": "<ID>",
       "name": "MIDI",
       "exts": [
         "mid",
@@ -126,7 +126,7 @@
       "canWrite": true
     },
     {
-      "id": "mtp",
+      "id": "<ID>",
       "name": "Muta",
       "exts": [
         "mtp"
@@ -137,7 +137,7 @@
       "canWrite": true
     },
     {
-      "id": "musicxml",
+      "id": "<ID>",
       "name": "MusicXML",
       "exts": [
         "musicxml",
@@ -150,7 +150,7 @@
       "canWrite": true
     },
     {
-      "id": "nn",
+      "id": "<ID>",
       "name": "NIAONiao",
       "exts": [
         "nn"
@@ -161,7 +161,7 @@
       "canWrite": true
     },
     {
-      "id": "ppsf",
+      "id": "<ID>",
       "name": "Ppsf",
       "exts": [
         "ppsf"
@@ -172,7 +172,7 @@
       "canWrite": true
     },
     {
-      "id": "ps_project",
+      "id": "<ID>",
       "name": "PocketSinger",
       "exts": [
         "ps_project"
@@ -183,7 +183,7 @@
       "canWrite": true
     },
     {
-      "id": "s5p",
+      "id": "<ID>",
       "name": "SynthV Editor",
       "exts": [
         "s5p"
@@ -194,7 +194,7 @@
       "canWrite": true
     },
     {
-      "id": "srt",
+      "id": "<ID>",
       "name": "SRT",
       "exts": [
         "srt"
@@ -205,7 +205,7 @@
       "canWrite": true
     },
     {
-      "id": "svg",
+      "id": "<ID>",
       "name": "Svg",
       "exts": [
         "svg"
@@ -216,7 +216,7 @@
       "canWrite": true
     },
     {
-      "id": "svip",
+      "id": "<ID>",
       "name": "BinSvip",
       "exts": [
         "svip"
@@ -227,7 +227,7 @@
       "canWrite": true
     },
     {
-      "id": "svip3",
+      "id": "<ID>",
       "name": "Svip3",
       "exts": [
         "svip3"
@@ -238,7 +238,7 @@
       "canWrite": true
     },
     {
-      "id": "svp",
+      "id": "<ID>",
       "name": "SynthV Studio",
       "exts": [
         "svp"
@@ -249,7 +249,7 @@
       "canWrite": true
     },
     {
-      "id": "tlp",
+      "id": "<ID>",
       "name": "TuneLab Legacy",
       "exts": [
         "tlp"
@@ -260,7 +260,7 @@
       "canWrite": true
     },
     {
-      "id": "tlpx",
+      "id": "<ID>",
       "name": "TuneLab",
       "exts": [
         "tlpx"
@@ -271,7 +271,7 @@
       "canWrite": true
     },
     {
-      "id": "tsmsln",
+      "id": "<ID>",
       "name": "TSMSln",
       "exts": [
         "tsmsln"
@@ -282,7 +282,7 @@
       "canWrite": true
     },
     {
-      "id": "tssln",
+      "id": "<ID>",
       "name": "TSSln",
       "exts": [
         "tssln"
@@ -293,7 +293,7 @@
       "canWrite": true
     },
     {
-      "id": "ufdata",
+      "id": "<ID>",
       "name": "UFData",
       "exts": [
         "ufdata"
@@ -304,7 +304,7 @@
       "canWrite": true
     },
     {
-      "id": "ust",
+      "id": "<ID>",
       "name": "Ust",
       "exts": [
         "ust"
@@ -315,7 +315,7 @@
       "canWrite": true
     },
     {
-      "id": "ustx",
+      "id": "<ID>",
       "name": "Ustx",
       "exts": [
         "ustx"
@@ -326,7 +326,7 @@
       "canWrite": true
     },
     {
-      "id": "vfp",
+      "id": "<ID>",
       "name": "VOX Factory",
       "exts": [
         "vfp"
@@ -337,7 +337,7 @@
       "canWrite": true
     },
     {
-      "id": "vog",
+      "id": "<ID>",
       "name": "Vogen",
       "exts": [
         "vog"
@@ -348,7 +348,7 @@
       "canWrite": true
     },
     {
-      "id": "vpr",
+      "id": "<ID>",
       "name": "Vpr",
       "exts": [
         "vpr"
@@ -359,7 +359,7 @@
       "canWrite": true
     },
     {
-      "id": "vshp",
+      "id": "<ID>",
       "name": "VocalShifter",
       "exts": [
         "vshp"
@@ -370,7 +370,7 @@
       "canWrite": true
     },
     {
-      "id": "vspx",
+      "id": "<ID>",
       "name": "VocalSharp",
       "exts": [
         "vspx"
@@ -381,7 +381,7 @@
       "canWrite": true
     },
     {
-      "id": "vsq",
+      "id": "<ID>",
       "name": "Vsq",
       "exts": [
         "vsq"
@@ -392,7 +392,7 @@
       "canWrite": true
     },
     {
-      "id": "vsqx",
+      "id": "<ID>",
       "name": "Vsqx",
       "exts": [
         "vsqx"
@@ -403,7 +403,7 @@
       "canWrite": true
     },
     {
-      "id": "vvproj",
+      "id": "<ID>",
       "name": "VVProj",
       "exts": [
         "vvproj"
@@ -414,7 +414,7 @@
       "canWrite": true
     },
     {
-      "id": "vxf",
+      "id": "<ID>",
       "name": "VX-β",
       "exts": [
         "vxf"
@@ -425,7 +425,7 @@
       "canWrite": true
     },
     {
-      "id": "xvsq",
+      "id": "<ID>",
       "name": "Cadencii",
       "exts": [
         "xvsq"
@@ -436,7 +436,7 @@
       "canWrite": true
     },
     {
-      "id": "y77",
+      "id": "<ID>",
       "name": "Y77",
       "exts": [
         "y77"
@@ -449,7 +449,7 @@
   ],
   "editors": [
     {
-      "id": "vocaloid6",
+      "id": "<ID>",
       "name": "VOCALOID6",
       "vendor": "Yamaha",
       "category": "editor",
@@ -463,7 +463,7 @@
       "how": "已知路径"
     },
     {
-      "id": "vocaloid5",
+      "id": "<ID>",
       "name": "VOCALOID5",
       "vendor": "Yamaha",
       "category": "editor",
@@ -477,7 +477,7 @@
       "how": null
     },
     {
-      "id": "synthv2",
+      "id": "<ID>",
       "name": "Synthesizer V Studio 2 Pro",
       "vendor": "Dreamtonics",
       "category": "editor",
@@ -490,7 +490,7 @@
       "how": "已知路径"
     },
     {
-      "id": "synthv1",
+      "id": "<ID>",
       "name": "Synthesizer V Studio",
       "vendor": "Dreamtonics",
       "category": "editor",
@@ -503,7 +503,7 @@
       "how": null
     },
     {
-      "id": "cevio",
+      "id": "<ID>",
       "name": "CeVIO AI / CS",
       "vendor": "CeVIO",
       "category": "editor",
@@ -516,7 +516,7 @@
       "how": "已知路径"
     },
     {
-      "id": "openutau",
+      "id": "<ID>",
       "name": "OpenUtau",
       "vendor": "OpenUtau",
       "category": "editor",
@@ -530,7 +530,7 @@
       "how": "已知路径"
     },
     {
-      "id": "utau",
+      "id": "<ID>",
       "name": "UTAU",
       "vendor": "飴屋／菖蒲",
       "category": "editor",
@@ -543,7 +543,7 @@
       "how": null
     },
     {
-      "id": "acestudio",
+      "id": "<ID>",
       "name": "ACE Studio",
       "vendor": "ACE Studio",
       "category": "editor",
@@ -556,7 +556,7 @@
       "how": null
     },
     {
-      "id": "deepvocal",
+      "id": "<ID>",
       "name": "DeepVocal",
       "vendor": "DeepVocal",
       "category": "editor",
@@ -569,7 +569,7 @@
       "how": null
     },
     {
-      "id": "voicevox",
+      "id": "<ID>",
       "name": "VOICEVOX",
       "vendor": "Hiroshiba",
       "category": "editor",
@@ -580,7 +580,7 @@
       "how": null
     },
     {
-      "id": "uvr",
+      "id": "<ID>",
       "name": "Ultimate Vocal Remover (离线人声分离)",
       "vendor": "社区",
       "category": "tool",
@@ -591,7 +591,7 @@
       "how": "已知路径"
     },
     {
-      "id": "vlabeler",
+      "id": "<ID>",
       "name": "vLabeler（原音设定标注）",
       "vendor": "sdercolin",
       "category": "tool",
@@ -602,7 +602,7 @@
       "how": "已知路径"
     },
     {
-      "id": "flstudio",
+      "id": "<ID>",
       "name": "FL Studio",
       "vendor": "Image-Line",
       "category": "daw",
@@ -615,7 +615,7 @@
       "how": null
     },
     {
-      "id": "oremo",
+      "id": "<ID>",
       "name": "oremo（声库录音工具）",
       "vendor": "UTAU 生态",
       "category": "voicebank",
@@ -626,7 +626,7 @@
       "how": null
     },
     {
-      "id": "recstar",
+      "id": "<ID>",
       "name": "RecStar（声库录音工具）",
       "vendor": "UTAU 生态",
       "category": "voicebank",
@@ -637,7 +637,7 @@
       "how": null
     },
     {
-      "id": "textgrid2oto",
+      "id": "<ID>",
       "name": "TextGrid2oto（自动原音设定）",
       "vendor": "UTAU 生态",
       "category": "voicebank",
@@ -1018,7 +1018,7 @@
   },
   "transformOps": [
     {
-      "id": "transpose",
+      "id": "<ID>",
       "label": "转调",
       "type": "number",
       "unit": "半音",
@@ -1026,7 +1026,7 @@
       "hint": "正数升调，负数降调，音高曲线同步移动"
     },
     {
-      "id": "lyrics",
+      "id": "<ID>",
       "label": "歌词改写",
       "type": "select",
       "default": "none",
@@ -1066,7 +1066,7 @@
       ]
     },
     {
-      "id": "quantize",
+      "id": "<ID>",
       "label": "节奏量化",
       "type": "select",
       "default": "none",
@@ -1094,7 +1094,7 @@
       ]
     },
     {
-      "id": "retargetBpm",
+      "id": "<ID>",
       "label": "速度重设",
       "type": "number",
       "unit": "BPM",
@@ -1102,7 +1102,7 @@
       "hint": "0 表示不改；填写后所有音符时间会等比缩放以保持绝对时长"
     },
     {
-      "id": "shiftBeats",
+      "id": "<ID>",
       "label": "整体平移",
       "type": "number",
       "unit": "拍",
@@ -1110,21 +1110,21 @@
       "hint": "常用 +1 拍留出前奏空位"
     },
     {
-      "id": "fitRange",
+      "id": "<ID>",
       "label": "音域适配",
       "type": "toggle",
       "default": false,
       "hint": "超出范围时整体平移八度而不是删音符"
     },
     {
-      "id": "clampRange",
+      "id": "<ID>",
       "label": "限制音高到",
       "type": "rangeKeys",
       "default": null,
       "hint": "把超范围音符吸附到边界（例如目标声库音域窄）"
     },
     {
-      "id": "removeShort",
+      "id": "<ID>",
       "label": "清理过短音符",
       "type": "number",
       "unit": "tick",
@@ -1132,33 +1132,33 @@
       "hint": "建议 30；0 表示不清"
     },
     {
-      "id": "mergeTied",
+      "id": "<ID>",
       "label": "合并连续同音",
       "type": "toggle",
       "default": false
     },
     {
-      "id": "mergeTracks",
+      "id": "<ID>",
       "label": "合并全部轨道",
       "type": "toggle",
       "default": false,
       "hint": "目标格式单轨时使用"
     },
     {
-      "id": "splitByPitch",
+      "id": "<ID>",
       "label": "按音高拆轨",
       "type": "toggle",
       "default": false
     },
     {
-      "id": "stripParams",
+      "id": "<ID>",
       "label": "丢弃参数曲线",
       "type": "toggle",
       "default": false,
       "hint": "目标格式不支持参数时避免产生垃圾数据"
     },
     {
-      "id": "resampleParams",
+      "id": "<ID>",
       "label": "参数曲线重采样",
       "type": "number",
       "unit": "tick",

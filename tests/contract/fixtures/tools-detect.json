@@ -6,7 +6,7 @@
   "root": "<PATH>",
   "editors": [
     {
-      "id": "vocaloid6",
+      "id": "<ID>",
       "name": "VOCALOID6",
       "vendor": "Yamaha",
       "category": "editor",
@@ -20,7 +20,7 @@
       "how": "已知路径"
     },
     {
-      "id": "vocaloid5",
+      "id": "<ID>",
       "name": "VOCALOID5",
       "vendor": "Yamaha",
       "category": "editor",
@@ -34,7 +34,7 @@
       "how": null
     },
     {
-      "id": "synthv2",
+      "id": "<ID>",
       "name": "Synthesizer V Studio 2 Pro",
       "vendor": "Dreamtonics",
       "category": "editor",
@@ -47,7 +47,7 @@
       "how": "已知路径"
     },
     {
-      "id": "synthv1",
+      "id": "<ID>",
       "name": "Synthesizer V Studio",
       "vendor": "Dreamtonics",
       "category": "editor",
@@ -60,7 +60,7 @@
       "how": null
     },
     {
-      "id": "cevio",
+      "id": "<ID>",
       "name": "CeVIO AI / CS",
       "vendor": "CeVIO",
       "category": "editor",
@@ -73,7 +73,7 @@
       "how": "已知路径"
     },
     {
-      "id": "openutau",
+      "id": "<ID>",
       "name": "OpenUtau",
       "vendor": "OpenUtau",
       "category": "editor",
@@ -87,7 +87,7 @@
       "how": "已知路径"
     },
     {
-      "id": "utau",
+      "id": "<ID>",
       "name": "UTAU",
       "vendor": "飴屋／菖蒲",
       "category": "editor",
@@ -100,7 +100,7 @@
       "how": null
     },
     {
-      "id": "acestudio",
+      "id": "<ID>",
       "name": "ACE Studio",
       "vendor": "ACE Studio",
       "category": "editor",
@@ -113,7 +113,7 @@
       "how": null
     },
     {
-      "id": "deepvocal",
+      "id": "<ID>",
       "name": "DeepVocal",
       "vendor": "DeepVocal",
       "category": "editor",
@@ -126,7 +126,7 @@
       "how": null
     },
     {
-      "id": "voicevox",
+      "id": "<ID>",
       "name": "VOICEVOX",
       "vendor": "Hiroshiba",
       "category": "editor",
@@ -137,7 +137,7 @@
       "how": null
     },
     {
-      "id": "uvr",
+      "id": "<ID>",
       "name": "Ultimate Vocal Remover (离线人声分离)",
       "vendor": "社区",
       "category": "tool",
@@ -148,7 +148,7 @@
       "how": "已知路径"
     },
     {
-      "id": "vlabeler",
+      "id": "<ID>",
       "name": "vLabeler（原音设定标注）",
       "vendor": "sdercolin",
       "category": "tool",
@@ -159,7 +159,7 @@
       "how": "已知路径"
     },
     {
-      "id": "flstudio",
+      "id": "<ID>",
       "name": "FL Studio",
       "vendor": "Image-Line",
       "category": "daw",
@@ -172,7 +172,7 @@
       "how": null
     },
     {
-      "id": "oremo",
+      "id": "<ID>",
       "name": "oremo（声库录音工具）",
       "vendor": "UTAU 生态",
       "category": "voicebank",
@@ -183,7 +183,7 @@
       "how": null
     },
     {
-      "id": "recstar",
+      "id": "<ID>",
       "name": "RecStar（声库录音工具）",
       "vendor": "UTAU 生态",
       "category": "voicebank",
@@ -194,7 +194,7 @@
       "how": null
     },
     {
-      "id": "textgrid2oto",
+      "id": "<ID>",
       "name": "TextGrid2oto（自动原音设定）",
       "vendor": "UTAU 生态",
       "category": "voicebank",

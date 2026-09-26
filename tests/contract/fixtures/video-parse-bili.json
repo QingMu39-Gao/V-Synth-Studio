@@ -1,0 +1,169 @@
+{
+  "ok": true,
+  "source": "bilibili",
+  "kind": "video",
+  "info": {
+    "kind": "video",
+    "bvid": "BV1GJ411x7h7",
+    "aid": 80433022,
+    "title": "【官方 MV】Never Gonna Give You Up - Rick Astley",
+    "cover": "http://i1.hdslb.com/bfs/archive/5242750857121e05146d5d5b13a47a2a6dd36e98.jpg",
+    "desc": "-",
+    "durationSec": 213,
+    "publishDate": "2019-12-31",
+    "uploader": "索尼音乐中国",
+    "uploaderMid": 486906719,
+    "view": "<NUM>",
+    "like": "<NUM>",
+    "pages": [
+      {
+        "cid": 137649199,
+        "page": 1,
+        "title": "Never Gonna Give You Up - Rick Astley",
+        "durationSec": 213,
+        "width": 1920,
+        "height": 1080
+      }
+    ],
+    "season": null,
+    "url": "https://www.bilibili.com/video/BV1GJ411x7h7"
+  },
+  "currentPage": {
+    "cid": 137649199,
+    "page": 1,
+    "title": "Never Gonna Give You Up - Rick Astley",
+    "durationSec": 213,
+    "width": 1920,
+    "height": 1080
+  },
+  "streams": {
+    "mode": "dash",
+    "acceptQuality": [
+      112,
+      80,
+      64,
+      32,
+      16
+    ],
+    "acceptDescription": [
+      "高清 1080P+",
+      "高清 1080P",
+      "高清 720P",
+      "清晰 480P",
+      "流畅 360P"
+    ],
+    "video": [
+      {
+        "kind": "video",
+        "id": 32,
+        "qualityName": "480P 清晰",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 786766,
+        "mimeType": "video/mp4",
+        "codecs": "avc1.64001F",
+        "width": 852,
+        "height": 480,
+        "frameRate": "25"
+      },
+      {
+        "kind": "video",
+        "id": 16,
+        "qualityName": "360P 流畅",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 350253,
+        "mimeType": "video/mp4",
+        "codecs": "avc1.64001E",
+        "width": 640,
+        "height": 360,
+        "frameRate": "25"
+      }
+    ],
+    "videoAvc": [
+      {
+        "kind": "video",
+        "id": 32,
+        "qualityName": "480P 清晰",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 786766,
+        "mimeType": "video/mp4",
+        "codecs": "avc1.64001F",
+        "width": 852,
+        "height": 480,
+        "frameRate": "25"
+      },
+      {
+        "kind": "video",
+        "id": 16,
+        "qualityName": "360P 流畅",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 350253,
+        "mimeType": "video/mp4",
+        "codecs": "avc1.64001E",
+        "width": 640,
+        "height": 360,
+        "frameRate": "25"
+      }
+    ],
+    "videoHevc": [],
+    "audio": [
+      {
+        "kind": "audio",
+        "id": 30280,
+        "qualityName": "192K 高码率",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 203786,
+        "mimeType": "audio/mp4",
+        "codecs": "mp4a.40.2"
+      },
+      {
+        "kind": "audio",
+        "id": 30232,
+        "qualityName": "132K 中码率",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 102931,
+        "mimeType": "audio/mp4",
+        "codecs": "mp4a.40.2"
+      },
+      {
+        "kind": "audio",
+        "id": 30216,
+        "qualityName": "64K 低码率",
+        "url": "<URL>",
+        "backupUrls": [
+          "<URL>",
+          "<URL>"
+        ],
+        "bandwidth": 43962,
+        "mimeType": "audio/mp4",
+        "codecs": "mp4a.40.5"
+      }
+    ],
+    "durationMs": 212393,
+    "isPreview": false
+  },
+  "hasCookie": false
+}

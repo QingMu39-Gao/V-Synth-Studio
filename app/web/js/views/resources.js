@@ -2,7 +2,7 @@
  * 资源库视图
  *
  * 只收录官方、免费、开源、试用渠道的链接，不托管任何文件。
- * 数据来自服务端 app/server/data/resources.json（经 /api/resources 返回）：
+ * 数据来自服务端 app/data/resources.json（经 /api/resources 返回）：
  *   { updatedAt, notice, groups:[{ id, name, icon, description, items:[…] }] }
  *   item: { id, name, url, home, tags[], region, cost, desc, tip, official, verified:{ status, checkedAt, note } }
  */
@@ -401,7 +401,7 @@ export async function render(ctx) {
     if (loadErr) {
       mount(emptyBox, h('div.card', [
         alertBox('err', escapeHtml(loadErr), '资源库读取失败'),
-        h('div.small.muted', { style: { marginTop: '10px' } }, '如果 app/server/data/resources.json 还没生成，等它写好后点下面重试即可。'),
+        h('div.small.muted', { style: { marginTop: '10px' } }, '如果 app/data/resources.json 还没生成，等它写好后点下面重试即可。'),
         h('div.row.gap-sm', { style: { marginTop: '10px' } }, [
           button('重试', { onClick: () => load(true) }),
         ]),
@@ -414,7 +414,7 @@ export async function render(ctx) {
       mount(emptyBox, emptyState({
         iconName: 'library',
         title: '资源库还是空的',
-        desc: 'app/server/data/resources.json 里还没有条目，或文件尚未生成。点“重新载入”再试一次。',
+        desc: 'app/data/resources.json 里还没有条目，或文件尚未生成。点“重新载入”再试一次。',
         action: button('重新载入', { onClick: () => load(true) }),
       }))
       observeGroups()
