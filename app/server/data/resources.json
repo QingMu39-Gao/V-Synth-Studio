@@ -1,0 +1,2770 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-26",
+  "notice": "安全提示：盗版（「学习版」「破解版」「绿色版」）声库编辑器与声库压缩包，是木马、挖矿程序、勒索软件的高发区，尤其是「无数字签名 + 二次打包 + 带启动器 exe」的组合。本库只收录官方、开源与免费试用渠道。任何来源不明的 exe/7z/rar 在运行前，请先用 VirusTotal 比对哈希；国内机器请同时用火绒/Defender 全盘扫描。",
+  "groups": [
+    {
+      "id": "stem-separation",
+      "name": "人声分离 / 伴奏提取",
+      "icon": "wave",
+      "description": "翻调第一步：把人声与伴奏拆开，拿到干净的人声轨做音高参考、拿到伴奏轨做后期对轨。在线站点省事但要把干音上传到别人服务器，离线方案吃显卡但素材不出本机。",
+      "items": [
+        {
+          "id": "mvsep",
+          "name": "MVSEP",
+          "url": "https://mvsep.com/zh",
+          "home": "mvsep.com",
+          "tags": [
+            "人声分离",
+            "在线",
+            "免费额度",
+            "中文界面"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "翻调圈口碑最好的在线分离站，聚合了 Demucs、MDX、BS-Roformer 等一大批模型，可自选模型与输出格式，中文界面直接可用。对翻调最实用的三点：能出高质量人声/伴奏双轨、支持批量排队、可以直接导出 WAV 给后期。",
+          "tip": "免费额度按积分计，长曲与高规格模型更耗分；整轨上传前先剪出需要的段落省积分。干音涉及未发布作品时优先走下面的离线方案，不要把未公开的干音传到公网。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "uvr5",
+          "name": "Ultimate Vocal Remover 5 (UVR5)",
+          "url": "https://github.com/Anjok07/ultimatevocalremovergui",
+          "home": "github.com/Anjok07",
+          "tags": [
+            "离线",
+            "开源",
+            "免费",
+            "本机已装",
+            "GPU"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "本机已安装（H:\\ChiXiaoYangUVR5）。这是翻调工作站的主力分离工具：完全离线、批量处理、可自由选 MDX/VR/Demucs 模型并叠加二次分离，人声轨不会有任何上传风险，导出的 wav 直接进宿主对轨。",
+          "tip": "先用 Demucs v4 出四轨（人声/鼓/贝斯/其他），再对「其他」轨做二次分离能抠出更干净的和声与残响。显卡显存不足时把 segment 调小、batch 设为 1。模型文件单独下载放进 models 目录，别用第三方打包的「整合包」。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "uvr-models",
+          "name": "UVR 模型库（官方 release）",
+          "url": "https://github.com/TRvlvr/model_repo/releases",
+          "home": "github.com/TRvlvr",
+          "tags": [
+            "离线",
+            "模型下载",
+            "免费"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "UVR5 的官方模型仓库，MDX、VR、Demucs 各系列模型都在这里发布。翻调遇到「人声发闷」「伴奏带人声尾巴」通常换模型就能解决，比调参数管用得多。",
+          "tip": "只从这个官方 release 页下载 .pth/.onnx，不要用来路不明的「模型整合包」，那是木马常见藏身处。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "demucs",
+          "name": "Demucs（Meta 官方）",
+          "url": "https://github.com/facebookresearch/demucs",
+          "home": "github.com/facebookresearch",
+          "tags": [
+            "离线",
+            "开源",
+            "命令行",
+            "四轨分离"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "Meta 开源的音源分离模型，htdemucs 是当前分离质量最好的一档，命令行一条命令出四轨。适合写脚本批量处理整张专辑，或者嵌进你自己的工作流。",
+          "tip": "追求质量加 --two-stems=vocals 只出人声/伴奏，速度更快；想要和声细节就保留四轨再手动合并。有 N 卡时务必走 CUDA，CPU 跑 htdemucs 一张专辑会非常慢。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "demucs-onnx",
+          "name": "demucs.onnx（ONNX 移植）",
+          "url": "https://github.com/sevagh/demucs.onnx",
+          "home": "github.com/sevagh",
+          "tags": [
+            "离线",
+            "开源",
+            "ONNX",
+            "免 Python"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把 Demucs 转成 ONNX 运行的移植版，省掉 PyTorch 那一整套臃肿依赖。适合不想折腾 Python 环境、又想要 Demucs 质量的机器，也方便集成进别的程序。",
+          "tip": "同作者的 demucs.cpp（https://github.com/sevagh/demucs.cpp）是纯 C++ 版本，更轻量，适合做进发行版或低配机器。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "spleeter",
+          "name": "Spleeter（Deezer 官方）",
+          "url": "https://github.com/deezer/spleeter",
+          "home": "github.com/deezer",
+          "tags": [
+            "离线",
+            "开源",
+            "快速",
+            "老牌"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "老牌开源分离工具，速度极快、资源占用低，适合做初筛或大批量粗分离。质量不如 Demucs，但胜在快，用来快速确认一首歌值不值得精修很划算。",
+          "tip": "5stems 模型能分出钢琴，做钢琴伴奏翻调时有用。分离残留（水声感）比 Demucs 明显，正式交付还是换 Demucs 或 UVR。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "open-unmix",
+          "name": "Open-Unmix (UMX)",
+          "url": "https://github.com/sigsep/open-unmix-pytorch",
+          "home": "github.com/sigsep",
+          "tags": [
+            "离线",
+            "开源",
+            "研究向"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "学术界的标准分离基线，文档与论文齐全。如果你的需求偏研究或需要可复现的对照结果，用它比用整合包靠谱。",
+          "tip": "日常翻调直接用 UVR5 更快；这个更适合需要读论文、改模型、做实验的场景。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "audio-separator",
+          "name": "audio-separator（Python 库）",
+          "url": "https://github.com/nomadkaraoke/python-audio-separator",
+          "home": "github.com/nomadkaraoke",
+          "tags": [
+            "离线",
+            "开源",
+            "可脚本化",
+            "批处理"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把 UVR 那一整套模型封装成 Python 包，一行代码就能在脚本里跑分离。想把「下载 → 分离 → 转格式」串成全自动流水线的话，这是最省事的入口。",
+          "tip": "支持直接指定 UVR 的模型文件名，等于用代码调用你熟悉的那些模型，不必开 GUI。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vocalremover-org",
+          "name": "Vocal Remover（在线）",
+          "url": "https://vocalremover.org/zh/",
+          "home": "vocalremover.org",
+          "tags": [
+            "人声分离",
+            "在线",
+            "免登录",
+            "中文"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "免登录、免注册的在线分离，打开就能用，还附带变调、BPM 检测、剪辑等小工具。适合临时救急：手边没装 UVR、又只想快速听一下伴奏效果的时候。",
+          "tip": "免费版对文件大小和时长有限制，音质不如 Demucs 系。别把未发布的原创干音传上去。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "moises",
+          "name": "Moises",
+          "url": "https://moises.ai/",
+          "home": "moises.ai",
+          "tags": [
+            "人声分离",
+            "在线",
+            "和弦识别",
+            "移动端"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "除了分离还能自动识别和弦、BPM、调性，并支持变速变调后仍保持音质。翻调前期扒谱、定调时很省事，手机上也能用。",
+          "tip": "免费额度有限，高级模型要订阅。识别出的和弦建议当参考而不是标准答案，复杂编曲仍需人耳校对。",
+          "verified": {
+            "status": 307,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok",
+            "note": "重定向 → /zh"
+          }
+        },
+        {
+          "id": "lalal",
+          "name": "LALAL.AI",
+          "url": "https://www.lalal.ai/",
+          "home": "lalal.ai",
+          "tags": [
+            "人声分离",
+            "在线",
+            "高音质",
+            "付费为主"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "分离质量稳定的商业在线服务，人声残留少，适合对伴奏干净度要求高的成品交付。支持分轨出多个乐器轨。",
+          "tip": "按分钟计费，试听片段免费。批量处理前先算好时长，避免额度浪费在不需要的曲目上。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        }
+      ]
+    },
+    {
+      "id": "free-audio",
+      "name": "免费音源 / 伴奏 / 素材音乐",
+      "icon": "music",
+      "description": "找可合法使用的伴奏、纯音乐、音效与 loop。翻调最怕的是「视频做完了被判侵权」，所以每条都标了授权类型，并明确写清能不能下 WAV。",
+      "items": [
+        {
+          "id": "fma",
+          "name": "Free Music Archive",
+          "url": "https://freemusicarchive.org/",
+          "home": "freemusicarchive.org",
+          "tags": [
+            "WAV 部分可下",
+            "CC 授权",
+            "免登录",
+            "整曲下载"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "老牌 CC 音乐库，曲风覆盖极广，很多曲目提供 MP3 下载，部分作者额外提供 WAV/FLAC 无损。翻调找纯音乐伴奏、BGM 时这里是首选，授权标注清晰，商用与否一眼可辨。",
+          "tip": "能否下 WAV 取决于上传者，页面上「Download」区会列出可用格式，没有 WAV 就别指望。务必逐曲看清是 CC BY、CC BY-SA 还是 CC BY-NC（NC = 禁止商用，接商单时不能用）。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "musopen",
+          "name": "Musopen",
+          "url": "https://musopen.org/",
+          "home": "musopen.org",
+          "tags": [
+            "WAV 需会员",
+            "MP3 免费",
+            "古典",
+            "公版"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "专注古典乐的录音与乐谱库，录音多为公版或 CC 授权，是找钢琴、弦乐、管弦伴奏最正当的来源。翻调古典曲目时，用它拿伴奏比从视频站扒音轨干净得多。",
+          "tip": "MP3 可免费下载，WAV 无损通常需要会员或单独购买。公版指的是「作曲」公版，具体某次录音的版权另算，下载页会标明。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "ccmixter",
+          "name": "ccMixter",
+          "url": "https://ccmixter.org/",
+          "home": "ccmixter.org",
+          "tags": [
+            "WAV 可下",
+            "CC 授权",
+            "分轨素材",
+            "Remix"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "以 remix / a cappella / 分轨素材为主的 CC 社区，很多作品直接提供分轨或干声包下载，是要「现成人声素材」或「清唱干音」时的宝库。",
+          "tip": "大量上传者提供 WAV/无损压缩包。注意 CC BY-NC 的素材不能用于商业投稿或变现视频，署名要求也要照做。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "jamendo",
+          "name": "Jamendo",
+          "url": "https://www.jamendo.com/",
+          "home": "jamendo.com",
+          "tags": [
+            "MP3 免费",
+            "WAV 需授权",
+            "CC 授权",
+            "商用需许可"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "独立音乐人平台，按 CC 协议可免费试听与下载 MP3，风格偏流行与电子，适合找现代感的 BGM 或改编底子。",
+          "tip": "免费下载的是 MP3；WAV 无损与商用授权需要走它的商业许可（付费）。个人非商用投稿看清 CC 条款即可。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "freesound",
+          "name": "Freesound",
+          "url": "https://freesound.org/",
+          "home": "freesound.org",
+          "tags": [
+            "WAV 可下",
+            "CC 授权",
+            "音效",
+            "需注册"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "最大的 CC 音效库，绝大多数素材就是 WAV 原档，音效、环境声、乐器单音、人声切片都有。翻调做转场、加环境音、找素材音色时几乎绕不开它。",
+          "tip": "下载需注册免费账号。每个素材的 CC 类型不同（有 CC0 也有 CC BY-NC），批量用之前先筛授权；CC0 的最省心，可商用免署名。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "pixabay-music",
+          "name": "Pixabay Music",
+          "url": "https://pixabay.com/music/",
+          "home": "pixabay.com",
+          "tags": [
+            "MP3 免费",
+            "WAV 不提供",
+            "免署名",
+            "可商用"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "授权极宽松（类 CC0，可商用免署名）的免费音乐库，曲目量大、下载即用，适合快速给翻调视频配 BGM，不用担心投稿被判侵权。",
+          "tip": "提供 MP3 下载，不提供 WAV 无损。虽然免署名，但建议在简介里留一句来源，减少后续争议。站点有反爬，脚本访问会 403，属正常现象，浏览器打开即可。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "chosic",
+          "name": "Chosic",
+          "url": "https://www.chosic.com/free-music/all/",
+          "home": "chosic.com",
+          "tags": [
+            "MP3 免费",
+            "WAV 不提供",
+            "CC 授权",
+            "可筛选"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "把各来源的免费音乐做了聚合和标签化，能按情绪、场景、授权类型筛选，找「适合人声翻唱的留白伴奏」时比漫无目的翻库高效。",
+          "tip": "主要提供 MP3。它只是聚合入口，授权仍以原站为准，点进详情页确认 CC 类型再下载。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "looperman",
+          "name": "Looperman",
+          "url": "https://www.looperman.com/",
+          "home": "looperman.com",
+          "tags": [
+            "WAV 可下",
+            "免登录下载",
+            "Loop 素材",
+            "需看条款"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "巨大的免费 loop 与干声素材库，大量人声 hook、和声堆叠、乐器 loop 直接提供 WAV。想给翻调加和声层、找现成的人声切片时非常高效。",
+          "tip": "下载是 WAV 原档且多数不需登录。授权为「可免费用，但不得转售或再分发素材本身」，商用前请读该 loop 页面上的作者说明。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "bbc-sfx",
+          "name": "BBC Sound Effects",
+          "url": "https://sound-effects.bbcrewind.co.uk/",
+          "home": "sound-effects.bbcrewind.co.uk",
+          "tags": [
+            "WAV 可下",
+            "需看授权",
+            "音效",
+            "专业级"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "BBC 公开的历史音效档案，几万条专业录制音效，可下载 WAV。做翻调 MV 的环境声、拟音、氛围铺垫时，素材质量比普通免费站高一档。",
+          "tip": "个人/教育用途宽松，商业用途需按站点说明申请授权。下载格式可在页面上选 WAV。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "mixkit",
+          "name": "Mixkit",
+          "url": "https://mixkit.co/free-stock-music/",
+          "home": "mixkit.co",
+          "tags": [
+            "MP3 免费",
+            "WAV 不提供",
+            "可商用免署名"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "授权简单粗暴（可商用、免署名）的免费音乐与音效站，曲目偏现代编曲，拿来当翻调视频的 BGM 很省心。",
+          "tip": "提供 MP3，不下放 WAV。授权虽宽松，但禁止把音乐本身作为主要商品转售。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "free-stock-music",
+          "name": "Free Stock Music",
+          "url": "https://www.free-stock-music.com/",
+          "home": "free-stock-music.com",
+          "tags": [
+            "MP3 免费",
+            "WAV 视曲目",
+            "CC BY",
+            "需署名"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "以 CC BY 为主的免费曲库，分类清晰（按情绪、乐器、场景），适合快速找到符合翻调气质的底乐。",
+          "tip": "部分曲目提供无损。CC BY 必须署名，站点提供署名模板，照抄即可。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "zapsplat",
+          "name": "ZapSplat",
+          "url": "https://www.zapsplat.com/",
+          "home": "zapsplat.com",
+          "tags": [
+            "WAV 可下",
+            "音效",
+            "需注册",
+            "免费额度"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "老牌免费音效库，提供 WAV 下载，音效种类极其细致。翻调做细节音、转场、拟音时很实用。",
+          "tip": "免费账号有每日下载条数限制，且要求署名；升级会员可免署名。站点有反爬，浏览器访问正常。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "sonniss",
+          "name": "Sonniss GDC 音效包",
+          "url": "https://sonniss.com/gameaudiogdc",
+          "home": "sonniss.com",
+          "tags": [
+            "WAV 可下",
+            "免版税",
+            "超大合集",
+            "可商用"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "每年 GDC 放出的免版税专业音效包，几十 GB 全 WAV、可商用免署名。做翻调 MV 的音效层基本一次囤够，是最划算的素材来源之一。",
+          "tip": "体积很大（单年数十 GB），按需下载别一次全拉。下载方式是网盘/直链，认准 sonniss.com 官方页面，别从转载站拿。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "tosound",
+          "name": "淘声网",
+          "url": "https://www.tosound.com/",
+          "home": "tosound.com",
+          "tags": [
+            "WAV 可下",
+            "国内可直连",
+            "音效+音乐",
+            "授权需看单条"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "国内可直连的音效与音乐素材站，聚合了大量免费音效，检索中文关键词就好用，不需要额外网络条件。适合需要中文关键词检索、又不想折腾网络的场景。",
+          "tip": "素材来源混杂，授权要逐条看详情页，标「可商用」的再用在商单里；标不明的只当参考，别直接发布。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "aigei-music",
+          "name": "爱给网（音乐区）",
+          "url": "https://www.aigei.com/music/",
+          "home": "aigei.com",
+          "tags": [
+            "国内可直连",
+            "MP3 为主",
+            "WAV 需会员",
+            "会员制",
+            "授权分级"
+          ],
+          "region": "国内",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "国内老牌素材站，音乐与音效量大、中文检索友好、直连速度快。找中文风格的配乐与音效比海外站更对味。",
+          "tip": "免费账号下载受限，多数素材需会员；免费额度一般是 MP3，**WAV 无损多需会员**。授权分「个人/商用」多档，商用务必买对应授权。有反爬，脚本访问 403 属正常。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "aigei-sound",
+          "name": "爱给网（音效区）",
+          "url": "https://www.aigei.com/sound/",
+          "home": "aigei.com",
+          "tags": [
+            "国内可直连",
+            "音效",
+            "WAV 需会员",
+            "会员制"
+          ],
+          "region": "国内",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "同站音效分区，中文标签细致（转场、笑声、机械、自然环境等），做翻调视频的音效层时检索效率高。",
+          "tip": "同音乐区：免费多为 MP3，**WAV 无损一般需会员**。注意授权等级与会员限制。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "86pm",
+          "name": "86pm 素材网",
+          "url": "https://www.86pm.com/",
+          "home": "86pm.com",
+          "tags": [
+            "国内可直连",
+            "免费素材",
+            "WAV/MP3 视素材",
+            "音效+配乐"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "国内免费素材站，音效与配乐可直接下载，作为爱给网之外的补充来源，中文检索方便。",
+          "tip": "部分素材提供 WAV 原档、部分只有 MP3，下载页会标明格式。站点规模较小，授权说明不如大站规范，用于正式商业项目前请确认可商用范围。",
+          "verified": {
+            "status": 301,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok",
+            "note": "重定向 → http://86pm.com/"
+          }
+        },
+        {
+          "id": "kugou",
+          "name": "酷狗音乐",
+          "url": "https://www.kugou.com/",
+          "home": "kugou.com",
+          "tags": [
+            "国内可直连",
+            "找伴奏",
+            "WAV 不提供",
+            "需注意版权"
+          ],
+          "region": "国内",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "国内主流音乐平台，找伴奏版、纯音乐版与原曲参考最方便，用来确认原曲调性、BPM、编曲结构很快。",
+          "tip": "只提供平台内缓存/试听，**不提供 WAV 无损下载**。平台上的伴奏受版权保护，仅可作个人练习参考，不能直接用于公开发布或商单；正式投稿请用有明确授权的素材或自制伴奏。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        }
+      ]
+    },
+    {
+      "id": "character-art",
+      "name": "歌姬立绘 / 官方素材 / 音源资料",
+      "icon": "image",
+      "description": "找歌姬官方立绘、LOGO、声库一览与音源资料库。这一栏只放「能直接看到角色形象、声库规格、音源设定」的页面，利用規約与授权条款类页面不再收录（条款会更新，需要时请到各版权方官网现查）。",
+      "items": [
+        {
+          "id": "piapro",
+          "name": "Piapro（Crypton 官方素材站）",
+          "url": "https://piapro.net/intl/zh-hans.html",
+          "home": "piapro.net",
+          "tags": [
+            "官方素材",
+            "中文界面",
+            "初音未来等",
+            "需看规约"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "Crypton 官方运营的创作社区与素材站，初音未来、镜音双子、巡音露卡等的官方立绘、LOGO、素材包都从这里发布，是获取「正版角色图」最正当的入口。",
+          "tip": "素材分「可商用」与「非商用」两类，下载页会标注。使用前必须读同站的角色使用规约，尤其是商用与周边贩售的限制。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vsinger",
+          "name": "Vsinger 官方（洛天依等）",
+          "url": "https://vsinger.com/",
+          "home": "vsinger.com",
+          "tags": [
+            "官方",
+            "中文",
+            "洛天依",
+            "国内直连"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "洛天依、言和、乐正绫等中文歌姬的官方站，中文界面直连即开。做中文翻调时角色形象与官方物料从这里找最稳，也方便对接官方活动与征稿。",
+          "tip": "中文歌姬的二次创作规约与日方不同，商用与周边规则需看官方公告；拿不准时优先走官方渠道问询。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vsinger-luotianyi",
+          "name": "洛天依官方角色页",
+          "url": "https://vsinger.com/vsinger/",
+          "home": "vsinger.com",
+          "tags": [
+            "官方",
+            "角色设定",
+            "中文"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "洛天依的角色设定与官方介绍页，画立绘前对齐官方配色、服装细节与设定，能避免「同人味太重、与官方形象冲突」的问题。",
+          "tip": "官方设定图只作参考，直接描图或改色发布仍有侵权风险，请自行绘制或使用授权素材。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "dt-voice-databases",
+          "name": "SynthV 声库一览",
+          "url": "https://dreamtonics.com/voice-databases/",
+          "home": "dreamtonics.com",
+          "tags": [
+            "官方",
+            "声库列表",
+            "选型参考"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "官方声库清单与定位说明，选声库前先在这里对一遍音色、语言支持与授权范围，避免买回来发现不适合中文翻调。",
+          "tip": "注意区分「官方声库」与「第三方声库」（如 AHS、Voice Makers 发行），授权条款各归各家。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "ah-voiceroid",
+          "name": "VOICEROID 官方",
+          "url": "https://www.ah-soft.com/voiceroid/",
+          "home": "ah-soft.com",
+          "tags": [
+            "官方",
+            "角色素材",
+            "结月缘等"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "VOICEROID 系列官方页，含结月缘、东北家族等经典角色的官方设定与素材说明，做这些角色的翻调时可用于对齐形象。",
+          "tip": "VOICEROID 是朗读软件不是歌唱软件，用它做翻调需要额外处理音高；角色素材使用仍受 AHS 规约约束。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "coeiroink",
+          "name": "COEIROINK",
+          "url": "https://coeiroink.com/",
+          "home": "coeiroink.com",
+          "tags": [
+            "免费",
+            "官方",
+            "角色立绘",
+            "需看各角色条款"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "免费语音合成引擎，附带多个官方角色立绘与配音，授权相对宽松。作为免费角色形象的补充来源很实用。",
+          "tip": "各角色由不同作者提供，商用条件逐个确认；部分角色仅限非商用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "kagura-booth",
+          "name": "かぐら式（UTAU 素材）",
+          "url": "https://kagura.booth.pm/",
+          "home": "kagura.booth.pm",
+          "tags": [
+            "素材商店",
+            "UTAU",
+            "免费+付费",
+            "授权清晰"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": false,
+          "desc": "知名的 UTAU 原音设定与素材作者店铺，发布大量免费与付费的 UTAU 相关素材、工具与设定文件，是 UTAU 圈的实用资源点。",
+          "tip": "BOOTH 上每个商品的授权单独写明，下载前读商品说明；免费素材也常有「禁止再配布」条款。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "booth",
+          "name": "BOOTH",
+          "url": "https://booth.pm/",
+          "home": "booth.pm",
+          "tags": [
+            "素材市场",
+            "同人",
+            "正版购买渠道"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "pixiv 旗下的同人/数字素材市场，是购买声库、立绘素材、UTAU 音源、3D 模型的**正版渠道**。想支持作者又不想踩盗版坑，就到这里买。",
+          "tip": "免费商品同样受作者条款约束；付费商品注意是否为「个人使用限定」，商单用途需另购授权。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "utau-wiki-characters",
+          "name": "UTAU@wiki（音源与原音设定资料）",
+          "url": "https://w.atwiki.jp/utauwiki/pages/1.html",
+          "home": "w.atwiki.jp",
+          "tags": [
+            "资料库",
+            "UTAU",
+            "原音设定",
+            "社区维护"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "UTAU 圈规模最大的社区 wiki，收录大量音源的角色设定、配布页与使用条件，也有原音设定、引擎与工具的技术条目。找冷门音源、查老工具用法时这里往往还有记录。",
+          "tip": "社区维护、信息可能滞后；配布页与规约请以作者原始发布页为准。站点有反爬，浏览器访问正常。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "dreamtonics",
+          "name": "Dreamtonics 官网",
+          "url": "https://dreamtonics.com/",
+          "home": "dreamtonics.com",
+          "tags": [
+            "官方",
+            "SynthV",
+            "声库厂商"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "Synthesizer V 与旗下 AI 声库的官方站，角色视觉、声库介绍、使用条款与商用授权说明都从这里发布。用 SynthV 声库做翻调，这里是合规依据。",
+          "tip": "站点对脚本访问返回 403，浏览器打开正常。声库的商用条件按「每个声库」分别规定，别默认全部可商用。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        }
+      ]
+    },
+    {
+      "id": "editors",
+      "name": "编辑器获取（官方 / 免费 / 开源 / 试用）",
+      "icon": "app",
+      "description": "只收录官方、开源、免费与官方试用渠道。盗版（「学习版」「破解版」「激活器」）不在本库范围内——那类压缩包是木马与挖矿程序的主要投放渠道，且商用投稿会留下法律风险。",
+      "items": [
+        {
+          "id": "openutau",
+          "name": "OpenUtau（开源免费）",
+          "url": "https://github.com/openutau/OpenUtau",
+          "home": "github.com/openutau",
+          "tags": [
+            "开源",
+            "免费",
+            "本机已装",
+            "跨平台",
+            "支持多引擎"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "当代 UTAU 生态的事实标准编辑器，本机已安装（H:\\OpenUtau）。免费开源、支持 UTAU 与 DiffSinger 等多引擎、原生多轨与钢琴卷帘、可直接导出 wav，是把「翻调」做成正经工作流的最佳选择。",
+          "tip": "从 GitHub Releases 下载，别用第三方「整合包」。装好后先跑一遍引擎测试确认 resampler 路径；音源（voicebank）放对目录才能被识别。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "openutau-releases",
+          "name": "OpenUtau 官方发布页",
+          "url": "https://github.com/openutau/OpenUtau/releases",
+          "home": "github.com/openutau",
+          "tags": [
+            "官方下载",
+            "开源",
+            "版本历史"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "OpenUtau 唯一的官方下载入口，含各平台安装包与更新日志。遇到 bug 先看这里的新版本是否已修。",
+          "tip": "GitHub 在本机会偶发连接超时，多刷新几次或用镜像加速；下载后建议核对文件哈希。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "utau",
+          "name": "UTAU 官方站（飴屋／菖蒲）",
+          "url": "https://utau2008.xrea.jp/",
+          "home": "utau2008.xrea.jp",
+          "tags": [
+            "官方",
+            "免费",
+            "经典",
+            "Windows"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "UTAU 本体的作者官方站，免费下载。虽然界面古老，但音源生态庞大、资源最多，很多经典音源只保证在 UTAU 本体上正常工作。",
+          "tip": "本体是免费软件，但**原音设定（oto.ini）与音源**另有作者规约。用 UTAU 做商用投稿前，请确认所用音源允许商用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "voicevox",
+          "name": "VOICEVOX（免费开源）",
+          "url": "https://voicevox.hiroshiba.jp/",
+          "home": "voicevox.hiroshiba.jp",
+          "tags": [
+            "免费",
+            "开源",
+            "角色丰富",
+            "可商用（有条件）",
+            "本机可用"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "完全免费的日语音声合成软件，内置多个角色，GUI 开箱即用、可直接导出 wav。做日语翻调、短句和声、旁白式段落时零成本上手。",
+          "tip": "本质是朗读合成，歌唱表现有限，适合说话/念白/短句而非长段旋律；商用条件按各角色规约逐个确认。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "voicevox-engine",
+          "name": "VOICEVOX ENGINE（开发者向）",
+          "url": "https://github.com/VOICEVOX/voicevox",
+          "home": "github.com/VOICEVOX",
+          "tags": [
+            "开源",
+            "免费",
+            "API",
+            "可集成"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "VOICEVOX 的引擎与客户端源码，提供 HTTP API，可以批量生成语音、嵌进自己的工具链。想把合成步骤自动化时用这个。",
+          "tip": "引擎可单独部署，配合官方 Docker 镜像可在无 GUI 环境批量出音。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "neutrino",
+          "name": "Neutrino（免费 AI 歌声合成）",
+          "url": "https://neutrino.v2mcdev.com/",
+          "home": "neutrino.v2mcdev.com",
+          "tags": [
+            "免费",
+            "AI 合成",
+            "日语",
+            "轻量"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "免费的神经网络歌声合成工具，体积小、上手快，输入歌词与音高即可出日语歌声。想体验「AI 声库」效果又不想花钱时的最佳试验田。",
+          "tip": "模型与角色有限，中文支持弱；适合日语曲目或作为和声层。输出后仍需在宿主里做对轨与后期。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "svstudio",
+          "name": "Synthesizer V Studio 2（官方页）",
+          "url": "https://dreamtonics.com/synthesizer-v-studio-2/",
+          "home": "dreamtonics.com",
+          "tags": [
+            "官方",
+            "有免费版",
+            "AI 声库",
+            "本机已装"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "当前最强的中文/日语 AI 歌声合成编辑器，本机已安装 Pro 版本（H:\\Synthesizer V Studio 2 Pro）。翻调效率与自然度远超传统拼接合成，是正经干活的主力工具。",
+          "tip": "官网对脚本访问返回 403，用浏览器打开。编辑器与「声库」是分开授权的：单独的免费版编辑器只能配免费声库。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "svstudio-basic",
+          "name": "Synthesizer V Studio Basic（免费版）",
+          "url": "https://dreamtonics.com/synthesizer-v-studio-basic/",
+          "home": "dreamtonics.com",
+          "tags": [
+            "免费版",
+            "官方",
+            "入门首选",
+            "可升级"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "SynthV 的官方免费版本，功能足够完成一首完整翻调（含音高曲线、颤音、音量包络），只是轨道数与部分高级功能受限。想零成本体验 AI 歌声合成就从这里开始。",
+          "tip": "Basic 只能加载免费声库（如官方免费发布的声库）；买了 Pro 声库需升级到 Pro 编辑器才能用。升级是在同一账号下补差价。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "svstudio-resources",
+          "name": "SynthV Studio 资源与文档页",
+          "url": "https://dreamtonics.com/svstudio-2-resources/",
+          "home": "dreamtonics.com",
+          "tags": [
+            "官方文档",
+            "手册",
+            "脚本资源"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "Dreamtonics 官方整理的 SynthV 资源汇总：用户手册、脚本库、音素表、快捷键等。调教遇到具体功能疑问时比搜索教程更快。",
+          "tip": "同站 script 子域（resource.dreamtonics.com）已失效返回 404，脚本请走 GitHub 的 dreamtonics 组织页。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "ace-studio",
+          "name": "ACE Studio（官方，含免费额度）",
+          "url": "https://acestudio.cn/",
+          "home": "acestudio.cn",
+          "tags": [
+            "官方",
+            "AI 声库",
+            "有免费额度",
+            "中文支持好"
+          ],
+          "region": "均可",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "国产 AI 歌声合成工作站，中文咬字与情感表现优秀，官方提供免费试用额度，可先试后买。中文翻调想换音色时的主流备选。",
+          "tip": "免费额度按合成时长消耗，试用期内先拿短片段验证音色是否合适再正式做全曲。商用需按其授权等级确认。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "deepvocal",
+          "name": "DeepVocal（免费）",
+          "url": "https://www.deep-vocal.com/",
+          "home": "deep-vocal.com",
+          "tags": [
+            "免费",
+            "中文",
+            "AI 合成",
+            "国产"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "免费的国产歌声合成编辑器，支持自制声库与中文合成，社区有大量免费中文音源。预算为零但想做中文翻调时值得一试。",
+          "tip": "生态活跃度不如 SynthV/OpenUtau，遇到问题可参考资料较少；音源质量参差，挑口碑好的。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "nnsvs",
+          "name": "NNSVS（开源，神经歌声合成）",
+          "url": "https://github.com/r9y9/nnsvs",
+          "home": "github.com/r9y9",
+          "tags": [
+            "开源",
+            "免费",
+            "可自训练",
+            "研究向"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "开源的神经网络歌声合成工具包，可以从自己的录音数据训练专属声库。想做出「独一无二的音色」或研究合成原理，这是标准起点。",
+          "tip": "需要自己准备与标注数据集，门槛明显高于开箱即用的编辑器；建议先跑通官方示例再上自己的数据。",
+          "verified": {
+            "status": 301,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok",
+            "note": "重定向 → https://github.com/nnsvs/nnsvs"
+          }
+        },
+        {
+          "id": "diffsinger",
+          "name": "DiffSinger（开源，扩散模型歌声合成）",
+          "url": "https://github.com/openvpi/DiffSinger",
+          "home": "github.com/openvpi",
+          "tags": [
+            "开源",
+            "免费",
+            "OpenUtau 可用",
+            "高表现力"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "扩散模型路线的开源歌声合成，OpenVPI 维护的中文社区版本质量很高，可直接在 OpenUtau 里作为引擎使用，免费获得接近商业级的自然度。",
+          "tip": "显存要求较高，建议 8G 以上显卡。模型与声库来自社区，商用前确认各声库作者的授权说明。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "openvpi",
+          "name": "OpenVPI 官方文档",
+          "url": "https://openvpi.github.io/",
+          "home": "openvpi.github.io",
+          "tags": [
+            "开源",
+            "官方文档",
+            "DiffSinger"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "DiffSinger 中文社区（OpenVPI）的官方文档站，讲清模型下载、训练流程与在 OpenUtau 中的接入方式。",
+          "tip": "文档全中文，按「快速开始」顺序走一遍即可跑通最简流程。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "cevio",
+          "name": "CeVIO 官方站",
+          "url": "https://cevio.jp/",
+          "home": "cevio.jp",
+          "tags": [
+            "官方",
+            "有试用",
+            "日语",
+            "付费为主"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "CeVIO 官方站，含 CeVIO AI 产品信息、体验版与购买渠道。日语翻调中音色偏「甜」的一派代表，官方提供体验版可先试。",
+          "tip": "体验版有功能与时长限制。各角色的商用条件由声库厂商规定，务必分别确认。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "cevio-downloads",
+          "name": "CeVIO 官方下载页",
+          "url": "https://cevio.jp/downloads/",
+          "home": "cevio.jp",
+          "tags": [
+            "官方下载",
+            "体验版",
+            "更新"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "CeVIO 各版本的官方下载与更新入口，体验版也从这里获取。只从官方渠道下载可避免整合包夹带。",
+          "tip": "下载后核对官方公布的哈希；安装包不需要「激活器」「破解补丁」这类额外文件。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vocaloid",
+          "name": "VOCALOID 官方站",
+          "url": "https://www.vocaloid.com/",
+          "home": "vocaloid.com",
+          "tags": [
+            "官方",
+            "付费",
+            "有试用政策",
+            "行业标准"
+          ],
+          "region": "海外",
+          "cost": "付费",
+          "official": true,
+          "desc": "Yamaha VOCALOID 官方站，含编辑器与声库的产品信息、购买渠道与官方试用政策说明。作为行业标准，了解它的功能边界有助于判断是否需要它。",
+          "tip": "VOCALOID 是纯付费产品，没有官方免费版。官网偶尔提供限时试用或订阅制（如 VOCALOID6 的订阅方案），以官网当期公告为准。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        }
+      ]
+    },
+    {
+      "id": "plugins",
+      "name": "第三方脚本与插件",
+      "icon": "puzzle",
+      "description": "翻调效率的真正来源：SynthV 脚本（歌词/音素转换、音高与颤音生成、参数批量处理）、OpenUtau 的 phonemizer 与引擎、VOCALOID Job Plugin、UTAU 原音设定与拆音工具。多为社区开源项目，逐条标了官方/社区，装前看清适用版本。",
+      "items": [
+        {
+          "id": "vlabeler",
+          "name": "vLabeler（对齐标注工具）",
+          "url": "https://github.com/sdercolin/vlabeler",
+          "home": "github.com/sdercolin",
+          "tags": [
+            "开源",
+            "免费",
+            "社区项目",
+            "标注"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "通用的歌声标注/对齐编辑器，支持多种标注格式，是做原音设定、训练数据集、修正音素边界的效率利器。UTAU 与 DiffSinger 工作流都能用。",
+          "tip": "社区项目（sdercolin），非官方。批量标注比手工在 UTAU 里拖边界快一个数量级。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "utaformatix",
+          "name": "UtaFormatix（在线格式转换）",
+          "url": "https://github.com/sdercolin/utaformatix3",
+          "home": "github.com/sdercolin",
+          "tags": [
+            "开源",
+            "免费",
+            "格式转换",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "工程文件格式转换的事实标准：UST / VSQX / CCS / SVP / MusicXML / MIDI 之间互转，把别人分享的工程导入自己用的编辑器时几乎必用。",
+          "tip": "网页版入口 utaformatix.dreamtonics.com 在本机 DNS 解析失败（ENOTFOUND），建议改用 GitHub 上的桌面版/源码运行，功能一致。转换后务必人工校对音素与音高，跨格式转换难免有偏差。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "world-vocoder",
+          "name": "WORLD（声码器，官方）",
+          "url": "https://github.com/mmorise/World",
+          "home": "github.com/mmorise",
+          "tags": [
+            "开源",
+            "声码器",
+            "基础库",
+            "免费"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "高质量语音分析/合成声码器，是大量歌声合成与变声工具的底层依赖，也用于音高提取与音色转换。做二次开发或理解「音高曲线从哪来」时的基础库。",
+          "tip": "直接用它需要编程。只想用现成效果的话，它的算法已被多数 resampler 与合成器内置。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "pyworld",
+          "name": "pyworld（WORLD 的 Python 封装）",
+          "url": "https://github.com/JeremyCCHsu/Python-Wrapper-for-World-Vocoder",
+          "home": "github.com/JeremyCCHsu",
+          "tags": [
+            "开源",
+            "Python",
+            "声码器",
+            "免费"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "WORLD 的 Python 接口，几行代码就能提取 F0、频谱包络与非周期性，用来做音高分析、批量修音或数据集预处理。",
+          "tip": "pip 安装即可（本机已有 Python 环境）。提取的 F0 可直接转成音高曲线导入编辑器做参考。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "rvc",
+          "name": "RVC（检索式语音转换）",
+          "url": "https://github.com/RVC-Project/Retrieval-based-Voice-Conversion-WebUI",
+          "home": "github.com/RVC-Project",
+          "tags": [
+            "开源",
+            "免费",
+            "音色转换",
+            "需显卡"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "开源音色转换工具，可以把一段干音的**音色**换成目标音色而保留唱法与音高。翻调里用来做「音色替换」或生成和声层很有效。",
+          "tip": "注意伦理与法律边界：未经许可转换他人声音并发布可能侵权，也可能违反平台规则。自娱自乐与获授权的场景才用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "so-vits-svc",
+          "name": "so-vits-svc（歌声转换）",
+          "url": "https://github.com/svc-develop-team/so-vits-svc",
+          "home": "github.com/svc-develop-team",
+          "tags": [
+            "开源",
+            "免费",
+            "歌声转换",
+            "需显卡"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "专门面向歌声的音色转换项目，能把一个声库唱的干音转成另一个音色，常用于「让 A 声库唱出 B 的音色」。",
+          "tip": "同样有声音权与授权风险，商用前必须拿到音色提供方的书面许可。训练需要一定数据量与显卡时间。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "dt-svstudio-scripts",
+          "name": "Dreamtonics 官方脚本仓库（svstudio-scripts）",
+          "url": "https://github.com/Dreamtonics/svstudio-scripts",
+          "home": "github.com/Dreamtonics",
+          "tags": [
+            "官方",
+            "SynthV",
+            "脚本",
+            "免费",
+            "开源"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "SynthV 官方维护的脚本示例仓库，把「脚本能对音符、歌词、音高参数做什么」直接摊开给你看。想自己写脚本批量处理工程、或想读懂别人脚本里的 API 用法，这里是第一手参照，不会因为版本更新而失真。",
+          "tip": "脚本放在 SynthV 的 scripts 目录，菜单「脚本 → 重新扫描脚本」后即可在脚本菜单里调用；改完脚本要重新扫描才会生效。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "dt-scripting-manual",
+          "name": "Dreamtonics 脚本 API 手册",
+          "url": "https://resource.dreamtonics.com/scripting/",
+          "home": "resource.dreamtonics.com",
+          "tags": [
+            "官方文档",
+            "SynthV",
+            "脚本",
+            "开发",
+            "免费"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "SynthV 脚本接口（SV / Automation / NoteGroup 等对象）的官方参考。当你想让脚本「读一条音高曲线」或「按规则重写全部歌词」时，需要的类名与参数名都在这里，省掉反复试错。",
+          "tip": "同站 /scripting/SV.html 是核心对象速查页，可直接收藏。这是文档站不是下载站，脚本本体要去 GitHub 找。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "real-voice",
+          "name": "real-voice（真实唱法参数迁移）",
+          "url": "https://github.com/hataori-p/real-voice",
+          "home": "github.com/hataori-p",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "音高曲线",
+            "颤音",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "从一段真实人声里提取音高、颤音、力度等演唱参数，批量写进 SynthV 工程的对应音符上。翻调最耗时的「把音高线画得像真人唱的」这一步，可以直接拿原唱干音当模板，比手画快一个量级。",
+          "tip": "前提是先用 UVR/Demucs 把原唱人声拆干净，噪声大的干音提取出来的曲线会抖。迁移后仍要人工听一遍，AI 提取的颤音偶尔会出现不自然的抖动。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "sv-articulation-scripts",
+          "name": "SynthesizerV_ArticulationScripts（发音批量设置）",
+          "url": "https://github.com/aike/SynthesizerV_ArticulationScripts",
+          "home": "github.com/aike",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "音素",
+            "歌词",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "批量设置音符的辅音与元音发音（articulation）。中文、日语声库遇到「这个字唱出来是另一个音」时，逐个音符手动改发音很折磨，用脚本按规则一次改完全曲。",
+          "tip": "适合处理固定音变规律（如特定辅音轻化、元音偏移），不规则的例外仍需手动微调。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "dcuny-synthv-scripts",
+          "name": "dcuny/synth-v-scripts（脚本合集）",
+          "url": "https://github.com/dcuny/synth-v-scripts",
+          "home": "github.com/dcuny",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "歌词",
+            "批处理",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "老牌 SynthV 脚本合集，覆盖歌词处理、音符操作、参数批量编辑等方向，其中歌词与音素分配相关的脚本最有实用价值——做多语言混唱（中文词 + 英文 hook）时能省大量手工。",
+          "tip": "仓库里脚本较多且新旧混杂，先看 README 挑需要的单个脚本放进 scripts 目录，不要整包丢进去。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-suzu-scripts",
+          "name": "synthv-suzu-scripts（Suzumof 脚本集）",
+          "url": "https://github.com/suzumooof/synthv-suzu-scripts",
+          "home": "github.com/suzumooof",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "歌词",
+            "音高曲线",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "社区作者 Suzumof 的 SynthV 脚本合集，偏「日常调教里反复要做的琐事」：批量改歌词、批量设置参数、音高曲线微调。调一首歌要重复几十次的操作，用它点一下就好。",
+          "tip": "日文 README；每个脚本单独下载。用前先在副本工程上试，确认效果再应用到正式工程。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "sv-turbo49-scripts",
+          "name": "SVScripts / Turbo49（音高曲线自动生成）",
+          "url": "https://github.com/Turbo49/SVScripts",
+          "home": "github.com/Turbo49",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "音高曲线",
+            "SynthV 2",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "面向 SynthV Studio 2 的脚本，自动生成音高控制点与过渡曲线，相当于把「手工模式」下的逐点绘制自动化。想让整首歌的滑音、过渡保持一致手感时，比一格一格拖控制点靠谱得多。",
+          "tip": "自动化生成的曲线是「模板感」的，正式作品建议生成后再对重点句人工修饰，全曲一把梭会显得机械。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-to-language-phoneme",
+          "name": "synthv-to-language-phoneme-plugin（歌词转音素）",
+          "url": "https://github.com/gaf1990/synthv-to-language-phoneme-plugin",
+          "home": "github.com/gaf1990",
+          "tags": [
+            "SynthV",
+            "插件",
+            "音素",
+            "跨语言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把歌词按目标语言转成音素序列写进工程。用中文声库唱日文、用日文声库唱中文时，直接写音素比让软件自己猜发音准确得多，专治「跨语言翻唱咬字怪」。",
+          "tip": "转换规则是启发式的，多音字与特殊读法要人工核对；建议先转一小段试听，确认规则符合你的需求再全曲应用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "honki-synthv-translator",
+          "name": "synthv_translator（命令行歌词转音素）",
+          "url": "https://github.com/honki-bobo/synthv_translator",
+          "home": "github.com/honki-bobo",
+          "tags": [
+            "SynthV",
+            "命令行",
+            "音素",
+            "批量",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "命令行工具，把整段歌词批量翻译成 SynthV 可用的音素序列。适合「一次处理整首歌的歌词」：先在文本里排好歌词，一条命令出全曲音素，再粘进工程，比在编辑器里逐字改快得多。",
+          "tip": "适合有脚本/命令行习惯的人；只处理文本，不直接改 .svp，属于「生成结果再手工粘贴」的工作方式。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-enhanced-lyrics-editor",
+          "name": "synthv-enhanced-lyrics-editor（歌词批量编辑）",
+          "url": "https://github.com/gaf1990/synthv-enhanced-lyrics-editor",
+          "home": "github.com/gaf1990",
+          "tags": [
+            "SynthV",
+            "插件",
+            "歌词",
+            "批处理",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把全曲歌词抽出来在一个文本框里改，支持批量替换后再写回音符。改歌词错字、统一罗马音写法、给重复段落换词这类事，不必再在钢琴卷帘里一个个点。",
+          "tip": "写回前先备份工程（另存一份）；批量替换最容易误伤同形字，替换后扫一遍确认。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-lyrics-to-notes",
+          "name": "synthv-lyrics-to-notes（歌词转音符）",
+          "url": "https://github.com/mnieuwhof/synthv-lyrics-to-notes",
+          "home": "github.com/mnieuwhof",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "歌词",
+            "扒谱",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把一段歌词按规则铺成「一字一音符」的音符序列，用来快速搭出工程骨架。扒完谱先铺歌词占位、再对着原曲改音高，比边听边新增音符顺手。",
+          "tip": "只解决「音符与歌词对齐」的前期占位，音高与时长仍需自己对着原曲调整。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "slidingwall-synthv-dictionaries",
+          "name": "Slidingwall 跨语言发音词典（SynthV）",
+          "url": "https://github.com/Slidingwall/synthv-dictionaries",
+          "home": "github.com/Slidingwall",
+          "tags": [
+            "SynthV",
+            "词典",
+            "跨语言",
+            "发音",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "SynthV 的跨语言用户词典，让你用中文声库唱出日语/韩语发音、用日语声库唱中文。翻调最常见的「手头只有某个语言的声库，但歌是另一种语言」这个死结，靠它就能解开，而且是免费方案。",
+          "tip": "按语言分批导入自定义词典，导入后在音符上切换发音即可试听；并非所有音素都能一一对应，个别音仍需手动挑接近的音替代。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-zh-dict-dialect",
+          "name": "zh-dict-synthv（中文方言扩展词典）",
+          "url": "https://github.com/Guest-615695028/zh-dict-synthv",
+          "home": "github.com/Guest-615695028",
+          "tags": [
+            "SynthV",
+            "词典",
+            "中文",
+            "方言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "给中文声库扩展方言/特殊读音的用户词典。翻粤语、闽南语或带方言腔的中文歌时，普通话声库直接唱会「字不对音」，用它按方言规则映射发音。",
+          "tip": "方言映射不可能百分百还原，属于「接近」而不是「地道」；关键句仍建议逐字试听挑音。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-korean-dicts",
+          "name": "korean-dicts-synthv（韩语用户词典）",
+          "url": "https://github.com/latticenail/korean-dicts-synthv",
+          "home": "github.com/latticenail",
+          "tags": [
+            "SynthV",
+            "词典",
+            "韩语",
+            "跨语言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "韩语发音用户词典，让没有韩语声库的人也能用现有声库唱韩语歌词。做韩翻（或带韩语段落的歌）时，这是不开销就拿到可用咬字的办法。",
+          "tip": "同作者还有 jpn2kor-synthv（日语声库唱韩语）与韩语声库用的日语词典，按你手上的声库挑对应那份。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-musescore-lyrics",
+          "name": "musescore_to_synthv（谱面歌词导入）",
+          "url": "https://github.com/schef/musescore_to_synthv",
+          "home": "github.com/schef",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "歌词",
+            "扒谱",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把 MuseScore 里已经填好的谱面歌词搬到 SynthV 工程里。手上已有五线谱/简谱工程时，不必再对着谱子一个字一个字敲歌词。",
+          "tip": "依赖两边小节与音符的一一对应关系，导入后要核对歌词是否整体错位一个小节。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-note-pitch-panel",
+          "name": "synthv-note-pitch-panel（音名面板）",
+          "url": "https://github.com/narnarnars-dev/synthv-note-pitch-panel",
+          "home": "github.com/narnarnars-dev",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "音高",
+            "辅助显示",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "侧边面板实时显示选中音符的音名。对着原曲扒谱、或跟 instrumental 对音时，不用再靠数格子判断自己点的是哪个音，减少「差半音」的低级失误。",
+          "tip": "纯显示类脚本，不改动工程数据，可以放心常驻开启。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "svstudio2-pitch-delta-extractor",
+          "name": "pitch-delta-extractor（渲染音高提取）",
+          "url": "https://github.com/Umi7899/svstudio2-pitch-delta-extractor",
+          "home": "github.com/Umi7899",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "音高",
+            "分析",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把 SynthV 实际渲染出来的音高曲线导出成 pitchDelta 数据。用来做两件事：检查自己画的曲线实际唱成了什么样，以及把「调好的手感」沉淀成可复用的数据模板。",
+          "tip": "导出的是渲染结果而非音符参数，适合分析比对；想直接搬曲线还是用参数迁移类脚本更省事。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-auto-harmony",
+          "name": "synthv-auto-harmony（自动和声生成）",
+          "url": "https://github.com/karinMusaka/synthv-auto-harmony",
+          "home": "github.com/karinMusaka",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "和声",
+            "SynthV 2",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "按设定音程给主旋律自动铺出和声轨。翻调做副歌和声层时，手动再画一条高三大三的旋律很费时间，用它生成骨架后只需修个别不合调的和弦外音。",
+          "tip": "自动生成的是严格音程和声，遇到转调或挂留和弦会产生不协和音，务必逐句试听再定稿。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "synthv-solfege",
+          "name": "synthv_solfege（唱名歌词生成）",
+          "url": "https://github.com/schef/synthv_solfege",
+          "home": "github.com/schef",
+          "tags": [
+            "SynthV",
+            "脚本",
+            "练耳",
+            "歌词",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "按音符音高自动把歌词换成唱名（do re mi）。做视唱练耳素材、或想让人声直接唱出旋律音名时很方便，也常用于制作教学示例。",
+          "tip": "是个偏教学的用途；正式翻调作品里用不上，但拿它快速验证「我画的旋律到底是什么音」很好用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "openutau-repo-plugins",
+          "name": "OpenUtau 官方仓库（引擎与插件机制）",
+          "url": "https://github.com/openutau/OpenUtau",
+          "home": "github.com/openutau",
+          "tags": [
+            "官方",
+            "开源",
+            "OpenUtau",
+            "插件",
+            "引擎"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "OpenUtau 本体与官方插件/引擎接口的所在地。装第三方 resampler、DiffSinger 引擎、外部 phonemizer 之前，先在这里确认当前版本支持的插件目录结构与加载方式，能省掉九成「装了不生效」的问题。",
+          "tip": "插件放 Plugins 目录、引擎放 Resamplers 目录，路径写错是「没声音」的头号原因；Wiki 的 Plugins / Resamplers 两节讲得最清楚。本条与「编辑器获取」栏的 OpenUtau 是同一个仓库，放在这里是为了强调它的插件与引擎机制。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "ou-dictionary-editor",
+          "name": "OpenUtau Dictionary Editor（音素词典编辑器）",
+          "url": "https://github.com/Cadlaxa/OpenUtau-Dictionary-Editor",
+          "home": "github.com/Cadlaxa",
+          "tags": [
+            "OpenUtau",
+            "词典",
+            "音素",
+            "工具",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "图形化编辑 OpenUtau 的 phonemizer 词典（YAML），带校验与有限状态转换器（FST）支持。中文多音字、英语发音规则这类「软件猜错读音」的问题，靠改词典一次性解决全曲，而不是逐字改音素。",
+          "tip": "改的是音源/发音器的词典而不是工程，所以效果对所有用到该词典的工程都生效；改前先备份原始 YAML。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "ou-yaml-dictionaries",
+          "name": "OpenUtau YAML 词典合集（多语言）",
+          "url": "https://github.com/Cadlaxa/Openutau-Yaml-Dictionaries",
+          "home": "github.com/Cadlaxa",
+          "tags": [
+            "OpenUtau",
+            "词典",
+            "多语言",
+            "音素",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "现成的多语言 OpenUtau 词典合集，覆盖英语 Arpasing/VCCV、日语、韩语、中文、粤语、法语、西班牙语等。想让某个语言的音源唱另一种语言，直接把对应 YAML 放进词典目录就能用，不必自己做映射表。",
+          "tip": "语言与音源格式要对号入座（比如 Arpasing 音源配 Arpasing 词典）；放错目录 OpenUtau 不会报错，只会静默不生效。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "ou-ja-to-ko-phonemizer",
+          "name": "JAtoKO Phonemizer（日语音源唱韩语）",
+          "url": "https://github.com/yashoujiru1192/JAtoKOPhonemizer",
+          "home": "github.com/yashoujiru1192",
+          "tags": [
+            "OpenUtau",
+            "发音器",
+            "韩语",
+            "跨语言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "专门解决「只有日语音源，但要唱韩语歌词」：按韩语发音规则把歌词映射成日语音源能读出的音素，比硬写罗马音自然得多。",
+          "tip": "韩语的部分韵尾在日语音素里没有对应，个别字需要手动替换成最接近的音；先拿一小段试听确认可接受度。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "ou-chinese-to-jp-phonetic",
+          "name": "ChineseToJPPhonetic（中文歌词转日语音素）",
+          "url": "https://github.com/WaruKizu/ChineseToJPPhonetic",
+          "home": "github.com/WaruKizu",
+          "tags": [
+            "OpenUtau",
+            "发音器",
+            "中文",
+            "跨语言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把中文歌词批量转成日语音源可读的音素，让手上只有日语 UTAU 音源的人也能翻中文歌。属于中文翻调里最常用的「借音源」方案。",
+          "tip": "中文的翘舌音、前后鼻音在日语音素里没有完全对应，成品会有轻微口音，这是映射本身的限制而非插件故障。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "ou-cantonese-plugins",
+          "name": "AzairoNS 粤语插件集（OpenUtau）",
+          "url": "https://github.com/AzairoNS/CantonesePlugins",
+          "home": "github.com/AzairoNS",
+          "tags": [
+            "OpenUtau",
+            "发音器",
+            "粤语",
+            "繁体中文",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "面向繁体中文用户的 OpenUtau 粤语插件集，补上粤语发音映射这块生态空白。翻粤语歌时不用再自己从零整理音素对照。",
+          "tip": "粤语不同口音（广州/香港）用词与读音有差异，遇到读法不符预期的字，手动改一个音素就能修好。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vd-vocaloid-dictionaries",
+          "name": "Slidingwall 跨语种词典 + VOCALOID Job Plugin",
+          "url": "https://github.com/Slidingwall/vocaloid-dictionaries",
+          "home": "github.com/Slidingwall",
+          "tags": [
+            "VOCALOID",
+            "Job Plugin",
+            "词典",
+            "跨语言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "让 VOCALOID 的日语声库唱中文/其他语言：核心是一套跨语种用户词典，再配 Job Plugin 批量改写音符的歌词与发音参数。VOCALOID 用户想翻非日语歌，这是社区里最成熟的免费路线。",
+          "tip": "先把用户词典装好再用 Job Plugin 批量套歌词，顺序反了会出现大批音符发音不匹配；建议先拿副歌八小节试跑。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "btp-jobplugins",
+          "name": "btp-jobplugins（VOCALOID Job Plugin 集）",
+          "url": "https://github.com/but80/btp-jobplugins",
+          "home": "github.com/but80",
+          "tags": [
+            "VOCALOID",
+            "Job Plugin",
+            "批量处理",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "日本开发者维护的 VOCALOID Job Plugin 集合，走「批量处理音符与参数」的路子：一次改写整段歌词或参数，替代在编辑器里逐音符点选。",
+          "tip": "Job Plugin 需要通过 VOCALOID 的「Job → Job Plugin」菜单运行，运行前务必先另存工程，批量改写是不可撤销的一步到位操作。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "generate-harmony",
+          "name": "GenerateHarmony（单旋律一键生成和声）",
+          "url": "https://github.com/chomstudio/GenerateHarmony",
+          "home": "github.com/chomstudio",
+          "tags": [
+            "VOCALOID",
+            "Job Plugin",
+            "和声",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "VOCALOID 的 Job Plugin：从单条旋律线自动生成和声音轨。翻调要做副歌叠唱时，先让它生成一版和声骨架，再修不协和的地方，比从零再画一遍旋律快很多。",
+          "tip": "只按和弦/音程规则生成，遇到转调与和弦外音要手工修正；生成后建议单独 solo 听一遍。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vocaloid-copy-notes-with-param",
+          "name": "音符参数同步复制 Job Plugin",
+          "url": "https://github.com/atonyxu/VOCALOID-CopyNotesWithParam-JobPlugin",
+          "home": "github.com/atonyxu",
+          "tags": [
+            "VOCALOID",
+            "Job Plugin",
+            "批量处理",
+            "中文作者",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "中文作者写的 VOCALOID Job Plugin：复制音符时把音高、颤音、力度等参数一起带过去。做段落重复（主歌/副歌的相同句、叠轨）时不用再手动补一遍参数。",
+          "tip": "复制前确认目标位置的歌词是否需要随段落变化，参数对了但歌词抄错是常见事故。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "jobplugin-helper",
+          "name": "VOCALOID Job Plugin Helper（开发辅助）",
+          "url": "https://github.com/atonyxu/vocaloid-jobplugin-helper",
+          "home": "github.com/atonyxu",
+          "tags": [
+            "VOCALOID",
+            "Job Plugin",
+            "开发",
+            "中文作者",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "写 VOCALOID Job Plugin 的辅助库，把常用的音符读取/改写样板代码封好。现成插件都不满足你的批量处理需求时，从这里起步自己写一个，比啃原始 SDK 快。",
+          "tip": "配套的中文参考文档见 atonyxu/vocaloid-jobplugin-chn，两份一起看基本能上手。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "jobplugin-chn-docs",
+          "name": "VOCALOID Job Plugin API 中文参考",
+          "url": "https://github.com/atonyxu/vocaloid-jobplugin-chn",
+          "home": "github.com/atonyxu",
+          "tags": [
+            "VOCALOID",
+            "Job Plugin",
+            "文档",
+            "中文",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "VOCALOID Job Plugin API 的完整中文翻译。官方手册只有英/日文，这里把「怎么读音符、怎么写歌词、怎么改参数」讲成中文，是自制 VOCALOID 批量工具的唯一中文入口。",
+          "tip": "对应 VOCALOID4/5/6 的 Job Plugin 体系；写插件前先确认目标版本支持哪些 API。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "setparam-guide",
+          "name": "setParam 中文导入教程（原音设定辅助）",
+          "url": "https://utaudb.sakura.ne.jp/knowledge.php?id=26",
+          "home": "utaudb.sakura.ne.jp",
+          "tags": [
+            "UTAU",
+            "原音设定",
+            "教程",
+            "中文",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "讲清 setParam（UTAU 圈最常用的原音设定辅助软件）怎么装、怎么把 oto.ini 批量处理。自制音源、或接手一个原音设定很糟的音源时，这类工具能把「拖边界」的机械劳动压下去。",
+          "tip": "setParam 本体由作者在个人站配布，请从页面内的原始链接下载；别用来路不明的「整合版」。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "moresampler2",
+          "name": "moresampler2（社区重构版引擎）",
+          "url": "https://github.com/Astel123457/moresampler2",
+          "home": "github.com/Astel123457",
+          "tags": [
+            "UTAU",
+            "引擎",
+            "resampler",
+            "开源",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "经典 UTAU 引擎 moresampler 的社区 C 语言重构版，带 libllsm2 支持。moresampler 以「音质干净、对糟糕原音设定容忍度高」著称，是让老音源听起来不刺耳的关键一环。",
+          "tip": "这是社区重构版本，不是原作者 moresampler 的官方发布；用它替代原版前，先在同一段旋律上 A/B 对比音色差异。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "enunu",
+          "name": "ENUNU（给 UTAU 音源加神经网络引擎）",
+          "url": "https://github.com/oatsu-gh/ENUNU",
+          "home": "github.com/oatsu-gh",
+          "tags": [
+            "UTAU",
+            "引擎",
+            "NNSVS",
+            "AI",
+            "开源"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "把 NNSVS 的神经声码模型接到 UTAU 音源上，让传统拼接音源唱出接近 AI 声库的连贯度，同时保留音源原本的音色。手上囤了一堆 UTAU 音源、又羡慕 AI 声库自然度时的升级路线。",
+          "tip": "需要为音源单独训练模型（或找作者已发布的模型），吃显卡与数据准备时间；只装插件不训模型是出不了声的。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "oatsu-utau-plugins",
+          "name": "oatsu UTAU 插件集（utaupy 系）",
+          "url": "https://github.com/oatsu-gh/utau_plugins",
+          "home": "github.com/oatsu-gh",
+          "tags": [
+            "UTAU",
+            "插件",
+            "批量处理",
+            "开源",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "以 utaupy 为基础写的 UTAU 插件集合，面向原音设定与工程文件的批量处理。音源整理、批量改别名、批量修 oto.ini 这类苦力活可以交给它。",
+          "tip": "基于 Python，需要本机有 Python 环境；插件直接放进 UTAU 的 plugin 目录即可被调用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "utau-bulk-envelope",
+          "name": "utauBulkEnvelopeEditor（批量包络编辑）",
+          "url": "https://github.com/riipah/utauBulkEnvelopeEditor",
+          "home": "github.com/riipah",
+          "tags": [
+            "UTAU",
+            "插件",
+            "包络",
+            "批量处理",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "直接对 UST 文件批量编辑音符包络（音量/音高包络）。一整首歌的强弱起伏逐个音符拖非常耗时，这个插件让你按范围一次设置，做「全曲渐强」这类整体处理尤其省事。",
+          "tip": "改的是 UST 文件本身而不是当前编辑会话，操作前先复制一份工程；它绕过 UTAU 界面直接写文件，改错了不好撤销。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "cvvc-vccv-helper",
+          "name": "CVVC/VCCV 歌词辅助插件",
+          "url": "https://github.com/ViolaBuddy/CVVC_VCCV_Helper",
+          "home": "github.com/ViolaBuddy",
+          "tags": [
+            "UTAU",
+            "插件",
+            "歌词",
+            "CVVC",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "按 CVVC / VCCV 音源规则自动切分与填写歌词（连续音音源要求把一个字拆成「前一个音的元音 + 本音的辅音元音」）。手动按规则拆歌词既慢又容易错，这是连续音调教里最实用的效率插件之一。",
+          "tip": "拆音规则与音源的别名表强相关，换音源后要重新核对别名；拆错了听起来会「多吃一个音」。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "utau-kua",
+          "name": "utau-kua（日语音源唱中文）",
+          "url": "https://github.com/DYXDQ/utau-kua",
+          "home": "github.com/DYXDQ",
+          "tags": [
+            "UTAU",
+            "插件",
+            "中文",
+            "跨语言",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "按比例替换歌词，把中文词映射到日语音源上，并支持拆音与自定义映射表。手上只有日语 UTAU 音源、却想翻中文歌时，这是与 OpenUtau 方案并行的另一条路（直接在 UTAU 里用）。",
+          "tip": "作者提供了映射表，遇到唱不准的字可以自己改表；中文声调信息在映射中会丢失，需要靠音高曲线手动补回语气。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vlabeler-overlaps-plugin",
+          "name": "vLabeler 重叠检查插件",
+          "url": "https://github.com/mark-gl/vlabeler-overlaps-plugin",
+          "home": "github.com/mark-gl",
+          "tags": [
+            "vLabeler",
+            "插件",
+            "原音设定",
+            "UTAU",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "vLabeler 的插件：自动检查 UTAU 原音设定里辅音边界互相重叠的错误。oto.ini 里边界重叠是「音头被吃掉/发出怪声」的典型原因，人工一个个看几乎不可能查全，用它几秒扫完整套音源。",
+          "tip": "本机已装 vLabeler（见同组 vLabeler 条目），插件按其说明放入插件目录即可；查出的重叠项仍要人耳确认是否真的需要修。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vocal2midi",
+          "name": "Vocal2Midi（人声转 MIDI + 歌词注入）",
+          "url": "https://github.com/Xiantaidu/Vocal2Midi",
+          "home": "github.com/Xiantaidu",
+          "tags": [
+            "MIDI",
+            "扒谱",
+            "人声",
+            "工具",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "一键从人声干音里提取 MIDI 音高线并注入歌词，直接得到「音符 + 词」的工程骨架。翻调前期的扒谱环节（听原曲手动点音符）可以用它把初稿生成出来，再对照原曲修正。",
+          "tip": "自动扒谱在转音、连音、和声堆叠处误差最大，务必逐句校对；把它当「省掉 70% 体力活」的助手，而不是正确答案。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "utsu",
+          "name": "utsu（开源歌声合成前端）",
+          "url": "https://github.com/titinko/utsu",
+          "home": "github.com/titinko",
+          "tags": [
+            "开源",
+            "UTAU",
+            "编辑器",
+            "社区项目"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": false,
+          "desc": "跨平台的开源歌声合成前端，兼容 UTAU 音源与 resampler。UTAU 本体在近年的系统上偶发兼容问题（界面、编码），utsu 是同一批音源在新系统上的替代前端，音源不用重新找。",
+          "tip": "功能覆盖不如 OpenUtau 完整，遇到缺功能时把工程导出成 UST 转到 OpenUtau 继续做即可；ust → ustx 的转换工具见同组 UtaFormatix。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        }
+      ]
+    },
+    {
+      "id": "learning",
+      "name": "教程与文档",
+      "icon": "book",
+      "description": "从入门到进阶的学习入口，优先官方文档（最准），其次是长期可用的社区入口与检索页——单个教程视频容易失效，搜索页能一直用。",
+      "items": [
+        {
+          "id": "openutau-docs-wiki",
+          "name": "OpenUtau 官方文档（Wiki）",
+          "url": "https://github.com/openutau/OpenUtau/wiki",
+          "home": "github.com/openutau",
+          "tags": [
+            "官方文档",
+            "入门",
+            "配置"
+          ],
+          "region": "均可",
+          "cost": "免费",
+          "official": true,
+          "desc": "OpenUtau 的官方使用说明，涵盖安装、音源导入、引擎配置、插件与导出。新手按顺序读一遍能省掉大量试错。",
+          "tip": "先解决「装好能出声」，再去研究音高曲线与音素编辑，循序渐进最省时间。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "svstudio-manual",
+          "name": "SynthV Studio 2 官方手册",
+          "url": "https://dreamtonics.com/svstudio2-manual/",
+          "home": "dreamtonics.com",
+          "tags": [
+            "官方文档",
+            "手册",
+            "进阶"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "SynthV Studio 2 的官方用户手册，逐项解释音高、颤音、音素、力度与 AI 参数的行为。想从「会用」到「调得好」，这本文档比任何教程都全。",
+          "tip": "配合官方资源页里的音素表一起看，处理中文咬字问题时特别有用。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "cevio-guide",
+          "name": "CeVIO 官方帮助",
+          "url": "https://cevio.jp/guide/",
+          "home": "cevio.jp",
+          "tags": [
+            "官方文档",
+            "CeVIO",
+            "帮助"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "CeVIO 各版本的官方操作指南，讲清参数含义与基本流程，是使用 CeVIO 时最准确的参考。",
+          "tip": "站点有反爬，脚本访问 403，浏览器打开即可。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "bilibili-openutau",
+          "name": "B 站 OpenUtau 教程检索",
+          "url": "https://search.bilibili.com/all?keyword=OpenUtau%20%E6%95%99%E7%A8%8B",
+          "home": "search.bilibili.com",
+          "tags": [
+            "中文教程",
+            "检索入口",
+            "长期有效"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": false,
+          "desc": "用搜索页而不是单个视频做入口：OpenUtau 的中文教程更新频繁，搜索页能一直找到最新版本对应的内容，不会因为某个视频被删而失效。",
+          "tip": "注意教程对应的软件版本，旧版教程的菜单路径可能与新版不同；以官方 Wiki 为准校正。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "bilibili-synthv",
+          "name": "B 站 SynthV 调教检索",
+          "url": "https://search.bilibili.com/all?keyword=Synthesizer%20V%20%E8%B0%83%E6%95%99",
+          "home": "search.bilibili.com",
+          "tags": [
+            "中文教程",
+            "检索入口",
+            "进阶"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": false,
+          "desc": "SynthV 调教技巧的中文内容最集中的入口，音高曲线画法、颤音处理、中文咬字等实战经验大都能在这里找到。",
+          "tip": "优先看有工程文件分享的教程，能直接对照学习参数怎么画。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "bilibili-utau",
+          "name": "B 站 UTAU 调教入门检索",
+          "url": "https://search.bilibili.com/all?keyword=UTAU%20%E8%B0%83%E6%95%99%E5%85%A5%E9%97%A8",
+          "home": "search.bilibili.com",
+          "tags": [
+            "中文教程",
+            "入门",
+            "检索入口"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": false,
+          "desc": "UTAU 入门（原音设定、音源选择、基础调教）的中文教程入口，适合零基础快速建立整体认知。",
+          "tip": "UTAU 与 OpenUtau 概念相通但操作不同，先确定自己用哪个再挑教程。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "bilibili-fanchang",
+          "name": "B 站「翻调」综合检索",
+          "url": "https://search.bilibili.com/all?keyword=%E7%BF%BB%E8%B0%83",
+          "home": "search.bilibili.com",
+          "tags": [
+            "中文教程",
+            "作品参考",
+            "检索入口"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": false,
+          "desc": "直接检索「翻调」，既能找到教程，也能看到同行的成品作品。做翻调时参考别人的成品处理（气口、和声、混音取向）是进步最快的方式。",
+          "tip": "看成品时留意其使用的声库与后期思路，比单纯听旋律更有收获。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "bilibili-mixing",
+          "name": "B 站混音教程检索",
+          "url": "https://search.bilibili.com/all?keyword=%E6%B7%B7%E9%9F%B3%20%E6%95%99%E7%A8%8B",
+          "home": "search.bilibili.com",
+          "tags": [
+            "中文教程",
+            "混音",
+            "后期",
+            "检索入口"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": false,
+          "desc": "翻调出干音只是半成品，人声的 EQ、压缩、混响与和声处理决定最终听感。这里是中文混音教学的集中入口。",
+          "tip": "优先学「人声怎么贴进伴奏」这一节（EQ 避让、发送式混响），对翻调成品的提升立竿见影。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        }
+      ]
+    },
+    {
+      "id": "safety",
+      "name": "安全提示：盗版声库与木马风险",
+      "icon": "shield",
+      "description": "这一栏不是资源清单，是保命指南。翻调圈最典型的翻车方式不是调得不好，而是为了省几百块下了「学习版」，结果机器被挖矿、账号被盗、工程文件被加密。以下是要点与查毒入口。",
+      "items": [
+        {
+          "id": "virustotal",
+          "name": "VirusTotal（多引擎在线查毒）",
+          "url": "https://www.virustotal.com/gui/home/upload",
+          "home": "virustotal.com",
+          "tags": [
+            "官方查毒",
+            "哈希比对",
+            "免费",
+            "70+ 引擎"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "上传文件或粘贴哈希，用几十个杀毒引擎同时检测。**翻调圈最实用的用法是查哈希**：拿到安装包先算 SHA-256 再在这里搜，如果已经有人上传过并被判为恶意，你连文件都不用下载就能避开。",
+          "tip": "重要原则：不要上传包含个人信息的文件（工程、干音）到公网查毒。查哈希不上传文件本体，隐私无忧。单个引擎报毒可能是误报，多个主流引擎同时报毒就要高度警惕。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "virustotal-docs",
+          "name": "VirusTotal 工作原理说明",
+          "url": "https://docs.virustotal.com/docs/how-it-works",
+          "home": "docs.virustotal.com",
+          "tags": [
+            "官方文档",
+            "原理",
+            "查哈希"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "官方解释「查哈希」与「上传文件」的区别、结果如何解读。理解之后你就能判断一个「0 报毒」结果到底靠不靠谱（例如全新样本查不到记录并不代表安全）。",
+          "tip": "查不到记录 ≠ 安全，只说明没人上传过。这种情况可以上传文件本体（不含隐私）或换个沙箱跑行为分析。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "hybrid-analysis",
+          "name": "Hybrid Analysis（行为沙箱）",
+          "url": "https://hybrid-analysis.com/",
+          "home": "hybrid-analysis.com",
+          "tags": [
+            "沙箱",
+            "行为分析",
+            "免费",
+            "看外联"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "把可疑 exe 丢进云端沙箱运行，报告它会读写哪些文件、连哪些 IP、改哪些注册表。判断「这个安装包是不是挖矿/盗号」比单看杀毒结果更有说服力。",
+          "tip": "典型挖矿木马的行为特征：连接矿池域名、常驻高 CPU、写入启动项。报告里出现这些就该直接删掉。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "any-run",
+          "name": "ANY.RUN（交互式沙箱）",
+          "url": "https://any.run/",
+          "home": "any.run",
+          "tags": [
+            "沙箱",
+            "交互式",
+            "有免费额度",
+            "可视化"
+          ],
+          "region": "海外",
+          "cost": "部分免费",
+          "official": true,
+          "desc": "可以在浏览器里「亲手」操作沙箱中的可疑程序，实时看到它干了什么。对付带 GUI 启动器的二次打包安装包特别有效——你能看着它偷偷装驱动或改浏览器主页。",
+          "tip": "免费账号有次数限制。**绝不要在自己主力机上双击来路不明的 exe 来「看看是什么」**，那是把风险直接装进工作站。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-26",
+            "verdict": "warn",
+            "note": "需浏览器访问"
+          }
+        },
+        {
+          "id": "jotti",
+          "name": "Jotti 在线查毒",
+          "url": "https://virusscan.jotti.org/",
+          "home": "virusscan.jotti.org",
+          "tags": [
+            "在线查毒",
+            "免费",
+            "备用"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "另一个多引擎在线扫描服务，作为 VirusTotal 的备用交叉验证。当 VT 结果模棱两可时，用第二个平台比对能减少误判。",
+          "tip": "有文件大小与并发限制，适合扫单个可疑文件而不是批量提交。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "huorong",
+          "name": "火绒安全（国内杀软）",
+          "url": "https://www.huorong.cn/",
+          "home": "huorong.cn",
+          "tags": [
+            "国内杀软",
+            "免费",
+            "查杀二次打包"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "国内口碑较好的轻量安全软件，对「二次打包安装包」「捆绑启动器」「静默装驱动」这类国内常见的流氓与木马手法识别较好，且不弹广告。",
+          "tip": "下载本站资源后建议全盘扫一次；开启「自定义规则」可以拦住程序偷偷写启动项。从官网下载，别从软件下载站拿「优化版」。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "cert-org-cn",
+          "name": "CNCERT 国家互联网应急中心",
+          "url": "https://www.cert.org.cn/",
+          "home": "cert.org.cn",
+          "tags": [
+            "官方机构",
+            "安全公告",
+            "国内"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "国家级网络安全机构，发布漏洞预警、木马家族分析与安全通报。想了解最近流行的木马手法（含伪装成软件安装包的样本）可以看这里。",
+          "tip": "用于判断「近期有没有大规模针对某类软件的木马活动」，比事后补救有用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "12321",
+          "name": "12321 网络不良信息举报中心",
+          "url": "https://www.12321.cn/",
+          "home": "12321.cn",
+          "tags": [
+            "官方举报",
+            "国内",
+            "维权"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "遇到木马、诈骗、恶意软件传播时的官方举报入口，也受理盗版软件相关的网络不良信息举报。",
+          "tip": "发现打着「整合包」名义传播木马的网盘/网站，可以在这里举报，减少后来者踩坑。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "kaspersky-resource",
+          "name": "卡巴斯基资源中心",
+          "url": "https://www.kaspersky.com/resource-center",
+          "home": "kaspersky.com",
+          "tags": [
+            "安全科普",
+            "威胁情报",
+            "免费阅读"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "面向普通用户的安全科普与威胁情报库，用通俗语言讲解勒索软件、挖矿木马、盗号手段的工作原理，帮你建立判断力。",
+          "tip": "重点读「如何识别假软件/破解版风险」一类文章，比记住具体木马名字更有用。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "trendmicro-news",
+          "name": "趋势科技安全新闻",
+          "url": "https://www.trendmicro.com/vinfo/us/security/news/",
+          "home": "trendmicro.com",
+          "tags": [
+            "威胁情报",
+            "安全新闻",
+            "免费阅读"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "安全厂商的威胁情报与研究文章，常有大样本分析报告，能帮你理解「为什么破解软件是高危行为」——很多破解包本身就是有组织投放的。",
+          "tip": "英文内容，配合翻译阅读即可；关注「cracked software」「cryptominer」相关专题。",
+          "verified": {
+            "status": 301,
+            "checkedAt": "2026-09-26",
+            "verdict": "ok",
+            "note": "重定向 → https://www.trendaisecurity.com/en-us/resources-insights/deep-research"
+          }
+        }
+      ]
+    }
+  ],
+  "verifySummary": {
+    "checkedAt": "2026-09-26",
+    "total": 121,
+    "ok": 104,
+    "warn": 17,
+    "dead": 0,
+    "passRate": 100
+  }
+}
