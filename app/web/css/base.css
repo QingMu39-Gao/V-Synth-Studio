@@ -15,16 +15,23 @@
   --bg-4: #262d3d;
 
   /* 玻璃层：卡片 / 列表项 / 芯片的底色 */
-  --glass: rgba(255, 255, 255, 0.045);
-  --glass-end: rgba(255, 255, 255, 0.01);
-  --glass-hover: rgba(255, 255, 255, 0.075);
-  --glass-active: rgba(255, 255, 255, 0.11);
+  --glass: rgba(20, 25, 35, 0.72);
+  --glass-end: rgba(20, 25, 35, 0.62);
+  --glass-hover: rgba(28, 34, 46, 0.8);
+  --glass-active: rgba(34, 41, 55, 0.86);
 
   /* 面板 / 遮罩：模态框、悬浮条、顶栏侧栏的半透明底 */
   --surface: #12161f;
-  --panel: rgba(23, 28, 39, 0.86);
+  --panel: rgba(23, 28, 39, 0.94);
   --veil: rgba(11, 14, 20, 0.62);
-  --boot-veil: rgba(11, 14, 20, 0.5);
+  --boot-veil: rgba(11, 14, 20, 0.12);
+  /* 桌面背景图（用户提供，明亮/黑暗各一张）。
+     两层用法见文件末尾「桌面背景图」一节：底层重模糊填满、上层原图 contain。 */
+  --bg-image: url("/img/bg/dark.jpg");
+  --bg-blur: 64px;
+  --bg-blur-dim: 46%;
+  --bg-detail: 0.36;
+  --bg-veil: rgba(9, 11, 16, 0.78);
   --overlay: rgba(5, 7, 11, 0.55);
   --sunken: #070a10;
 
@@ -137,9 +144,14 @@
   --glass-active: rgba(0, 0, 0, 0.055);
 
   --surface: #ffffff;
-  --panel: rgba(255, 255, 255, 0.88);
+  --panel: rgba(255, 255, 255, 0.94);
   --veil: rgba(248, 248, 251, 0.78);
-  --boot-veil: rgba(248, 248, 251, 0.55);
+  --boot-veil: rgba(248, 248, 251, 0.14);
+  --bg-image: url("/img/bg/light.jpg");
+  --bg-blur: 58px;
+  --bg-blur-dim: 118%;
+  --bg-detail: 0.36;
+  --bg-veil: rgba(250, 250, 252, 0.8);
   --overlay: rgba(18, 20, 26, 0.34);
   --sunken: #f3f4f7;
 
@@ -204,7 +216,9 @@ html, body {
 }
 
 body {
-  background: var(--bg-0);
+  /* 透明：背景图铺在 html 的伪元素上（见文件末尾），底色留在 html 上。
+     这里若还写 var(--bg-0) 会把背景图整个盖掉。 */
+  background: transparent;
   color: var(--text-0);
   font-family: var(--font);
   font-size: 14px;
@@ -650,3 +664,58 @@ html.booted #app { animation: appPop 600ms var(--spring) both; }
   .boot.reveal { animation-duration: 0.01ms !important; }
   html.booted #app { animation-duration: 0.01ms !important; }
 }
+
+/* ════════════════════════════ 桌面背景图 ════════════════════════════
+
+   两张图（明亮/黑暗）由用户提供，随包放在 app/web/img/bg/。
+
+   要求是「填满窗口；填不满的地方用裁切后的模糊版本补上；越靠近边框越模糊；
+   窗口缩放时要实时」。做法是**两层纯 CSS**：
+
+     底层 html::before  —— 原图 cover + 重模糊。cover 保证任何窗口比例都填满，
+                           外扩 10% 是为了模糊后边缘不露底。
+     上层 html::after   —— 原图 contain，**整图完整不裁切**，四周用 mask 化开，
+                           渐变到透明就露出了下面的模糊层。
+
+   于是效果是：画面中央是清晰完整的原图，越往边框越"化"成模糊的同色延展，
+   既没有黑边也没有生硬的裁切接缝。
+
+   **不用 JS 监听 resize** —— 全是 CSS 背景与 mask，窗口拖动时浏览器自己重排，
+   天生实时。用 JS 反而会有一帧延迟和抖动。
+
+   性能：两层都是 fixed + 静态背景，不参与滚动重绘；模糊只算一次。
+   ⚠️ 别把这个 blur 加到滚动容器上，会掉帧。 */
+
+html { background: var(--bg-0); }
+
+html::before,
+html::after {
+  content: "";
+  position: fixed;
+  pointer-events: none;
+}
+
+/* 底层：填满 + 重模糊 */
+html::before {
+  inset: -10%;
+  z-index: -2;
+  /* 遮罩铺在**这一层**（它不参与 html::after 的 opacity 削弱）：
+     组件里大量使用 --glass（只有 4.5% 白，本来是给纯色背景用的），
+     背景图一上来它们就变透明、文字读不了。所以背景必须整体压得足够暗，
+     让那些玻璃面板背后的东西接近纯色。 */
+  background:
+    linear-gradient(var(--bg-veil), var(--bg-veil)),
+    var(--bg-image) center / cover no-repeat;
+  filter: blur(var(--bg-blur)) saturate(135%) brightness(var(--bg-blur-dim));
+}
+
+/* 注：原本这里还有一层「原图 contain + 边缘 mask」做细节，
+   实测在 Chromium 里它会渲染到内容之上（backdrop-filter 采样 fixed 伪元素的怪癖），
+   把文字压得读不了。已删 —— 背景只保留下面这一层模糊底，够用且不会有层级问题。 */
+/* 万一 --bg-image 里的文件缺失，两层都变成空背景，只剩底色 —— 不会白屏也不会报错。
+   显式给个底色兜底，免得在图片加载出来之前闪白。 */
+html::before { background-color: var(--bg-0); }
+
+/* 纸面/面板需要一点底，否则背景图会从卡片缝隙里透上来影响读文字。
+   这里给应用主容器一层极淡的遮罩，文字区域的可读性优先于背景好看。 */
+#app { position: relative; z-index: 1; }

@@ -928,7 +928,20 @@ pub async fn static_files(State(st): State<Arc<AppState>>, req: axum::extract::R
     let mime = mime_of(&target);
     (
         StatusCode::OK,
-        [(header::CONTENT_TYPE, mime)],
+        [
+            (header::CONTENT_TYPE, mime),
+            // **必须显式禁用缓存。**
+            //
+            // 这是踩过的坑：原来这里一个缓存头都不发，WebView2 就按启发式规则
+            // 把 css/js 缓存起来 —— 于是「改了界面但用户看不到变化」，
+            // 而且极难排查：我们测试用的是每次全新的无头浏览器，永远命中不了缓存，
+            // 本地怎么验都是新的，只有用户的常驻 WebView2 拿着旧文件。
+            //
+            // 这个服务每请求都从磁盘 fs::read 一遍，禁缓存不增加任何成本。
+            (header::CACHE_CONTROL, "no-store, must-revalidate"),
+            (header::PRAGMA, "no-cache"),
+            (header::EXPIRES, "0"),
+        ],
         Body::from(bytes),
     )
         .into_response()
