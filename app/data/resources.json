@@ -1,8 +1,82 @@
 {
   "version": 1,
   "updatedAt": "2026-09-27",
-  "notice": "安全提示：盗版（「学习版」「破解版」「绿色版」）声库编辑器与声库压缩包，是木马、挖矿程序、勒索软件的高发区，尤其是「无数字签名 + 二次打包 + 带启动器 exe」的组合。本库只收录官方、开源与免费渠道。任何来源不明的 exe/7z/rar 在运行前，请先用 VirusTotal 比对哈希；国内机器请同时用火绒/Defender 全盘扫描。",
+  "notice": "抱歉！我们拒绝收录学习版以及破解版资源。如果有需要最好是去下载官方的正规体验版。再说现在这些免费资源其实挺好找的。。。",
   "groups": [
+    {
+      "id": "project-share",
+      "name": "工程分享",
+      "icon": "library",
+      "description": "别人做好的工程与 MIDI。找不到参考、想拆开看别人怎么编的时候来这里 —— 下载后直接能本院工作站转换格式。",
+      "items": [
+        {
+          "id": "midishow",
+          "name": "MIDIshow",
+          "url": "https://www.midishow.com/",
+          "home": "midishow.com",
+          "tags": [
+            "MIDI",
+            "中文站",
+            "需注册",
+            "量大"
+          ],
+          "region": "国内",
+          "cost": "免费 / 部分付费",
+          "official": true,
+          "desc": "国内最大的 MIDI 分享站，中文界面、曲库量大，流行歌与动漫曲覆盖都不错。下载的 .mid 可以直接丢进本站工作站转成 vsqx / ustx / svp 等工程格式，比自己扒谱快得多。",
+          "tip": "免费下载有次数限制，注册后多一点。质量参差 —— 有的只是主旋律，有的连伴奏声部都齐，下之前看评论区和试听。付费曲目注意授权范围，别直接拿去做商单。",
+          "verified": {
+            "status": 403,
+            "checkedAt": "2026-09-27",
+            "verdict": "warn"
+          }
+        },
+        {
+          "id": "bowlroll",
+          "name": "BowlRoll",
+          "url": "https://bowlroll.net/",
+          "home": "bowlroll.net",
+          "tags": [
+            "工程文件",
+            "音源",
+            "日文站",
+            "需注册"
+          ],
+          "region": "海外",
+          "cost": "免费",
+          "official": true,
+          "desc": "日本同人圈常用的文件分享站，UTAU / VOCALOID 的工程文件、音源、立绘素材大量发布在这里。很多 P 主投稿时会附 BowlRoll 链接放工程，是找「原工程」最直接的渠道之一。",
+          "tip": "**必须注册登录才能下载**，日文界面。文件多为 zip，解压密码常写在发布页或视频简介里。下载前看清发布者的使用规约（是否允许改造、二次配布）。",
+          "verified": {
+            "status": 200,
+            "checkedAt": "2026-09-27",
+            "verdict": "ok"
+          }
+        },
+        {
+          "id": "vspx",
+          "name": "vspx.top",
+          "url": "https://vspx.top/",
+          "home": "vspx.top",
+          "tags": [
+            "工程文件",
+            "中文站"
+          ],
+          "region": "国内",
+          "cost": "免费",
+          "official": true,
+          "desc": "中文的工程分享站。**当前站点无法访问**，先留在这里备查 —— 如果哪天恢复了可以再看看。",
+          "tip": "截至 2026-09-27 实测连接失败。收录时没有校验连通性（用户明确说明该站已挂），不要以本条目为准判断站点状态。",
+          "verified": {
+            "status": 0,
+            "checkedAt": "2026-09-27",
+            "verdict": "warn",
+            "note": "站点当前无法访问，未做连通性校验"
+          },
+          "skipProbe": true
+        }
+      ]
+    },
     {
       "id": "free-audio",
       "name": "免费音源 / 伴奏 / 素材音乐",
@@ -140,80 +214,6 @@
             "checkedAt": "2026-09-27",
             "verdict": "ok"
           }
-        }
-      ]
-    },
-    {
-      "id": "project-share",
-      "name": "工程分享",
-      "icon": "library",
-      "description": "别人做好的工程与 MIDI。找不到参考、想拆开看别人怎么编的时候来这里 —— 下载后直接能本院工作站转换格式。",
-      "items": [
-        {
-          "id": "midishow",
-          "name": "MIDIshow",
-          "url": "https://www.midishow.com/",
-          "home": "midishow.com",
-          "tags": [
-            "MIDI",
-            "中文站",
-            "需注册",
-            "量大"
-          ],
-          "region": "国内",
-          "cost": "免费 / 部分付费",
-          "official": true,
-          "desc": "国内最大的 MIDI 分享站，中文界面、曲库量大，流行歌与动漫曲覆盖都不错。下载的 .mid 可以直接丢进本站工作站转成 vsqx / ustx / svp 等工程格式，比自己扒谱快得多。",
-          "tip": "免费下载有次数限制，注册后多一点。质量参差 —— 有的只是主旋律，有的连伴奏声部都齐，下之前看评论区和试听。付费曲目注意授权范围，别直接拿去做商单。",
-          "verified": {
-            "status": 403,
-            "checkedAt": "2026-09-27",
-            "verdict": "warn"
-          }
-        },
-        {
-          "id": "bowlroll",
-          "name": "BowlRoll",
-          "url": "https://bowlroll.net/",
-          "home": "bowlroll.net",
-          "tags": [
-            "工程文件",
-            "音源",
-            "日文站",
-            "需注册"
-          ],
-          "region": "海外",
-          "cost": "免费",
-          "official": true,
-          "desc": "日本同人圈常用的文件分享站，UTAU / VOCALOID 的工程文件、音源、立绘素材大量发布在这里。很多 P 主投稿时会附 BowlRoll 链接放工程，是找「原工程」最直接的渠道之一。",
-          "tip": "**必须注册登录才能下载**，日文界面。文件多为 zip，解压密码常写在发布页或视频简介里。下载前看清发布者的使用规约（是否允许改造、二次配布）。",
-          "verified": {
-            "status": 200,
-            "checkedAt": "2026-09-27",
-            "verdict": "ok"
-          }
-        },
-        {
-          "id": "vspx",
-          "name": "vspx.top",
-          "url": "https://vspx.top/",
-          "home": "vspx.top",
-          "tags": [
-            "工程文件",
-            "中文站"
-          ],
-          "region": "国内",
-          "cost": "免费",
-          "official": true,
-          "desc": "中文的工程分享站。**当前站点无法访问**，先留在这里备查 —— 如果哪天恢复了可以再看看。",
-          "tip": "截至 2026-09-27 实测连接失败。收录时没有校验连通性（用户明确说明该站已挂），不要以本条目为准判断站点状态。",
-          "verified": {
-            "status": 0,
-            "checkedAt": "2026-09-27",
-            "verdict": "warn",
-            "note": "站点当前无法访问，未做连通性校验"
-          },
-          "skipProbe": true
         }
       ]
     },

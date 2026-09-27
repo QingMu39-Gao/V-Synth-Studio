@@ -30,7 +30,7 @@
 {
   "version": 1,
   "updatedAt": "2026-09-26",        // 最近一次校验日期
-  "notice": "安全提示文案",           // 前端顶部横幅展示
+  "notice": "顶部横幅文案",            // 前端顶部横幅展示（resources.json 里是拒绝收录学习版/破解版的声明）
   "verifySummary": {                 // 最近一次校验的汇总（由 apply 脚本写入）
     "checkedAt": "2026-09-26",
     "total": 27, "ok": 22, "warn": 5, "dead": 0, "passRate": 81

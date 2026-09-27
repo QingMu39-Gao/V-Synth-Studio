@@ -10,8 +10,10 @@
 import { api, watchJob } from '../api.js'
 import { h, mount, icon, toast, button, emptyState, progressBar, alertBox, modal } from '../ui.js'
 
+// 兜底文案。正常情况下用 resources.json 里的 notice，
+// 这里只在 JSON 读不到（文件缺失/损坏）时顶一下 —— 所以两句要表达同一个意思。
 const DEFAULT_NOTICE =
-  '盗版声库 / 编辑器压缩包是木马与挖矿程序的高发区：本库只收录官方、免费、开源与试用渠道，不放任何网盘安装包。下载任何可执行文件后，请核对来源、文件大小与哈希，装完先杀毒。'
+  '抱歉！我们拒绝收录学习版以及破解版资源。如果有需要最好是去下载官方的正规体验版。再说现在这些免费资源其实挺好找的。。。'
 
 /** tag → chip 颜色（按关键词猜，猜不中就中性） */
 const TAG_TONES = {
