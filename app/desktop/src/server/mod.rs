@@ -21,6 +21,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
+use axum::extract::DefaultBodyLimit;
 use axum::routing::{get, post};
 use axum::Router;
 use serde_json::{json, Value};
@@ -99,6 +100,12 @@ pub fn router(state: Arc<AppState>) -> Router {
         // 把本地媒体文件原样吐给前端 —— 浏览器只能吃 URL，不能读本地路径。
         // 音频页的试听和波形都靠它，支持 Range（播放器拖进度条要用）
         .route("/api/fs/raw", get(simple::fs_raw))
+        // 写任意二进制（文字 PV 导出 MP4 用）：JIZURA 的保存被父页面拦下来，
+        // 字节分块 POST 到这里落盘。body 上限要放宽，默认 2MB 连一块都不够。
+        .route(
+            "/api/pv/save",
+            post(simple::pv_save).layer(DefaultBodyLimit::max(simple::PV_CHUNK_LIMIT)),
+        )
         // ── 任务 ──────────────────────────────────────────
         .route("/api/jobs", get(simple::jobs_list))
         .route("/api/jobs/get", get(simple::jobs_get))

@@ -92,6 +92,11 @@ api.checkLinks(ids)                      // 返回 { jobId }，结果在 job.res
 api.detect(force)、api.launch({ path })
 api.fsList(path)、api.fsRoots()、api.fsReveal(path, select)、api.fsOpen({ path|url })
 api.saveConfig(patch)
+
+// 写任意二进制（文字 PV 导出用，见「文字 PV 页」一节）
+// POST /api/pv/save?dir=<已存在的目录>&name=<文件名>&part=<第几块，从 0 起>
+// body 是**裸字节**（不是 JSON、不是 base64），单块上限 16MB，前端按 8MB 切
+// 返回 { path, name, size, part }；part=0 新建（同名自动加 (1)(2)，不覆盖），之后追加
 ```
 
 **B 站解析返回结构**（`api.parseVideo`，`source === 'bilibili'` 时）：
@@ -140,6 +145,21 @@ api.lyricsLogout(source)                // 退出登录：清掉该来源的 Coo
   （否则用户手动清空后切回来又被塞回去）。
 - 填入方式：它的歌词框是 `<textarea id="lyrics">`，`bind()` 里挂了 `input` 监听，
   所以**改 value 必须同时派发冒泡的 `input` 事件**，否则它内部状态不变、预览不重排、自动保存不触发。
+- **写进去之后要按「读回值」收敛，不要写死时间表**：它的 `boot()` 末尾会用
+  `syncUI()` 把 `S.project.lyrics` 覆盖回输入框，所以第一次写进去会被顶掉，得补写。
+  早先是一串固定的 `setTimeout`（0/400/1000/2000/3500ms），页面被**定时器节流**时
+  （无头环境实测一次 250ms 的等待能变成 6.9 秒）整轮拖到二十多秒，状态栏一直停在
+  「正在读取…」，用户看着就是导入卡死。现在改成轮询到「读回值一致」，
+  并且**读到「内容在、但不是我们写的」就说明它的 boot 已经跑完**（那次覆盖就是信号），
+  补一次再等 600ms 就收工 —— 正常情况下一两秒结束。
+- **导出 MP4 的保存路径由父页面接管**：它的所有保存（MP4 / PNG 序列 ZIP / 附带的 WAV）
+  都过 `J.saveFile(name, blob)`，父页面在 iframe boot 完后把这个函数换掉，
+  改弹我们自己的目录选择器（`pickDirectory`，`mode:'dir'`），选完分块 POST 到
+  `POST /api/pv/save`（见下）落盘 —— **不改它的界面，也不改 vendor 里的文件**。
+  返回 `'saved'` 是为了不让它再走一遍浏览器下载（否则会偷偷又存一份到系统下载目录）。
+  它导出面板里那个「大型视频用（直接保存为文件）」走的是它自己的 `showSaveFilePicker`，
+  不经过这里（那条路本来就是系统保存对话框；它在 iframe 里点不出来是 File System Access
+  API 要求顶层文档，属于它的既有行为）。
 - 字体已本地化成 `vendor/jizura/fonts.css` + `fonts/`（Google Fonts 按 unicode-range 切了 2335 个子集）。
   `index.html` 里**不能再出现 `fonts.googleapis.com` / `fonts.gstatic.com`** —— 它还会在运行时
   按 family 惰性插 `<link>` 到 Google，那段被 `index.html` 末尾的一小段脚本改写成 `fonts.css` 了。

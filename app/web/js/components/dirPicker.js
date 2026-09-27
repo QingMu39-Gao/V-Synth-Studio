@@ -19,6 +19,8 @@ const dirName = (p) => String(p).replace(/[\\/][^\\/]*$/, '')
  * }} opts
  *   mode='dir'（默认）只列文件夹；mode='file' 列文件夹 + 文件，可点选文件
  *   exts 只在 mode='file' 下生效，不带点、大小写不敏感
+ *   onClose 对话框关掉时调用，参数是「选中的路径」；用户没选就取消时是 undefined
+ *           （调用方要区分「选完了」和「放弃了」时用得上，比如导出保存）
  */
 export async function pickDirectory(opts = {}) {
   const mode = opts.mode === 'file' ? 'file' : 'dir'
@@ -89,11 +91,14 @@ export async function pickDirectory(opts = {}) {
     onClick: () => confirm(),
   })
 
+  let pickedDir = null
+
   const { close } = modal({
     title: opts.title ?? (isFileMode ? '选择文件' : '选择目录'),
     wide: true,
     body,
     footer: [button('取消', { onClick: () => close() }), confirmBtn],
+    onClose: () => opts.onClose?.(pickedDir),
   })
 
   function confirm() {
@@ -102,6 +107,7 @@ export async function pickDirectory(opts = {}) {
         toast('请选择一个文件', 'warn')
         return
       }
+      pickedDir = pickedFile.path
       close()
       opts.onPick?.(pickedFile.path, pickedFile)
       return
@@ -110,6 +116,7 @@ export async function pickDirectory(opts = {}) {
       toast('请先选择目录', 'warn')
       return
     }
+    pickedDir = selected
     close()
     opts.onPick?.(selected)
   }
@@ -147,8 +154,9 @@ export async function pickDirectory(opts = {}) {
       target = dirName(pastedFile)
     }
     mount(listEl, h('div.dir-entry', [icon('refresh', 14), '读取中…']))
+    let data = null
     try {
-      const data = await api.fsList(target, { exts: showAll ? [] : exts, files: isFileMode })
+      data = await api.fsList(target, { exts: showAll ? [] : exts, files: isFileMode })
       currentPath = data.path
       showPath(data.path)
       mount(listEl, null)
@@ -195,6 +203,16 @@ export async function pickDirectory(opts = {}) {
       if (data.exists === false) toast('该目录还不存在，转换时会自动创建', 'info')
     } catch (err) {
       mount(listEl, h('div.dir-entry', { style: { cursor: 'default', color: 'var(--err)' } }, [icon('alert', 14), err.message]))
+      // 目标读不了（不存在 / 不是目录 / 没权限）时退回上一个能用的位置或第一个盘符 ——
+      // 不然用户就卡在一个空的/报错的列表里，看着像「选择器坏了」。
+      try {
+        const roots = await api.fsRoots()
+        const first = roots.roots?.find((r) => r.type === 'drive') ?? roots.roots?.[0]
+        const up = data?.parent && data.parent !== data.path ? data.parent : ''
+        const fallback = up || first?.path || ''
+        // 退到的位置和原地一样就不再重试，避免来回打转
+        if (fallback && fallback !== target) return load(fallback)
+      } catch { /* 连常用位置都读不到，就留着错误信息 */ }
     }
   }
 

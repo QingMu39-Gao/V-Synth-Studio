@@ -450,6 +450,115 @@ pub async fn fs_reveal(Json(body): Json<Value>) -> Result<Json<Value>, ApiError>
     Ok(Json(ok(json!({ "path": target }))))
 }
 
+/* ══════════════════════════════════ 写文件（文字 PV 导出用）══════════════════════════════════ */
+
+/*
+ * `POST /api/pv/save?dir=<目录>&name=<文件名>&part=<第几块>`
+ *
+ * 存在的理由：JIZURA 导出 MP4 走的是浏览器下载（blob + `<a download>`），
+ * 在 Tauri 的 WebView2 里只能落到系统下载目录，用户没得选。我们拦下那次保存，
+ * 让用户选目录，再把字节交给后端写盘 —— 所以需要一条「写任意二进制」的接口。
+ *
+ * 为什么是**裸字节 + 分块**，而不是 JSON 里塞 base64：
+ *   4K 的 MP4 有几百 MB，base64 要膨胀 33%，还得在内存里多存一份；
+ *   浏览器为了编出 base64 字符串本身又要多占一份。分块之后峰值内存只有一块的大小
+ *   （路由上挂了 16MB 的 body 上限，前端按 8MB 切），与成片大小无关。
+ *
+ * 路径安全：`dir` 必须已经存在且是目录（**不自动创建**，免得手滑把文件写到
+ * 半截路径下），`name` 只取最后一段并过滤非法字符，同名文件不覆盖而是自动加 (1)(2)…
+ */
+
+/// 单块上限 16MB；前端按 8MB 切，留一倍余量。
+pub const PV_CHUNK_LIMIT: usize = 16 * 1024 * 1024;
+
+#[derive(serde::Deserialize)]
+pub struct SaveQuery {
+    pub dir: Option<String>,
+    pub name: Option<String>,
+    /// 第几块（从 0 开始）。0 是**新建**（同名自动改名），之后是追加。
+    pub part: Option<u32>,
+}
+
+/// 文件名只保留最后一段，并清掉 Windows 不允许、或者能改变路径含义的字符。
+///
+/// 不这样做的话 `name=..\..\Windows\System32\x.dll` 就能写到任意位置。
+fn safe_file_name(raw: &str) -> String {
+    let last = raw
+        .rsplit(['\\', '/'])
+        .find(|s| !s.trim().is_empty())
+        .unwrap_or("");
+    let cleaned: String = last
+        .chars()
+        .map(|c| if c.is_control() || "<>:\"/\\|?*".contains(c) { '_' } else { c })
+        .collect();
+    let trimmed = cleaned.trim().trim_matches('.').trim();
+    if trimmed.is_empty() { "未命名".to_string() } else { trimmed.to_string() }
+}
+
+/// 目标文件。`part > 0` 时沿用已存在的那个（追加），否则挑一个不重名的。
+fn target_file(dir: &Path, name: &str, part: u32) -> PathBuf {
+    let first = dir.join(name);
+    if part > 0 {
+        return first;
+    }
+    if !first.exists() {
+        return first;
+    }
+    let p = Path::new(name);
+    let stem = p.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_else(|| "未命名".into());
+    let ext = p.extension().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    for n in 1..10000 {
+        let cand = if ext.is_empty() {
+            dir.join(format!("{stem} ({n})"))
+        } else {
+            dir.join(format!("{stem} ({n}).{ext}"))
+        };
+        if !cand.exists() {
+            return cand;
+        }
+    }
+    first
+}
+
+pub async fn pv_save(
+    Query(q): Query<SaveQuery>,
+    body: axum::body::Bytes,
+) -> Result<Json<Value>, ApiError> {
+    use std::io::Write;
+
+    let dir = q.dir.unwrap_or_default();
+    if dir.trim().is_empty() {
+        return Err(ApiError::bad_request("缺少保存目录"));
+    }
+    let dir_path = PathBuf::from(dir.trim());
+    if !dir_path.is_dir() {
+        return Err(ApiError::bad_request(format!("目录不存在：{}", dir_path.display())));
+    }
+
+    let name = safe_file_name(&q.name.unwrap_or_default());
+    let part = q.part.unwrap_or(0);
+    let path = target_file(&dir_path, &name, part);
+
+    // 0 号块新建（同名已经改成不重名的那个），之后的块追加
+    let mut file = std::fs::OpenOptions::new()
+        .create(true)
+        .append(part > 0)
+        .write(true)
+        .truncate(part == 0)
+        .open(&path)
+        .map_err(ApiError::from)?;
+    file.write_all(&body).map_err(ApiError::from)?;
+    drop(file);
+
+    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+    Ok(Json(ok(json!({
+        "path": crate::platform::clean_path(&path),
+        "name": path.file_name().map(|s| s.to_string_lossy().to_string()).unwrap_or(name),
+        "size": size,
+        "part": part,
+    }))))
+}
+
 /* ══════════════════════════════════ 任务 ══════════════════════════════════ */
 
 /// 任务表
