@@ -1,16 +1,42 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-theme="dark">
 <head>
     <!-- 清沐的虚拟歌姬工作站 · QingMu39 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>清沐的虚拟歌姬工作站</title>
+<script>
+/* 明暗主题必须在**首次绘制前**定下来，否则会闪一下相反的配色。
+   所以这一段内联、同步、不依赖任何模块（模块是异步加载的，来不及）。
+   取值：用户手动选过就用它，没选过跟随系统。real 值与 config.theme 的同步见 js/theme.js。 */
+(function () {
+  var t = null
+  try { t = localStorage.getItem('qingmu.theme') } catch (e) { /* 隐私模式读不到，按系统走 */ }
+  if (t !== 'light' && t !== 'dark') {
+    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark'
+  }
+  document.documentElement.dataset.theme = t
+})()
+</script>
 <link rel="stylesheet" href="/css/base.css">
 <link rel="stylesheet" href="/css/components.css">
 <link rel="stylesheet" href="/css/views.css">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2339c5bb'/%3E%3Cpath d='M11 21V11l10 5-10 5z' fill='%2306131a'/%3E%3C/svg%3E">
 </head>
 <body>
+
+<!-- 启动加载画面：**静态存在**，JS 跑起来之前它就在屏幕上（否则模块加载那段时间是白屏）。
+     背景是应用界面本身 + 高斯模糊，中间一个转圈的环形进度条。
+     加载完由 js/main.js 揭开并播放 Q 弹展开；兜底见文件末尾的内联脚本与 base.css 的 bootGiveUp。 -->
+<div class="boot" id="boot">
+  <div class="boot-card">
+    <div class="boot-mark">沐</div>
+    <div class="boot-title">清沐的虚拟歌姬工作站</div>
+    <div class="boot-ring" aria-hidden="true"></div>
+    <div class="boot-status" id="boot-status">正在载入工作台…</div>
+    <button class="btn btn-sm boot-retry" id="boot-retry" type="button" onclick="location.reload()">重新载入</button>
+  </div>
+</div>
 
 <div id="app">
   <!-- 侧边栏 -->
@@ -30,7 +56,7 @@
         <span class="status-dot" id="status-dot"></span>
         <span class="muted" id="status-text">正在连接…</span>
       </div>
-      <div class="tiny dim" id="version-text">v1.0.0</div>
+      <div class="tiny dim" id="version-text"></div>
     </div>
   </aside>
 
@@ -42,6 +68,14 @@
         <div class="sub" id="view-sub"></div>
       </div>
       <div class="header-actions" id="header-actions"></div>
+      <!-- 固定工具区：不随视图切换被清空。两枚图标按 html[data-theme] 显隐，不用 JS 换图标 -->
+      <div class="header-tools" id="header-tools">
+        <button class="btn btn-ghost btn-icon theme-toggle" id="theme-toggle" type="button"
+                title="切换明亮 / 黑暗模式" aria-label="切换明亮 / 黑暗模式">
+          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg>
+          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+        </button>
+      </div>
     </header>
     <div class="view" id="view"></div>
   </main>
@@ -51,5 +85,36 @@
 <div id="modal-root"></div>
 
 <script type="module" src="/js/main.js"></script>
+
+<script>
+/* 启动遮罩的兜底。用户被永久卡在加载页是最糟的结果，所以：
+   ① 模块脚本没加载出来（资源错误在捕获阶段能收到）→ 立刻报错；
+   ② 12 秒还没就绪 → 撤掉模糊、把界面让出来、显示错误与「重新载入」；
+   ③ 连这段内联脚本都没跑到的话，base.css 里还有一道 15 秒的纯 CSS 兜底。 */
+(function () {
+  var boot = document.getElementById('boot')
+  if (!boot) return
+  var status = document.getElementById('boot-status')
+  var dead = false
+  function fail(msg) {
+    if (dead || !boot.isConnected) return
+    dead = true
+    status.textContent = msg
+    status.classList.add('err')
+    boot.classList.add('stuck')
+  }
+  window.addEventListener('error', function (e) {
+    if (window.__qmReady) return
+    if (e && e.target && e.target.tagName === 'SCRIPT') fail('前端脚本没有加载成功，请重新打开工作站')
+    else if (e && e.message) fail('前端出错：' + e.message)
+  }, true)
+  window.addEventListener('unhandledrejection', function () {
+    if (!window.__qmReady) fail('前端初始化出错，可点「重新载入」再试一次')
+  })
+  setTimeout(function () {
+    if (!window.__qmReady) fail('载入超时：本地服务可能没有响应')
+  }, 12000)
+})()
+</script>
 </body>
 </html>

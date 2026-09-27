@@ -13,6 +13,7 @@ import { api } from '../api.js'
 import {
   h, mount, icon, toast, confirmDialog, modal, button, card, statBlock,
 } from '../ui.js'
+import { applyTheme, currentTheme, themePref } from '../theme.js'
 import { directoryInput, pickDirectory } from '../components/dirPicker.js'
 
 const LS_QUALITY = 'fandiao.settings.quality'
@@ -26,11 +27,19 @@ const QUALITY_QN = {
 }
 
 const SECTIONS = [
+  { id: 'appearance', label: '外观', iconName: 'star', title: '外观', sub: '明亮 / 黑暗模式，跟随系统还是手动固定' },
   { id: 'paths', label: '路径', iconName: 'folder', title: '路径', sub: '下载与转换结果默认存到哪里' },
   { id: 'video', label: '视频下载', iconName: 'video', title: '视频下载', sub: 'B 站 Cookie、代理、画质与线程' },
   { id: 'tools', label: '外部工具', iconName: 'package', title: '外部工具', sub: 'ffmpeg / yt-dlp / Python 的检测' },
   { id: 'programs', label: '自定义程序', iconName: 'cpu', title: '自定义程序', sub: '把常用软件挂进来，随时启动' },
   { id: 'about', label: '关于', iconName: 'info', title: '关于', sub: '版本与本机信息' },
+]
+
+/** 外观 → 主题：值与 js/theme.js 一致 */
+const THEME_MODES = [
+  { id: 'light', name: '明亮', desc: '白底、细描边、很轻的阴影' },
+  { id: 'dark', name: '黑暗', desc: '深灰底，长时间看着不刺眼' },
+  { id: 'system', name: '跟随系统', desc: 'Windows 切换配色时自动跟着换' },
 ]
 
 /* ------------------------------------------------------------------ 小工具 */
@@ -678,16 +687,57 @@ export async function render(ctx) {
     ]
   }
 
+  /* ---------------- 外观 ---------------- */
+
+  function appearanceSection() {
+    const pref = themePref()
+    // 「跟随系统」那张卡的缩略图按当前实际生效的主题画，不然看不出会变成什么样
+    const effective = currentTheme()
+
+    const options = THEME_MODES.map((m) => {
+      const sw = m.id === 'system' ? effective : m.id
+      const btn = h(`button.theme-option${pref === m.id ? '.active' : ''}`, {
+        type: 'button',
+        onclick: () => {
+          applyTheme(m.id)
+          renderPane()
+        },
+      }, [
+        h(`div.theme-swatch.${sw}`, [
+          h('div.sw-side'),
+          h('div.sw-main', [h('div.sw-bar'), h('div.sw-card', [h('div.sw-accent')])]),
+        ]),
+        h('div.to-name', [m.name, pref === m.id ? icon('check', 13) : null]),
+        h('div.to-desc', m.desc),
+      ])
+      return btn
+    })
+
+    return [
+      card({
+        title: '主题',
+        sub: '整套界面配色，改完立刻生效',
+        iconName: 'star',
+        body: h('div.col.gap-lg', [
+          h('div.theme-preview-row', options),
+          h('div.small.muted', `现在的选择：${THEME_MODES.find((m) => m.id === pref)?.name ?? '跟随系统'}（实际显示为${effective === 'light' ? '明亮' : '黑暗'}）。顶栏右上角的太阳 / 月亮按钮也能随手切换。`),
+          h('div.tiny.dim', '选择会记住：本机记在浏览器存储里（刷新、重开都在），同时写进 app/data/config.json 备份一份。'),
+        ]),
+      }),
+    ]
+  }
+
   /* ---------------- 渲染 ---------------- */
 
   function renderPane() {
     const def = SECTIONS.find((s) => s.id === section)
     const body =
-      section === 'paths' ? pathsSection()
-        : section === 'video' ? videoSection()
-          : section === 'tools' ? toolsSection()
-            : section === 'programs' ? programsSection()
-              : aboutSection()
+      section === 'appearance' ? appearanceSection()
+        : section === 'paths' ? pathsSection()
+          : section === 'video' ? videoSection()
+            : section === 'tools' ? toolsSection()
+              : section === 'programs' ? programsSection()
+                : aboutSection()
 
     mount(pane,
       h('div', [

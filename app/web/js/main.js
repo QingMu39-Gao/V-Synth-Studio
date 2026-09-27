@@ -5,6 +5,7 @@
 
 import { api } from './api.js'
 import { h, mount, icon, toast } from './ui.js'
+import { adoptConfig, toggleTheme, watchSystem } from './theme.js'
 
 /* ------------------------------------------------------------ 视图注册 */
 
@@ -175,8 +176,42 @@ function padStatus() {
     const missing = []
     if (!state.tools?.ffmpeg?.available) missing.push('ffmpeg')
     if (!state.tools?.ytdlp?.available) missing.push('yt-dlp')
-    vt.textContent = missing.length ? `v1.0.0 · 未安装：${missing.join(' / ')}` : 'v1.0.0 · 工具齐备'
+    // 版本号走 /api/state 的 version（后端从 APP_VERSION 常量出）。
+    // 之前这里写死 'v1.0.0'，改版本号时界面完全不跟 —— 而且 /api/state
+    // 当时根本没有 version 字段，所以上面那行 `?? '1.0.0'` 永远命中兜底。
+    const v = state.version ? `v${state.version}` : ''
+    const tail = missing.length ? ` · 未安装：${missing.join(' / ')}` : ' · 工具齐备'
+    vt.textContent = `${v}${tail}`
   }
+}
+
+/* ------------------------------------------------------------ 主题 */
+
+/**
+ * 顶栏的小图标按钮 + 跟随系统。
+ * 主题值本身（含不闪烁的首屏落地）在 js/theme.js 与 index.html 的内联脚本里，
+ * 这里只负责把按钮接上：图标显隐是 CSS 按 html[data-theme] 做的，不用 JS 换。
+ */
+document.getElementById('theme-toggle')?.addEventListener('click', () => {
+  toggleTheme()
+})
+watchSystem()
+
+/* ------------------------------------------------------------ 启动遮罩 */
+
+/**
+ * 揭开启动画面：界面 Q 弹展开（动画只在这里加一次 class，切页 / 换主题都不会重播）。
+ * 调用点只有 boot() 末尾一处；异常路径由 index.html 的内联兜底与
+ * base.css 的 15 秒纯 CSS 兜底负责，这里只管正常路径。
+ */
+function revealBoot() {
+  window.__qmReady = true
+  document.documentElement.classList.add('booted')
+  const boot = document.getElementById('boot')
+  if (!boot) return
+  boot.classList.remove('stuck')
+  boot.classList.add('reveal')
+  setTimeout(() => boot.remove(), 620)
 }
 
 /* ------------------------------------------------------------ 启动 */
@@ -218,6 +253,8 @@ async function boot() {
   showSkeleton(id)
   try {
     await refreshState()
+    // 本地没存过主题（换过端口 / 清过缓存）就从 config 里把上次的选择找回来
+    adoptConfig(state.config?.theme)
   } catch (err) {
     console.error(err)
     toast('无法连接本地服务，请确认服务仍在运行', 'err')
@@ -230,6 +267,7 @@ async function boot() {
   else await navigate(id, params)
 
   state.ready = true
+  revealBoot()
 }
 
 window.addEventListener('hashchange', () => {

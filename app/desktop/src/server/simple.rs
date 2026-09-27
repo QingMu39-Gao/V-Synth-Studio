@@ -196,6 +196,9 @@ pub async fn config_post(
 pub async fn state(State(st): State<Arc<AppState>>) -> Json<Value> {
     let cfg = st.config_snapshot();
     Json(ok(json!({
+        // 前端侧边栏要显示版本号。以前它只能自己写死（/api/state 没这个字段），
+        // 结果改了 APP_VERSION 界面完全不跟。这里给出去，前端就不必猜。
+        "version": APP_VERSION,
         "formats": crate::libresvip::list_formats(&st.root),
         "editors": crate::tools::detect_editors(),
         "tools": crate::tools::detect_tools(&st.root),

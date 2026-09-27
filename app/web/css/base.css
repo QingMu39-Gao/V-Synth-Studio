@@ -1,71 +1,198 @@
 /* ============================================================
-   翻调工作站 — 设计系统
-   深色玻璃拟态，主色取初音青，辅色洋红/紫，全部离线（不加载任何网络字体）
+   翻调工作站 — 设计系统（苹果风格 · 双主题）
+   明亮 / 黑暗两套令牌都在这一个 :root 段里：默认（:root）是暗色，
+   [data-theme="light"] 覆盖成亮色。主题由 index.html 里的一小段
+   内联脚本在**首次绘制前**写到 <html data-theme>，所以不会闪。
+   全部离线：不加载任何网络字体、不引任何框架。
    ============================================================ */
 
 :root {
-  /* 背景层级 */
-  --bg-0: #0a0d13;
-  --bg-1: #0f131b;
-  --bg-2: #141924;
-  --bg-3: #1b212e;
-  --bg-4: #232a3a;
+  /* ---- 背景层级 ---- */
+  --bg-0: #0b0e14;
+  --bg-1: #12161f;
+  --bg-2: #171c27;
+  --bg-3: #1e2431;
+  --bg-4: #262d3d;
 
-  /* 玻璃层 */
-  --glass: rgba(255, 255, 255, 0.035);
-  --glass-hover: rgba(255, 255, 255, 0.06);
-  --glass-active: rgba(255, 255, 255, 0.09);
+  /* 玻璃层：卡片 / 列表项 / 芯片的底色 */
+  --glass: rgba(255, 255, 255, 0.045);
+  --glass-end: rgba(255, 255, 255, 0.01);
+  --glass-hover: rgba(255, 255, 255, 0.075);
+  --glass-active: rgba(255, 255, 255, 0.11);
 
-  /* 描边 */
-  --border: rgba(255, 255, 255, 0.075);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  /* 面板 / 遮罩：模态框、悬浮条、顶栏侧栏的半透明底 */
+  --surface: #12161f;
+  --panel: rgba(23, 28, 39, 0.86);
+  --veil: rgba(11, 14, 20, 0.62);
+  --boot-veil: rgba(11, 14, 20, 0.5);
+  --overlay: rgba(5, 7, 11, 0.55);
+  --sunken: #070a10;
+
+  /* 描边：细 + 低对比 */
+  --hairline: rgba(255, 255, 255, 0.055);
+  --border: rgba(255, 255, 255, 0.09);
+  --border-strong: rgba(255, 255, 255, 0.17);
 
   /* 文字 */
-  --text-0: #e9edf5;
-  --text-1: #a5b0c2;
-  --text-2: #6d7789;
-  --text-3: #4a5364;
+  --text-0: #eef1f7;
+  --text-1: #a8b3c5;
+  --text-2: #737e91;
+  --text-3: #525d6e;
 
-  /* 主色 */
+  /* 主色：品牌青绿做层次（底 / 悬停 / 按下 / 浅底 / 反色文字） */
   --accent: #39c5bb;
-  --accent-dim: rgba(57, 197, 187, 0.14);
+  --accent-2: #2ba8a0;
+  --accent-hover: #4ad6cc;
+  --accent-active: #2eb2a9;
+  --accent-dim: rgba(57, 197, 187, 0.16);
   --accent-glow: rgba(57, 197, 187, 0.35);
+  --accent-fg: #04201f;
   --pink: #ff4d94;
-  --pink-dim: rgba(255, 77, 148, 0.14);
+  --pink-2: #d93b7c;
+  --pink-dim: rgba(255, 77, 148, 0.15);
   --purple: #8b6cff;
-  --purple-dim: rgba(139, 108, 255, 0.14);
+  --purple-dim: rgba(139, 108, 255, 0.15);
+  /* 品牌记号（logo）用固定三色，两套主题里都保持鲜亮 */
+  --brand-1: #39c5bb;
+  --brand-2: #8b6cff;
+  --brand-3: #ff4d94;
+  --brand-fg: #06131a;
 
   /* 语义色 */
   --ok: #3ddc97;
   --ok-dim: rgba(61, 220, 151, 0.14);
+  --ok-fg: #9df0cb;
   --warn: #ffb020;
   --warn-dim: rgba(255, 176, 32, 0.14);
+  --warn-fg: #ffd27d;
   --err: #ff5f5f;
   --err-dim: rgba(255, 95, 95, 0.14);
+  --err-fg: #ffb3b3;
   --info: #4aa8ff;
   --info-dim: rgba(74, 168, 255, 0.14);
+  --info-fg: #a8d3ff;
 
-  /* 形状 */
-  --radius-lg: 18px;
-  --radius: 13px;
-  --radius-sm: 9px;
-  --radius-xs: 6px;
+  /* 形状：苹果常用 10~14px 卡片、8~10px 控件 */
+  --radius-lg: 20px;
+  --radius: 14px;
+  --radius-sm: 10px;
+  --radius-xs: 7px;
+  --radius-pill: 999px;
 
-  /* 阴影 */
-  --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.3);
-  --shadow: 0 10px 32px rgba(0, 0, 0, 0.42);
-  --shadow-lg: 0 24px 64px rgba(0, 0, 0, 0.55);
+  /* 阴影：多层柔和，暗色也不糊成一团黑 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
+  --shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 14px 34px rgba(0, 0, 0, 0.38);
+  --shadow-lg: 0 8px 22px rgba(0, 0, 0, 0.4), 0 32px 72px rgba(0, 0, 0, 0.5);
+  --shadow-accent: 0 2px 8px rgba(0, 0, 0, 0.18), 0 8px 22px var(--accent-glow);
 
-  /* 动效 */
+  /* 氛围光（body::before） */
+  /* 环境光晕：**围绕品牌青绿的同类色**（青绿 / 冷蓝 / 薄荷）。
+     原来是 青绿 + 热粉红 #ff4d94 + 紫 —— 那是三分互补，跟青绿品牌色打架，
+     在「欢迎回来」卡片右上角凝成一团粉，看着像串色而不是设计。
+     苹果的环境光晕都是同类色且极淡，照这个来。 */
+  --glow-1: rgba(57, 197, 187, 0.11);
+  --glow-2: rgba(58, 150, 232, 0.07);
+  --glow-3: rgba(47, 209, 138, 0.055);
+
+  /* 滚动条 */
+  --scroll-thumb: rgba(255, 255, 255, 0.12);
+  --scroll-thumb-hover: rgba(255, 255, 255, 0.22);
+
+  /* 高斯模糊：只给固定元素用（顶栏 / 侧栏 / 模态 / 悬浮条 / 启动遮罩），
+     列表里的卡片一律不加 —— backdrop-filter 很贵，滚动会卡 */
+  --blur-chrome: 20px;
+  --blur-panel: 28px;
+  --blur-boot: 26px;
+  --sat: 180%;
+
+  /* 动效：交互反馈 120~220ms，页面级 300~400ms */
+  --spring: cubic-bezier(0.34, 1.56, 0.64, 1);
   --ease: cubic-bezier(0.32, 0.72, 0, 1);
   --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
-  --dur: 220ms;
-  --dur-slow: 380ms;
+  --dur-fast: 130ms;
+  --dur: 180ms;
+  --dur-slow: 320ms;
 
-  --sidebar-w: 232px;
-  --header-h: 62px;
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text",
+    "Segoe UI", "PingFang SC", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: "Cascadia Code", "SF Mono", "Consolas", ui-monospace, monospace;
+
+  --sidebar-w: 236px;
+  --header-h: 64px;
 
   color-scheme: dark;
+}
+
+/* ------------------------------------------------------------ 明亮主题 */
+[data-theme="light"] {
+  --bg-0: #f4f5f7;
+  --bg-1: #ffffff;
+  --bg-2: #f0f1f4;
+  --bg-3: #e8eaee;
+  --bg-4: #dcdfe5;
+
+  --glass: #ffffff;
+  --glass-end: rgba(0, 0, 0, 0.008);
+  --glass-hover: #ffffff;
+  --glass-active: rgba(0, 0, 0, 0.055);
+
+  --surface: #ffffff;
+  --panel: rgba(255, 255, 255, 0.88);
+  --veil: rgba(248, 248, 251, 0.78);
+  --boot-veil: rgba(248, 248, 251, 0.55);
+  --overlay: rgba(18, 20, 26, 0.34);
+  --sunken: #f3f4f7;
+
+  --hairline: rgba(0, 0, 0, 0.05);
+  --border: rgba(0, 0, 0, 0.09);
+  --border-strong: rgba(0, 0, 0, 0.19);
+
+  --text-0: #1c1c1e;
+  --text-1: #52525a;
+  --text-2: #7c7c85;
+  --text-3: #a3a3ab;
+
+  /* 亮底上的青绿要压深一些，浅色 #39c5bb 当文字读不清 */
+  --accent: #0e9c92;
+  --accent-2: #0a8078;
+  --accent-hover: #12b0a4;
+  --accent-active: #0a8078;
+  --accent-dim: rgba(14, 156, 146, 0.1);
+  --accent-glow: rgba(14, 156, 146, 0.22);
+  --accent-fg: #ffffff;
+  --pink: #e0377c;
+  --pink-2: #c22a67;
+  --pink-dim: rgba(224, 55, 124, 0.1);
+  --purple: #6d4ae0;
+  --purple-dim: rgba(109, 74, 224, 0.1);
+
+  --ok: #0f9d63;
+  --ok-dim: rgba(15, 157, 99, 0.1);
+  --ok-fg: #0a6b43;
+  --warn: #b26a00;
+  --warn-dim: rgba(178, 106, 0, 0.1);
+  --warn-fg: #8a5200;
+  --err: #d92d20;
+  --err-dim: rgba(217, 45, 32, 0.09);
+  --err-fg: #9f1c14;
+  --info: #0b74d1;
+  --info-dim: rgba(11, 116, 209, 0.1);
+  --info-fg: #0a5aa8;
+
+  /* 亮色阴影要轻：多层、低透明度、带一点冷调 */
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.05), 0 1px 3px rgba(16, 24, 40, 0.05);
+  --shadow: 0 2px 6px rgba(16, 24, 40, 0.05), 0 14px 30px rgba(16, 24, 40, 0.08);
+  --shadow-lg: 0 8px 20px rgba(16, 24, 40, 0.08), 0 30px 64px rgba(16, 24, 40, 0.14);
+  --shadow-accent: 0 1px 3px rgba(16, 24, 40, 0.08), 0 8px 20px var(--accent-glow);
+
+  --glow-1: rgba(57, 197, 187, 0.15);
+  --glow-2: rgba(58, 150, 232, 0.075);
+  --glow-3: rgba(47, 209, 138, 0.06);
+
+  --scroll-thumb: rgba(0, 0, 0, 0.16);
+  --scroll-thumb-hover: rgba(0, 0, 0, 0.3);
+
+  color-scheme: light;
 }
 
 * { box-sizing: border-box; }
@@ -79,15 +206,16 @@ html, body {
 body {
   background: var(--bg-0);
   color: var(--text-0);
-  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: var(--font);
   font-size: 14px;
   line-height: 1.6;
   overflow: hidden;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
+  transition: background var(--dur-slow) var(--ease), color var(--dur-slow) var(--ease);
 }
 
-/* 背景氛围光 */
+/* 背景氛围光：亮色下压到很淡，只留一点色温 */
 body::before {
   content: "";
   position: fixed;
@@ -95,34 +223,34 @@ body::before {
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(720px 480px at 8% -8%, rgba(57, 197, 187, 0.10), transparent 62%),
-    radial-gradient(620px 420px at 96% 4%, rgba(255, 77, 148, 0.075), transparent 60%),
-    radial-gradient(900px 620px at 50% 108%, rgba(139, 108, 255, 0.075), transparent 62%);
+    radial-gradient(760px 500px at 6% -10%, var(--glow-1), transparent 62%),
+    radial-gradient(640px 440px at 98% 2%, var(--glow-2), transparent 60%),
+    radial-gradient(920px 640px at 50% 110%, var(--glow-3), transparent 62%);
 }
 
 /* 滚动条 */
-::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar { width: 11px; height: 11px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.10);
+  background: var(--scroll-thumb);
   border-radius: 6px;
-  border: 2px solid transparent;
+  border: 3px solid transparent;
   background-clip: content-box;
 }
-::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.18); background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background: var(--scroll-thumb-hover); background-clip: content-box; }
 ::-webkit-scrollbar-corner { background: transparent; }
 
 /* 排版 */
-h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.01em; }
+h1, h2, h3, h4 { margin: 0; font-weight: 600; letter-spacing: -0.012em; }
 h1 { font-size: 21px; }
 h2 { font-size: 16px; }
 h3 { font-size: 14px; }
 p { margin: 0 0 0.7em; }
 a { color: var(--accent); text-decoration: none; transition: color var(--dur) var(--ease); }
-a:hover { color: #5fd8cf; }
+a:hover { color: var(--accent-hover); }
 
 code, kbd, .mono {
-  font-family: "Cascadia Code", "Consolas", "SF Mono", ui-monospace, monospace;
+  font-family: var(--font-mono);
   font-size: 0.92em;
 }
 
@@ -136,12 +264,113 @@ kbd {
   color: var(--text-1);
 }
 
-::selection { background: rgba(57, 197, 187, 0.3); }
+::selection { background: var(--accent-dim); }
 
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: var(--radius-xs);
+}
+
+/* ============================================================ 启动加载画面
+   静态写在 index.html 里：JS 还没跑起来时它就已经在屏幕上，
+   所以「首屏白屏」这一段被它盖住。背景是应用界面本身 + 高斯模糊，
+   中间一个转圈的环形进度。加载完由 main.js 揭开并播放 Q 弹展开。
+   兜底见文件末尾 bootGiveUp 动画与 index.html 的内联脚本。 */
+
+.boot {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  display: grid;
+  place-items: center;
+  background: var(--boot-veil);
+  backdrop-filter: blur(var(--blur-boot)) saturate(var(--sat));
+  -webkit-backdrop-filter: blur(var(--blur-boot)) saturate(var(--sat));
+  /* 纯 CSS 的最后一道兜底：15 秒后无论如何都揭开（见 @keyframes bootGiveUp）。
+     动画延迟不受 prefers-reduced-motion 的时长归零影响，是刻意的。 */
+  animation: bootGiveUp 0s linear 15s forwards;
+}
+
+.boot-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 13px;
+  padding: 30px 38px 28px;
+  min-width: 268px;
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border);
+  background: var(--panel);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(var(--blur-panel)) saturate(var(--sat));
+  -webkit-backdrop-filter: blur(var(--blur-panel)) saturate(var(--sat));
+  transition: opacity var(--dur-slow) var(--ease), transform var(--dur-slow) var(--spring);
+}
+
+.boot-mark {
+  width: 46px;
+  height: 46px;
+  border-radius: 14px;
+  display: grid;
+  place-items: center;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--brand-fg);
+  background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
+  box-shadow: 0 6px 20px rgba(57, 197, 187, 0.3);
+}
+
+.boot-title { font-size: 13.5px; font-weight: 600; letter-spacing: 0.01em; }
+
+/* 转圈的环形进度：锥形渐变 + 环形遮罩，比 border 转圈细腻。
+   这类 loader 的观感参考了 uiverse.io（站内内容 MIT）的环形 loader，
+   代码是照本应用的配色变量自写的，没有逐字搬运。 */
+.boot-ring {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: conic-gradient(from 0deg, transparent 0%, var(--accent) 88%, var(--accent) 100%);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 3.5px), #000 calc(100% - 3px));
+  filter: drop-shadow(0 0 5px var(--accent-glow));
+  animation: spin 0.85s linear infinite;
+}
+
+.boot-status { font-size: 12px; color: var(--text-2); min-height: 18px; }
+.boot-status.err { color: var(--err); }
+
+/* 「重新载入」只在超时/出错时才露出来。选择器要比 components.css 里的 `.btn` 更具体，
+   否则 display:inline-flex 会把这里的 display:none 盖掉 —— 实测踩过。 */
+.boot .boot-retry { display: none; }
+
+/* 超时 / 出错：撤掉模糊，把界面让出来，只留一张错误卡片（可重试） */
+.boot.stuck {
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  animation: none;
+  pointer-events: none;
+}
+.boot.stuck .boot-card { pointer-events: auto; border-color: var(--err); }
+.boot.stuck .boot-ring { display: none; }
+.boot.stuck .boot-retry { display: inline-flex; }
+/* 加载完成：遮罩化开，界面 Q 弹展开 */
+.boot.reveal { animation: bootOut 460ms var(--ease) forwards; }
+.boot.reveal .boot-card { opacity: 0; transform: scale(1.05) translateY(-6px); }
+
+@keyframes bootOut {
+  to { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+@keyframes bootGiveUp {
+  to { opacity: 0; visibility: hidden; pointer-events: none; }
+}
+
+html.booted #app { animation: appPop 600ms var(--spring) both; }
+
+@keyframes appPop {
+  from { opacity: 0; transform: scale(0.94) translateY(12px); }
+  to { opacity: 1; transform: none; }
 }
 
 /* ============================================================ 布局 */
@@ -154,10 +383,12 @@ kbd {
   height: 100vh;
 }
 
-/* ---- 侧边栏 ---- */
+/* ---- 侧边栏（高斯模糊落点 ①） ---- */
 .sidebar {
-  background: linear-gradient(180deg, var(--bg-1) 0%, var(--bg-0) 100%);
-  border-right: 1px solid var(--border);
+  background: var(--veil);
+  backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
+  -webkit-backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
+  border-right: 1px solid var(--hairline);
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -170,7 +401,7 @@ kbd {
   align-items: center;
   gap: 11px;
   padding: 0 18px;
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
   flex-shrink: 0;
 }
 
@@ -178,13 +409,13 @@ kbd {
   width: 32px;
   height: 32px;
   border-radius: 9px;
-  background: linear-gradient(135deg, var(--accent) 0%, var(--purple) 55%, var(--pink) 100%);
+  background: linear-gradient(135deg, var(--brand-1) 0%, var(--brand-2) 55%, var(--brand-3) 100%);
   display: grid;
   place-items: center;
   font-weight: 700;
   font-size: 15px;
-  color: #06131a;
-  box-shadow: 0 4px 14px rgba(57, 197, 187, 0.32);
+  color: var(--brand-fg);
+  box-shadow: 0 3px 12px rgba(57, 197, 187, 0.28);
   flex-shrink: 0;
 }
 
@@ -206,7 +437,7 @@ kbd {
   color: var(--text-3);
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 14px 10px 6px;
+  padding: 14px 12px 6px;
   font-weight: 600;
 }
 
@@ -225,16 +456,23 @@ kbd {
   text-align: left;
   width: 100%;
   position: relative;
-  transition: background var(--dur) var(--ease), color var(--dur) var(--ease), transform var(--dur) var(--ease);
+  transition: background var(--dur) var(--ease), color var(--dur) var(--ease),
+    transform 220ms var(--spring);
 }
 
 .nav-item:hover { background: var(--glass-hover); color: var(--text-0); }
-.nav-item:active { transform: scale(0.985); }
+.nav-item:active { transform: scale(0.97); }
 
 .nav-item.active {
   background: var(--accent-dim);
   color: var(--accent);
   font-weight: 500;
+  animation: navPop 300ms var(--spring);
+}
+
+@keyframes navPop {
+  from { transform: scale(0.965); }
+  to { transform: none; }
 }
 
 .nav-item.active::before {
@@ -247,26 +485,32 @@ kbd {
   height: 18px;
   border-radius: 0 3px 3px 0;
   background: var(--accent);
-  box-shadow: 0 0 10px var(--accent-glow);
+  animation: navMark 320ms var(--spring);
 }
 
-.nav-item svg { width: 17px; height: 17px; flex-shrink: 0; opacity: 0.9; }
+@keyframes navMark {
+  from { height: 4px; opacity: 0.4; }
+  to { height: 18px; opacity: 1; }
+}
+
+.nav-item svg { width: 17px; height: 17px; flex-shrink: 0; opacity: 0.9; transition: transform 220ms var(--spring); }
+.nav-item:hover svg { transform: scale(1.08); }
 
 .nav-badge {
   margin-left: auto;
   font-size: 10.5px;
   padding: 1px 6px;
-  border-radius: 20px;
+  border-radius: var(--radius-pill);
   background: var(--glass-active);
   color: var(--text-2);
   font-weight: 600;
 }
 
-.nav-item.active .nav-badge { background: rgba(57, 197, 187, 0.22); color: var(--accent); }
+.nav-item.active .nav-badge { background: var(--accent-dim); color: var(--accent); }
 
 .sidebar-foot {
   padding: 12px 14px;
-  border-top: 1px solid var(--border);
+  border-top: 1px solid var(--hairline);
   font-size: 11px;
   color: var(--text-3);
   display: flex;
@@ -297,32 +541,46 @@ kbd {
   flex-direction: column;
   min-width: 0;
   min-height: 0;
-  background: var(--bg-0);
+  background: transparent;
 }
 
+/* 顶栏（高斯模糊落点 ②：滚动内容从它下面穿过） */
 .header {
   height: var(--header-h);
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid var(--hairline);
   display: flex;
   align-items: center;
   gap: 14px;
   padding: 0 24px;
   flex-shrink: 0;
-  background: rgba(10, 13, 19, 0.72);
-  backdrop-filter: blur(14px);
+  background: var(--veil);
+  backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
+  -webkit-backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
+  position: relative;
+  z-index: 30;
 }
 
 .header-title { display: flex; flex-direction: column; line-height: 1.3; min-width: 0; }
 .header-title h1 { font-size: 16.5px; }
 .header-title .sub { font-size: 11.5px; color: var(--text-3); }
 .header-actions { margin-left: auto; display: flex; align-items: center; gap: 9px; }
+/* 顶栏右侧固定工具区：视图切换不会清掉它（主题开关在这里） */
+.header-tools { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+/* 主题快捷开关：两枚图标按 data-theme 显隐，不用 JS 换图标 */
+.theme-toggle svg { transition: transform 260ms var(--spring), opacity var(--dur) var(--ease); }
+.theme-toggle .icon-moon { display: none; }
+[data-theme="dark"] .theme-toggle .icon-sun { display: none; }
+[data-theme="dark"] .theme-toggle .icon-moon { display: block; }
+.theme-toggle:hover svg { transform: rotate(18deg) scale(1.06); }
 
 .view {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 22px 24px 60px;
+  padding: 26px 28px 72px;
   min-height: 0;
+  scroll-behavior: smooth;
 }
 
 .view-enter { animation: viewIn var(--dur-slow) var(--ease-out); }
@@ -342,10 +600,6 @@ kbd {
 .stagger > *:nth-child(6) { animation-delay: 195ms; }
 .stagger > *:nth-child(7) { animation-delay: 230ms; }
 .stagger > *:nth-child(8) { animation-delay: 265ms; }
-
-@media (prefers-reduced-motion: reduce) {
-  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
-}
 
 /* 工具类 */
 .row { display: flex; align-items: center; gap: 10px; }
@@ -367,3 +621,32 @@ kbd {
 .mt-lg { margin-top: 24px; }
 .mb { margin-bottom: 14px; }
 .full { width: 100%; }
+
+/* ============================================================ 降级与无障碍 */
+
+/* 没有 backdrop-filter 时（老 WebView2 / 关掉硬件加速）不能只靠半透明背景，
+   否则文字会糊在内容上 —— 一律退回不透明底色。 */
+@supports not ((backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px))) {
+  .boot { background: var(--bg-0); }
+  .boot-card { background: var(--bg-1); }
+  .sidebar { background: var(--bg-1); }
+  .header { background: var(--bg-0); }
+  .modal-backdrop { background: var(--overlay); }
+  .modal, .toast, .dock .job-row, [data-tip]:hover::after { background: var(--bg-1) !important; }
+  .res-toolbar { background: var(--bg-0); }
+}
+
+/* 减少动效：交互动效压到近乎瞬时，但**保留**启动遮罩的 15 秒兜底计时
+   （那是功能性的超时，不是动画）。 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-delay: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+  .view { scroll-behavior: auto; }
+  .boot { animation-delay: 15s !important; animation-duration: 0.01ms !important; }
+  .boot.reveal { animation-duration: 0.01ms !important; }
+  html.booted #app { animation-duration: 0.01ms !important; }
+}

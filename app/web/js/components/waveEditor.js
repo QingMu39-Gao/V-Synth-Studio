@@ -215,10 +215,12 @@ export function createWaveEditor({ onChange, onExport, onExportAll } = {}) {
   }
 
   let P = null // 调色板缓存：draw() 每帧都要用，不能每帧 getComputedStyle
+  let pTheme = '' // 缓存对应的主题：切换明暗后要重取一次，否则波形图还留着旧配色
 
   function drawStatic() {
     if (!buf.width) return
     P = palette()
+    pTheme = document.documentElement.dataset.theme ?? ''
     const g = bctx
     g.clearRect(0, 0, width, CANVAS_H)
 
@@ -325,6 +327,8 @@ export function createWaveEditor({ onChange, onExport, onExportAll } = {}) {
   /** 每帧只重画播放头：静态层直接贴过来 */
   function draw() {
     if (!canvas.width) return
+    // 切换主题后调色板要重取（比字符串本身便宜得多的是偶尔比一次，而不是每帧 getComputedStyle）
+    if (P && pTheme !== (document.documentElement.dataset.theme ?? '')) drawStatic()
     ctx.clearRect(0, 0, width, CANVAS_H)
     ctx.drawImage(buf, 0, 0, width, CANVAS_H)
     const x = Math.round(xOf(audioTime)) + 0.5

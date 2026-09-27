@@ -54,6 +54,29 @@ import { pickDirectory, directoryInput } from '../components/dirPicker.js'
 
 **全部使用 CSS 变量取色**：`var(--accent)` `var(--pink)` `var(--purple)` `var(--ok)` `var(--warn)` `var(--err)` `var(--info)` `var(--text-0/1/2/3)` `var(--bg-0..4)` `var(--border)` `var(--glass)` `var(--radius*)`。不要写死颜色。
 
+### 明暗双主题（写视图必须知道）
+
+- 令牌集中在 `base.css` 顶部：`:root` 是**暗色**，`[data-theme="light"]` 覆盖成**亮色**。
+  **两套都要能看** —— 新写样式时别写死颜色，也别假设背景一定是深的。
+  写死 `#fff` / `rgba(255,255,255,.05)` 这类值在亮色下会直接瞎掉（白底白字、看不见的描边）。
+- 语义色一律用令牌：正文 `--text-0/1/2/3`、面板底 `--glass`/`--surface`/`--panel`、
+  分隔线 `--hairline`（细、低对比）与 `--border`、代码块/日志底 `--sunken`。
+  语义色带描边时用 `color-mix(in srgb, var(--err) 30%, transparent)` 推，
+  别照抄暗色下的 `rgba(...)`（老 WebView2 不认 `color-mix`，声明会被丢掉、退回灰边，是安全的降级）。
+- 柔和的彩色描边/浅底：`--accent-dim`、`--pink-dim`、`--warn-dim` …；浅底上的文字用 `--warn-fg` 这类
+  「配浅底的文字色」，暗色下是浅黄、亮色下是深棕，直接拿 `--warn` 当正文色在亮底上会读不清。
+- 圆角用 `--radius-lg/--radius/--radius-sm/--radius-xs`；阴影用 `--shadow-sm/--shadow/--shadow-lg`
+  （亮色下自动变轻）。动效用 `--dur-fast/--dur/--dur-slow` 与 `--spring`（带回弹，用于按压/开关/展开）。
+- 高斯模糊（`backdrop-filter`）**只给固定的少数元素**：侧栏、顶栏、模态遮罩与面板、toast、悬浮任务条、
+  吸顶工具条、气泡提示。**列表里的卡片一律不加**（很贵，滚动会卡），且必须在
+  `base.css` 末尾的 `@supports not` 段里有一条不透明兜底。
+- 画在 canvas 上的东西（如 `components/waveEditor.js` 的波形图）拿不到 CSS 变量，
+  要么在 `qm:theme` 事件里重取调色板，要么像它那样比对 `document.documentElement.dataset.theme` 后重画。
+- 主题由 `js/theme.js` 统一管：`themePref()`（可能是 `'system'`）、`currentTheme()`（实际生效的）、
+  `applyTheme(pref)`、`toggleTheme()`。**不要自己去写 `localStorage` 或 `data-theme`**。
+  取值同时写 localStorage（首次绘制前生效，不闪）与后端 `config.theme`（换端口/清缓存后能找回）。
+
+
 ## 4. 状态与接口
 
 `state` 字段：`formats[]`（含 `available/canRead/canWrite/exts`）、`editors[]`（含 `installed/path/color`，**现在只有 UVR 一项**）、`tools.{ffmpeg,ytdlp,python}`、`audioFormats{}`、`config`、`paths.{root,outputDir,downloadDir,toolsDir}`、`platform`。
