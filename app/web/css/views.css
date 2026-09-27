@@ -360,6 +360,18 @@
 .res-group-head .sub { font-size: 11.5px; color: var(--text-3); }
 .res-count { margin-left: auto; font-size: 11.5px; color: var(--text-3); }
 
+/* 分组默认折叠成一行（方案 A）。
+   为什么不用 max-height 估「一行的高度」：列数随窗口宽度变，而每行的高度由该行最高的
+   卡片决定，CSS 里拿不到这两个数，写死多少都会在某些宽度下多露半行或少露一行。
+   改成把第 2 行起的轨道高度压成 0：容器高度就等于第一行，宽度怎么变都对，
+   不用 JS 量，也不用 ResizeObserver。「是否只有一行」由 JS 判断要不要给按钮，见 resources.js。 */
+.res-grid.is-collapsed {
+  grid-template-rows: auto; /* 第 1 行：正常高度 */
+  grid-auto-rows: 0; /* 第 2 行起：0 高，里面的卡片跟着塌成 0 高（卡片自身 overflow:hidden 会裁掉内容） */
+  row-gap: 0; /* 0 高的行不该再占一份行间距 */
+  overflow: hidden; /* 兜底：裁掉塌陷卡片可能露出的 1~2px 边框线 */
+}
+
 .verified-badge {
   display: inline-flex;
   align-items: center;

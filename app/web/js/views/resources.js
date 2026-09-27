@@ -22,6 +22,9 @@ const TAG_TONES = {
 
 const MAX_TAGS = 3
 
+/** 已展开的分组 id。只存内存：切走视图再回来还记着，但重启就回到默认折叠，不进 config。 */
+const expandedGroups = new Set()
+
 /* ------------------------------------------------------------------ 工具函数 */
 
 function safeUrl(raw) {
@@ -393,6 +396,26 @@ export async function render(ctx) {
     return parts.some((p) => String(p ?? '').toLowerCase().includes(query))
   }
 
+  /**
+   * 折叠/展开按钮。
+   * 就地切换 class，不整体重渲染：重渲染会重建所有分组、把滚动位置和焦点晃一下。
+   */
+  function makeFoldButton(groupId, grid, count) {
+    const btn = button('', { size: 'btn-sm', variant: 'btn-ghost' })
+    const sync = () => {
+      const open = !grid.classList.contains('is-collapsed')
+      btn.title = open ? '收回到一行' : `展开这一组的全部 ${count} 条`
+      mount(btn, icon(open ? 'chevronUp' : 'chevronDown', 13), open ? '收起' : `展开全部 ${count} 条`)
+    }
+    btn.addEventListener('click', () => {
+      if (grid.classList.toggle('is-collapsed')) expandedGroups.delete(groupId)
+      else expandedGroups.add(groupId)
+      sync()
+    })
+    sync()
+    return btn
+  }
+
   function renderGroups() {
     groupEls.clear()
     mount(groupsBox, null)
@@ -436,6 +459,8 @@ export async function render(ctx) {
         grid = h('div.res-grid.stagger', items.map((it) => renderCard(group, it)))
         if (!query && !activeGroup) groupCache.set(group.id, grid)
       }
+      // 默认收起成一行；搜索时强制展开 —— 否则搜到的条目被折叠藏起来，等于没搜到
+      grid.classList.toggle('is-collapsed', !query && !expandedGroups.has(group.id))
       const head = h('div.res-group-head', [
         h('div.res-group-icon', [icon(group.icon || 'library', 16)]),
         h('div', { style: { minWidth: '0' } }, [
@@ -446,6 +471,12 @@ export async function render(ctx) {
       ])
       const sec = h('section', { dataset: { group: group.id } }, [head, grid])
       groupsBox.appendChild(sec)
+      // 一行就装得下的小组就不给按钮了，按了也没变化只会让人困惑。
+      // 列数是 auto-fill 按实际宽度算出来的，读 computed style 才能拿到，
+      // 顺便逼一次同步布局（每组一次，可忽略）。
+      // ponytail: 缩放窗口后按钮要等下次重渲染才跟着变；真嫌不准再加 ResizeObserver。
+      const cols = getComputedStyle(grid).gridTemplateColumns.split(' ').length
+      if (items.length > cols) head.appendChild(makeFoldButton(group.id, grid, items.length))
       groupEls.set(group.id, { head, section: sec })
       shownGroups += 1
       shownItems += items.length

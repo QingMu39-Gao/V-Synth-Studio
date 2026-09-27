@@ -64,6 +64,16 @@ const deadList = []
 for (const g of data.groups) {
   console.log(`\n── ${g.id}  ${g.name}`)
   for (const it of g.items) {
+    // skipProbe：已知挂掉的站（用户明确说不用测），别浪费一次 20 秒超时，
+    // 也别把它的旧结论覆盖掉
+    if (it.skipProbe) {
+      console.log(`  –  跳过（skipProbe）  ${it.name}`)
+      const v = it.verified?.verdict ?? 'warn'
+      if (v === 'ok') ok++
+      else if (v === 'dead') { dead++; deadList.push(`${it.name}  ${it.url}  → 跳过`) }
+      else warn++
+      continue
+    }
     const status = await probe(it.url)
     const verdict = verdictOf(status)
     it.verified = { status: typeof status === 'number' ? status : 0, checkedAt: today, verdict }

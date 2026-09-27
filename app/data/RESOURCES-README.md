@@ -20,7 +20,7 @@
 > 它们随 Node 后端一起删除了。现在 `resources.json` 里的 `verifySummary`
 > 是最后一次校验的结果快照；要重新校验需要另写工具。
 
-当前 `resources.json` 为 **3 个分组 / 24 条条目**，全部带 `desc` 与 `official` 标记。
+当前 `resources.json` 为 **4 个分组 / 27 条条目**，全部带 `desc` 与 `official` 标记。
 
 ---
 
@@ -33,7 +33,7 @@
   "notice": "安全提示文案",           // 前端顶部横幅展示
   "verifySummary": {                 // 最近一次校验的汇总（由 apply 脚本写入）
     "checkedAt": "2026-09-26",
-    "total": 24, "ok": 21, "warn": 3, "dead": 0, "passRate": 88
+    "total": 27, "ok": 22, "warn": 5, "dead": 0, "passRate": 81
   },
   "groups": [ /* 见下 */ ]
 }
@@ -49,11 +49,12 @@
 | `description` | string | 一句话说明这一栏解决什么问题 |
 | `items` | array | 条目列表，可为空 |
 
-当前 **3 个分组、24 条**：
+当前 **4 个分组、27 条**：
 
 | `id` | 名称 | 条目数 | 定位 |
 | --- | --- | --- | --- |
 | `free-audio` | 免费音源 / 伴奏 / 素材音乐 | 6 | 2 音乐库 + 2 音效库 + 2 音色库（sf2 / 免费 VST / 采样） |
+| `project-share` | 工程分享 | 3 | 别人做好的工程与 MIDI：MIDIshow、BowlRoll、vspx.top |
 | `editors` | 编辑器 / 声库官网 | 10 | **同一公司只留一条**，且只收根域名官网首页 |
 | `utau` | UTAU 系与开源歌声合成 | 8 | 这一类**不分公司、有一个收一个**（免费开源为主） |
 
@@ -178,16 +179,23 @@ Musopen、Pixabay、Dreamtonics 官网、爱给网、Booth 这类**完全正常*
 
 ## 6. 数据现状（2026-09-27 校验）
 
-- 分组 **3** 个，条目 **24** 条，全部带 `desc` 与 `official` 标记
-- 校验结果：**正常 21 / 需浏览器访问 3 / 失效 0**，可用率 88%
-  （`warn` 全是 403 反爬：Musopen、Musical Artifacts、Dreamtonics —— 浏览器打开都正常。
-  这印证了「403 不算失效」这条规则的必要性：只看状态码会误杀三个好站。）
+- 分组 **4** 个，条目 **27** 条，全部带 `desc` 与 `official` 标记
+- 校验结果：**正常 22 / 需浏览器访问 5 / 失效 0**，可用率 81%
+  （`warn` 多数是 403 反爬：Musopen、Musical Artifacts、Dreamtonics、MIDIshow ——
+  浏览器打开都正常。这印证了「403 不算失效」这条规则的必要性，
+  只看状态码会误杀好站。）
 - `free-audio` 6 条：2 音乐（Free Music Archive、Musopen）、
   2 音效（Freesound、淘声网）、2 音色库（Musical Artifacts 的 sf2/sfz、Spitfire LABS 的免费 VST）
 - `editors` 10 条：Yamaha、CeVIO、Dreamtonics、ACE Studio、AH-Software、
   Crypton、INTERNET、1st Place、Vsinger、DeepVocal —— **一司一条**
 - `utau` 8 条：OpenUtau、UTAU、DiffSinger、NNSVS、VOICEVOX、COEIROINK、Neutrino、Sinsy
   —— 开源/免费项目**有一个收一个**
+
+### 关于 `skipProbe`
+
+库里有个条目带 `skipProbe: true`（`vspx.top`）—— **已知站点挂了，用户明确说不必测连通性**。
+校验脚本会跳过它，不浪费一次 20 秒超时，也不会把它的结论覆盖成别的。
+这类条目在 `verified.note` 里写明了原因。
 
 ### 校验工具
 
