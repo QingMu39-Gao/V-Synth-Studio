@@ -300,6 +300,33 @@ pub async fn login_account(State(st): State<Arc<AppState>>) -> Result<Json<Value
     Ok(Json(ok(info)))
 }
 
+/// 退出登录：把该来源的 Cookie 清空。
+///
+/// 和 `save_netease_cookie` 对称 —— 同样走 `save_config` + 内存快照，
+/// 区别只是写进去的是空串。清空后 `cookie_of` 读到的就是空，搜索/取歌词
+/// 自动退回未登录状态，不需要别的地方配合。
+///
+/// 顺带把 QQ 也支持了：两个来源的登录态都是「config 里一个 Cookie 字段」，
+/// 没有别的状态要清（不像浏览器还要清 session、缓存之类）。
+pub async fn logout(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let source = body.get("source").and_then(|v| v.as_str()).unwrap_or("netease");
+    let key = if source == "qq" { "qqCookie" } else { "neteaseCookie" };
+
+    let mut next = st.config_snapshot();
+    if let Some(map) = next.as_object_mut() {
+        map.insert(key.into(), json!(""));
+    }
+    crate::server::simple::save_config(&st.writable, &next).map_err(ApiError::from)?;
+    if let Ok(mut guard) = st.config.lock() {
+        *guard = next;
+    }
+
+    Ok(Json(ok(json!({ "loggedOut": true, "source": source }))))
+}
+
 /// 把登录拿到的 Cookie 写进配置并落盘。
 ///
 /// 走的就是 `save_config` + 内存快照，和设置页保存 Cookie 是同一条路 ——

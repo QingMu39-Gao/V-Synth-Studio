@@ -135,6 +135,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/lyrics/login/account", post(lyrics::login_account))
         .route("/api/lyrics/login/sms", post(lyrics::login_sms))
         .route("/api/lyrics/login/cellphone", post(lyrics::login_cellphone))
+        .route("/api/lyrics/logout", post(lyrics::logout))
         // ── 前端静态文件 ──────────────────────────────────
         .fallback(simple::static_files)
         .with_state(state)

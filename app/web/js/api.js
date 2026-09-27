@@ -91,6 +91,7 @@ export const api = {
   // 手机号 + 短信验证码（明文接口，不需要加密）
   lyricsSms: (phone) => request('/api/lyrics/login/sms', { method: 'POST', body: { phone }, timeout: 30000 }),
   lyricsCellphone: (phone, captcha) => request('/api/lyrics/login/cellphone', { method: 'POST', body: { phone, captcha }, timeout: 30000 }),
+  lyricsLogout: (source) => request('/api/lyrics/logout', { method: 'POST', body: { source } }),
 
   jobs: () => request('/api/jobs'),
   job: (id) => request(`/api/jobs/get?id=${id}`),

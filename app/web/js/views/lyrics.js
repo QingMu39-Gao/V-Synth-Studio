@@ -134,6 +134,9 @@ export async function render(ctx) {
     onkeydown: (e) => { if (e.key === 'Enter') doLogin() },
   })
   const loginBtn = button('登录', { variant: 'btn-primary', iconName: 'shield', onClick: () => doLogin() })
+  // 退出：默认隐藏，renderLogin() 里按登录态显示
+  const logoutBtn = button('退出登录', { variant: 'btn-ghost', size: 'btn-sm', iconName: 'x', onClick: () => doLogout() })
+  logoutBtn.style.display = 'none'
   const loginMsg = h('div.field-hint')
   // Cookie 用 textarea：整行 Cookie 很长，单行输入框里根本看不全
   const cookieInput = h('textarea.textarea.mono', {
@@ -455,6 +458,32 @@ export async function render(ctx) {
     mount(loginChip, `${label}：${has ? (source === 'netease' && nickname ? `已登录为 ${nickname}` : '已登录') : '未登录'}`)
     // 扫码块只有网易云有，QQ 那边只能填 Cookie
     qrFold.style.display = source === 'qq' ? 'none' : ''
+    // 退出按钮只在已登录时出现 —— 之前没有它，登录完就没法退出了
+    logoutBtn.style.display = has ? '' : 'none'
+  }
+
+  /**
+   * 退出登录：清掉当前来源的 Cookie。
+   *
+   * 登录态就是 config 里一个 Cookie 字段，清空即退出，没有别的状态要处理。
+   */
+  async function doLogout() {
+    logoutBtn.classList.add('loading')
+    try {
+      await api.lyricsLogout(source)
+      nickname = ''
+      // 先把界面上那份 config 同步掉，再重渲染 —— 顺序反了徽章会慢一拍
+      await ctx.refreshState({ silent: true })
+      if (cookieInput) cookieInput.value = ''
+      if (source === 'qq' && qqCookieInput) qqCookieInput.value = ''
+      renderLogin()
+      setLoginMsg('已退出登录。', 'ok')
+      toast('已退出登录', 'ok')
+    } catch (err) {
+      setLoginMsg(`退出失败：${err.message}`, 'err')
+    } finally {
+      logoutBtn.classList.remove('loading')
+    }
   }
 
   /** 一条提示只改内容：错误留在页面上，别只弹个 toast 就没了 */
@@ -709,7 +738,7 @@ export async function render(ctx) {
       sub: '扫码、手机号验证码，或者填浏览器里的 Cookie',
       iconName: 'shield',
       iconColor: 'pink',
-      actions: loginChip,
+      actions: h('div.row.gap-sm', [loginChip, logoutBtn]),
       className: 'lyrics-login',
       body: h('div.col.gap-lg', [
         h('div.field', [
