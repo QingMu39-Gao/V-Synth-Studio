@@ -1,9 +1,9 @@
 /**
- * 歌词：从网易云 / QQ 音乐搜歌 → 取歌词 → 导出 LRC / SRT / 封面
+ * 歌词：从网易云 / QQ 音乐搜歌 → 取歌词 → 导出 LRC / SRT / 封面 → 带去「文字 PV」
  *
  * 后端：`server/lyrics.rs`（路由）+ `lyrics.rs`（平台实现）；接口见 api.js 的 lyrics*。
- * 登录：网易云三条路 —— 扫码（二维码本地画，按官方 POST + 表单写法）、
- * 手机号 + 短信验证码（扫码被 8821 挡掉时用它）、浏览器 Cookie 兜底。
+ * 登录：网易云两条路 —— 手机号 + 短信验证码、浏览器 Cookie 兜底。
+ * （扫码那条已移除：真机实测网易云始终回 8821，判断是服务端风控，不修了。）
  * 与「工程转换」页里的 lrc/srt **是两回事**：那边是 LibreSVIP 的工程格式，
  * 这边是给翻调打歌词用的、带时间轴的双语歌词文本。
  */
@@ -14,10 +14,12 @@ import {
   switchToggle, formatDuration,
 } from '../ui.js'
 import { directoryInput } from '../components/dirPicker.js'
-import { drawQr } from '../qr.js'
 
 /** 后端对已保存的 Cookie 只回显这个占位串（真实值不出后端） */
 const MASK = '已设置'
+
+/** 「用这段歌词做文字 PV」把 LRC 交给文字 PV 页用的 localStorage 键（两边要一致） */
+const LS_PV_LYRICS = 'qingmu.pv.lyrics'
 
 const SOURCES = [
   { value: 'netease', label: '网易云' },
@@ -93,8 +95,6 @@ export async function render(ctx) {
   let bilingual = true
   let smsTimer = null
   let smsLeft = 0
-  let qrKey = ''
-  let pollTimer = null
   let nickname = ''
 
   /* ── 元素 ── */
@@ -114,10 +114,6 @@ export async function render(ctx) {
   const linkBtn = button('解析链接', { iconName: 'link', onClick: () => doParseLink() })
 
   const loginChip = h('span.chip')
-  // 二维码本地画（js/qr.js）：二维码里是登录 token，交给外部服务等于把登录态送出去
-  const qrCanvas = h('canvas.lyrics-qr')
-  const qrHint = h('div.small.muted', '点「显示二维码」，然后用网易云音乐 App 扫。')
-  const qrBtn = button('显示二维码', { iconName: 'refresh', onClick: () => showQr() })
   const phoneInput = h('input.input', {
     type: 'tel',
     inputmode: 'numeric',
@@ -174,19 +170,6 @@ export async function render(ctx) {
     ]),
   ])
 
-  /* 扫码：按官方写法申请 key（POST + 表单体），二维码内容是 http://music.163.com/login?codekey=<key> */
-  const qrFold = h('details.lyrics-help', [
-    h('summary', '扫码登录（网易云 App 扫；扫不了就用上面的手机号验证码）'),
-    h('div.col.gap-sm', [
-      h('div.small.muted', '拿网易云音乐 App 扫。若扫到码后提示 8821「请切换其他登录方式」，说明网易云把这个号挡在了扫码之外，改用上面的手机号验证码或 Cookie 登录。'),
-      h('div.row', [qrBtn]),
-      qrCanvas,
-      qrHint,
-    ]),
-  ])
-  // 二维码直接摊开：要扫码就得看得见，藏进折叠块里等于让人多点一次
-  qrFold.open = true
-
   const metaBox = h('div.lyrics-meta')
   const previewBox = h('div.lyrics-preview')
   const modeSeg = h('div')
@@ -202,6 +185,7 @@ export async function render(ctx) {
   let bilingualToggle = null
   const saveBtn = button('保存歌词', { variant: 'btn-primary', iconName: 'save', onClick: () => saveLyric() })
   const coverBtn = button('下载封面', { variant: '', iconName: 'image', onClick: () => downloadCover() })
+  const pvBtn = button('用这段歌词做文字 PV', { iconName: 'film', onClick: () => toTextPv() })
   const savedBox = h('div.saved-box')
 
   /* ── 渲染来源切换 ── */
@@ -430,6 +414,44 @@ export async function render(ctx) {
     }
   }
 
+  /* ── 一键带去「文字 PV」 ── */
+
+  /**
+   * 把当前这首歌的歌词交给「文字 PV」页。
+   *
+   * 交接方式：写 localStorage（同源，两边都读得到），再 navigate 过去。
+   * 为什么不用 params 传：params 只在这次导航里存在，用户在 PV 页按一下 F5 就没了。
+   *
+   * 带的是**原文 LRC 原文**，不自己拼双语 —— JIZURA 认 LRC 时间戳，也认
+   * `歌词|注音` 这种一行两段的写法，把两段 LRC 和格式说明一起交给它，比在这里
+   * 猜它的语法稳妥（时间戳归它解析，自己不重复实现一遍）。
+   */
+  function toTextPv() {
+    const lyric = String(current?.lyric ?? '').trim()
+    if (!lyric) {
+      toast('还没有选中歌曲，先搜一首或粘贴链接把歌词取回来', 'warn')
+      return
+    }
+
+    const parts = [lyric]
+    const trans = String(current?.trans ?? '').trim()
+    // 只有双语开关打开、且这首真有译文时才带译文（和后端保存 LRC 的规则一致）
+    if (bilingual && trans) parts.push(trans)
+    if (parts.length > 1) {
+      parts.push('# 上面第一段是原文、第二段是译文。请把译文放到「注釈」的位置：原文|译文（同一行用竖线分开），别当成两句歌词。')
+    }
+
+    const text = parts.join('\n')
+    try {
+      localStorage.setItem(LS_PV_LYRICS, text)
+    } catch (err) {
+      // 存不下（隐私模式 / 配额满）就别硬跳 —— 跳过去是空的，用户只会以为功能坏了
+      toast(`歌词存不进浏览器缓存，没法带过去：${err.message}`, 'err')
+      return
+    }
+    ctx.navigate('pv')
+  }
+
   function showSaved(path) {
     mount(savedBox, h('div.field-hint', [
       `已写入：${path} `,
@@ -454,10 +476,8 @@ export async function render(ctx) {
     const label = source === 'qq' ? 'QQ 音乐' : '网易云'
     const has = !!state.config?.[key]
     loginChip.className = `chip${has ? ' ok' : ''}`
-    // 昵称只有网易云有（扫码成功后问 /api/lyrics/login/account 拿的），拿不到就只说已登录
+    // 昵称是登录成功时后端顺手带回来的，没带到就只说已登录
     mount(loginChip, `${label}：${has ? (source === 'netease' && nickname ? `已登录为 ${nickname}` : '已登录') : '未登录'}`)
-    // 扫码块只有网易云有，QQ 那边只能填 Cookie
-    qrFold.style.display = source === 'qq' ? 'none' : ''
     // 退出按钮只在已登录时出现 —— 之前没有它，登录完就没法退出了
     logoutBtn.style.display = has ? '' : 'none'
   }
@@ -491,91 +511,6 @@ export async function render(ctx) {
     loginMsg.textContent = text ?? ''
     // 颜色用现成的 CSS 变量，不新增类（UI-KIT 里没有 .field-hint 的修饰类）
     loginMsg.style.color = type === 'err' ? 'var(--err)' : type === 'ok' ? 'var(--ok)' : ''
-  }
-
-  /** 问一下「我现在是谁」：只为把徽章写成「已登录为 xxx」，失败就当没登录，不打扰用户 */
-  async function refreshAccount() {
-    if (!state.config?.neteaseCookie) {
-      nickname = ''
-      renderLogin()
-      return
-    }
-    try {
-      const res = await api.lyricsAccount()
-      nickname = res.loggedIn ? (res.nickname ?? '') : ''
-    } catch {
-      nickname = ''
-    }
-    renderLogin()
-  }
-
-  function stopPoll() {
-    if (pollTimer) {
-      clearInterval(pollTimer)
-      pollTimer = null
-    }
-  }
-
-  async function showQr() {
-    stopPoll()
-    qrBtn.classList.add('loading')
-    qrBtn.disabled = true
-    try {
-      const res = await api.lyricsQr()
-      qrKey = res.key
-      try {
-        drawQr(qrCanvas, res.url)
-        qrCanvas.style.display = ''
-      } catch (err) {
-        qrHint.textContent = `二维码生成失败：${err.message}`
-        toast(err.message, 'err')
-        return
-      }
-      qrHint.textContent = '用网易云音乐 App 扫码，然后在手机上确认…'
-      pollTimer = setInterval(pollOnce, 2000)
-    } catch (err) {
-      qrHint.textContent = `获取二维码失败：${err.message}`
-      toast(err.message, 'err')
-    } finally {
-      qrBtn.classList.remove('loading')
-      qrBtn.disabled = false
-    }
-  }
-
-  async function pollOnce() {
-    if (!qrKey) return
-    try {
-      const res = await api.lyricsPoll(qrKey)
-      qrHint.textContent = res.message
-      if (res.code === 803 && res.loggedIn) {
-        stopPoll()
-        qrKey = ''
-        qrCanvas.style.display = 'none'
-        nickname = res.nickname ?? ''
-        qrHint.textContent = nickname ? `登录成功：${nickname}` : '登录成功，登录态已保存。'
-        toast(nickname ? `登录成功：${nickname}` : '登录成功，Cookie 已保存', 'ok')
-        await ctx.refreshState({ silent: true })
-        renderLogin()
-      } else if (res.code === 800) {
-        stopPoll()
-        qrKey = ''
-        qrCanvas.style.display = 'none'
-        qrHint.textContent = '二维码已过期，点「显示二维码」重新获取。'
-      } else if (res.code !== 801 && res.code !== 802) {
-        // 801 等待扫码 / 802 已扫待确认是正常中间态，接着轮询。
-        // 其它码是终态（8821 就在这儿）：停下来说清楚，可别每 2 秒重复同一句、更不要弹 toast 刷屏。
-        stopPoll()
-        qrKey = ''
-        qrCanvas.style.display = 'none'
-        // 后端已经把 8821 翻译成了「改用手机号验证码」的引导语，这里原样显示
-        qrHint.textContent = res.message
-      }
-    } catch (err) {
-      // 轮询失败就停下并说明原因 —— 每 2 秒弹一次 toast 会刷屏
-      stopPoll()
-      qrHint.textContent = `轮询失败：${err.message}`
-      toast(err.message, 'err')
-    }
   }
 
   function stopSmsTimer() {
@@ -683,14 +618,11 @@ export async function render(ctx) {
     }
   }
 
-  /** 清除 = 清空输入框并按空值保存（后端语义：留空即清除），扫码登录态一起丢 */
+  /** 清除 = 清空输入框并按空值保存（后端语义：留空即清除），登录态一起丢 */
   async function clearCookie(key, input) {
     input.value = ''
     await saveCookie(key, input)
     if (key === 'neteaseCookie') {
-      stopPoll()
-      qrKey = ''
-      qrCanvas.style.display = 'none'
       nickname = ''
       setLoginMsg('已清除网易云的登录态 Cookie，取歌词会退回未登录。', 'warn')
     }
@@ -705,8 +637,6 @@ export async function render(ctx) {
   renderPreview()
   renderMeta()
   mount(resultBox, h('div.small.dim', '搜到的歌会列在这里，点一条就开始取歌词。'))
-  // 已经存过 Cookie 就顺手问一下昵称（失败无所谓，只是徽章少几个字）
-  refreshAccount()
 
   const left = h('div.col.gap-lg', [
     card({
@@ -735,7 +665,7 @@ export async function render(ctx) {
     }),
     card({
       title: '登录',
-      sub: '扫码、手机号验证码，或者填浏览器里的 Cookie',
+      sub: '手机号验证码，或者填浏览器里的 Cookie',
       iconName: 'shield',
       iconColor: 'pink',
       actions: h('div.row.gap-sm', [loginChip, logoutBtn]),
@@ -752,7 +682,6 @@ export async function render(ctx) {
           h('div.field-hint', '登录成功后登录态存在本机（等同网页版登录），搜索、取歌词、下封面都会带上它。'),
         ]),
         loginMsg,
-        qrFold,
         h('div.divider'),
         h('div.field', [
           h('label.field-label', '网易云 Cookie（兜底：发不出短信、或想直接用浏览器里那个登录态时用）'),
@@ -803,6 +732,10 @@ export async function render(ctx) {
           h('div.field-hint', '不用加扩展名，按上面的格式自动补 .lrc / .srt。文件一律 UTF-8 编码。'),
         ]),
         h('div.row', [saveBtn, coverBtn]),
+        h('div.field', [
+          h('div.field-hint', '想直接出视频（动态歌词 MP4 / PNG 序列）：把这段歌词带去「文字 PV」。'),
+          h('div.row', [pvBtn]),
+        ]),
         savedBox,
       ]),
     }),
@@ -810,9 +743,8 @@ export async function render(ctx) {
 
   mount(container, h('div.lyrics-layout', [left, right]))
 
-  // 离开视图时把轮询和倒计时都停掉，别让定时器在后台一直打接口
+  // 离开视图时把短信倒计时停掉，别让定时器在后台一直打接口
   return () => {
-    stopPoll()
     stopSmsTimer()
   }
 }

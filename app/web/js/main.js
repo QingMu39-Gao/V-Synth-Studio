@@ -14,6 +14,7 @@ const VIEWS = [
   { id: 'video', title: '视频解析', sub: 'B 站 / YouTube 等平台的 MV 下载', iconName: 'video', group: '素材获取' },
   { id: 'audio', title: '音频工具', sub: '人声分离 / 格式转换 / 变调变速', iconName: 'wave', group: '素材获取' },
   { id: 'lyrics', title: '歌词', sub: '网易云 / QQ 音乐搜词，导出 LRC · SRT', iconName: 'music', group: '素材获取' },
+  { id: 'pv', title: '文字 PV', sub: '把歌词做成动态歌词视频（JIZURA，本地运行）', iconName: 'film', group: '素材获取' },
   { id: 'resources', title: '资源库', sub: '立绘、声库、插件、音源站（仅链接）', iconName: 'library', group: '素材获取' },
   { id: 'settings', title: '设置', sub: '路径、Cookie、外部工具', iconName: 'gear', group: '系统' },
 ]

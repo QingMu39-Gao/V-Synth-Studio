@@ -83,6 +83,9 @@ $views = @(
   @{ id = 'audio';     name = '音频工具';   expect = @('op-card', 'audio-layout') },
   # 歌词页：搜索区与保存区是静态渲染出来的，不依赖网络，所以断言这两块
   @{ id = 'lyrics';    name = '歌词';       expect = @('lyrics-layout', 'lyrics-search', 'lyrics-save') },
+  # 文字 PV 页：整页就是 JIZURA 的 iframe。--dump-dom 看不到 iframe 内部，
+  # 这里只断言外层骨架在；「JIZURA 真加载出来 + 歌词填进去了」由 CDP 那条验证负责。
+  @{ id = 'pv';        name = '文字 PV';    expect = @('pv-view', 'pv-frame', 'vendor/jizura/index.html') },
   @{ id = 'resources'; name = '资源库';     expect = @('res-toolbar', 'res-grid') },
   @{ id = 'settings';  name = '设置';       expect = @('settings-layout', 'settings-nav') }
 )

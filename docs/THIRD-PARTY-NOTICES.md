@@ -16,6 +16,8 @@
 | FFmpeg | `tools/ffmpeg/` | 9.0.2（gyan.dev essentials 构建） | **GPL v3** ⚠️ |
 | yt-dlp | `tools/yt-dlp.exe` | 2026.08.19 | Unlicense（公有领域） |
 | LibreSVIP | `tools/libresvip/` | 2.9.0 | Apache License 2.0 |
+| JIZURA | `app/web/vendor/jizura/` | v0.9.0（单文件构建产物） | MIT |
+| Google Fonts（12 个家族） | `app/web/vendor/jizura/fonts/` | — | SIL OFL 1.1 |
 
 运行时依赖：
 
@@ -123,3 +125,46 @@ QQ 侧用 `search_for_qq_cp`（搜索）与 `fcg_query_lyric_new.fcg`（歌词�
 均为其源码中未使用的接口。扫码登录、链接解析、封面下载、前端二维码生成器亦为自研。
 
 源文件中的移植处均有行内注释标注来源。
+
+---
+
+## JIZURA（文字 PV 编辑器）
+
+- 出处：<https://github.com/852wa/JIZURA>　Copyright (c) 2026 hakoniwa
+- 许可：**MIT**，全文见 `app/web/vendor/jizura/LICENSE`
+- 位置：`app/web/vendor/jizura/index.html`（作者发布的**单文件构建产物**，未做构建，
+  直接取 `https://852wa.github.io/JIZURA/zh-hans/index.html`）
+
+集成方式：以 iframe 嵌入「文字 PV」页（同源，由本程序自己的本地服务伺服）。
+**它的界面与功能未作任何修改** —— 唯一的改动是把字体来源从 Google Fonts 换成本地文件
+（改动的 3 处：删掉 2 条 `preconnect`、把静态字体表指向 `fonts.css`、
+把运行时惰性插 `<link>` 的那一句也指向 `fonts.css`）。升级时整份替换该目录即可，
+替换后需要重新执行 `tools/fetch-jizura-fonts.ps1` 并重做这三处替换。
+
+### 随它分发的字体
+
+`app/web/vendor/jizura/fonts/` 与 `fonts.css` 由 `tools/fetch-jizura-fonts.ps1` 从
+Google Fonts 抓取（用现代浏览器 UA 取 `css2`，拿到的是 woff2 子集；Google 按
+`unicode-range` 把 CJK 字体切成了大量子集，所以是几千个小文件而不是十几个大文件）。
+
+涉及的字体家族与其授权（**全部为 SIL Open Font License 1.1**，允许随程序再分发）：
+
+| 家族 | 版权方 |
+|---|---|
+| Dela Gothic One | The Dela Gothic One Project Authors |
+| DotGothic16 | The DotGothic16 Project Authors |
+| IBM Plex Mono / IBM Plex Sans JP | IBM Corp. |
+| Kaisei Tokumin | The Kaisei Project Authors |
+| M PLUS Rounded 1c | The M PLUS Project Authors |
+| Mochiy Pop One | The Mochiy Pop Project Authors |
+| Noto Sans JP / Noto Serif JP | The Noto Project Authors |
+| Potta One | The Potta One Project Authors |
+| Rampart One | The Rampart One Project Authors |
+| Reggae One | The Reggae One Project Authors |
+| Shippori Mincho B1 | The Shippori Mincho Project Authors |
+| Yuji Syuku | The Yuji Syuku Project Authors |
+| Zen Kaku Gothic New / Zen Old Mincho | The Zen Project Authors |
+
+OFL 1.1 全文：<https://openfontlicense.org/open-font-license-official-text/>。
+注意 OFL 的**保留字体名称**条款：不得把修改过的字体以原名称分发（本程序未修改字形，
+只是原样搬运子集文件）。

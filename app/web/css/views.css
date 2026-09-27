@@ -413,9 +413,6 @@
 .lyrics-results { max-height: 320px; overflow: auto; }
 .lyrics-results .list-item { display: flex; align-items: center; gap: 9px; width: 100%; }
 
-/* 二维码本地画在 canvas 上（js/qr.js），白底是为了扫码时对比度够 */
-.lyrics-qr { width: 168px; height: 168px; padding: 6px; border-radius: var(--radius-sm); background: #fff; }
-
 /* 可折叠说明块：原生 <details>，不用 JS 控制展开 */
 .lyrics-help { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--glass); padding: 9px 11px; }
 .lyrics-help > summary { cursor: pointer; font-size: 12.5px; color: var(--text-1); }
@@ -462,3 +459,15 @@
   flex-direction: column;
   gap: 9px;
 }
+
+/* ------------------------------------------------------------ 文字 PV */
+
+/* 整个视图就是一个 iframe。.view 自带 22px/24px/60px 的 padding 与 overflow，
+   这里把 padding 抵消掉并算出准确高度，让编辑器真占满可用空间
+   —— 它是个多栏编辑器，挤着没法用。 */
+.pv-view {
+  height: calc(100vh - var(--header-h) - 82px);
+  min-height: 520px;
+  margin: -22px -24px -60px;
+}
+.pv-frame { display: block; width: 100%; height: 100%; border: 0; background: var(--bg-0); }

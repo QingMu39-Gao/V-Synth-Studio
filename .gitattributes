@@ -27,6 +27,11 @@
 *.zip binary
 *.exe binary
 *.dll binary
+# 字体是二进制，必须显式标出来：上面的 `* text=auto` 会对未标记的文件做换行归一化，
+# 而 woff2 里完全可能碰巧出现 0x0D 0x0A，那样 git 会**改动字体字节**（校验和就废了）。
+*.woff2 binary
+*.woff binary
+*.ttf binary
 *.ust binary
 *.vsqx binary
 *.vpr binary

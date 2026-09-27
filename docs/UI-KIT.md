@@ -113,16 +113,32 @@ api.lyricsGet({ source, id })           // 返回 { id, source, song:{name,artis
 api.lyricsParseLink({ url })            // 返回 { source, id }；先判 QQ songmid 再判网易云 id=，顺序不能反
 api.lyricsSave({ source, id, lyric, trans, durationSec, format:'lrc'|'srt', bilingual, outDir, name })
 api.lyricsCover({ url, outDir, name })
-api.lyricsQr()                          // POST 返回 { key, url }：url 是二维码内容（http://music.163.com/login?codekey=<key>），前端用 js/qr.js 本地画
-api.lyricsPoll(key)                     // 返回 { code, message, loggedIn, nickname }；800 过期 / 801 待扫 / 802 待确认 / 803 成功 / 8821 网易云挡了扫码
-api.lyricsAccount()                     // 返回 { loggedIn, nickname, avatarUrl, userId }；没登录回 loggedIn:false，不报错
 api.lyricsSms(phone)                    // 发短信验证码，返回 { sent:true }；号码格式不对/没注册直接报错
 api.lyricsCellphone(phone, captcha)     // 手机号 + 验证码登录，返回 { loggedIn:true, nickname }，Cookie 存进 config.neteaseCookie
+api.lyricsLogout(source)                // 退出登录：清掉该来源的 Cookie
 ```
 
 - 歌词文件一律 UTF-8（无 BOM）；`format:'srt'` 时后端按 LRC 时间轴生成字幕块，`bilingual` 打开且译文非空则一条字幕两行（原文 + 译文）。
 - Cookie 存在 `config.neteaseCookie` / `config.qqCookie`，**回显一律是占位串「已设置」**（`/api/config` 与 `/api/state` 都打码）；把「已设置」原样提交回来不会被写进配置。
-- **网易云登录三条路**：扫码（二维码本地生成，内容是 `http://music.163.com/login?codekey=<key>`；申请 key 与轮询都是 **POST + 表单体**，和官方 JS 一致）、手机号 + 短信验证码（扫码被 8821 挡掉时的正路）、Cookie 兜底。8821 要在界面上引导用户改用短信验证码，不能只报错误码。
+- **网易云登录两条路**：手机号 + 短信验证码、Cookie 兜底。**扫码登录已整体移除**
+  （`/api/lyrics/login/qr|poll|account` 三条路由 + `js/qr.js` + 界面二维码区块）：
+  真机实测无论怎么对齐官方写法都回 8821「请切换其他登录方式」，判断是服务端风控，用户决定不修了。
+  不要再把这三条路由加回来。
+
+### 文字 PV 页（`app/web/js/views/pv.js`）
+
+整页就是一个 iframe，指向 `/vendor/jizura/index.html` —— JIZURA（<https://github.com/852wa/JIZURA>，MIT）
+的**构建产物**随包分发在 `app/web/vendor/jizura/`，与主界面同源，所以父页面可以直接操作它的 DOM。
+**它的界面一个字都不改**，升级就整份替换那个目录。
+
+- 页内交接用 `localStorage`（键 `qingmu.pv.lyrics`）：`params` 只在这一次导航里有效，用户按 F5 就没了。
+  歌词页写，PV 页读；PV 页填完把同一份内容写进 `qingmu.pv.sent`，同一份歌词不再重复填
+  （否则用户手动清空后切回来又被塞回去）。
+- 填入方式：它的歌词框是 `<textarea id="lyrics">`，`bind()` 里挂了 `input` 监听，
+  所以**改 value 必须同时派发冒泡的 `input` 事件**，否则它内部状态不变、预览不重排、自动保存不触发。
+- 字体已本地化成 `vendor/jizura/fonts.css` + `fonts/`（Google Fonts 按 unicode-range 切了 2335 个子集）。
+  `index.html` 里**不能再出现 `fonts.googleapis.com` / `fonts.gstatic.com`** —— 它还会在运行时
+  按 family 惰性插 `<link>` 到 Google，那段被 `index.html` 末尾的一小段脚本改写成 `fonts.css` 了。
 
 
 ## 5. 硬性要求

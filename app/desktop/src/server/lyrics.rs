@@ -1,6 +1,6 @@
 //! 歌词路由
 //!
-//! 搜索 / 取歌词 / 解析链接 / 存文件 / 下封面 / 扫码与短信验证码登录。
+//! 搜索 / 取歌词 / 解析链接 / 存文件 / 下封面 / 短信验证码登录与退出。
 //! 平台相关的实现全在 `crate::lyrics`，这里只做参数校验、配置读取与错误映射。
 //!
 //! 响应形状是新增的（原来的 31 个路由一个都没动），前端 `api.js` 直接按这里的形状写。
@@ -8,7 +8,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
-use axum::extract::{Query, State};
+use axum::extract::State;
 use axum::Json;
 use serde_json::{json, Value};
 
@@ -216,90 +216,6 @@ pub async fn cover(
     }))))
 }
 
-/* ══════════════════════════ 网易云扫码登录 ══════════════════════════ */
-
-/// `POST /api/lyrics/login/qr` → `{ key, url }`。`url` 由前端用 js/qr.js 本地画成二维码。
-pub async fn login_qr(State(st): State<Arc<AppState>>) -> Result<Json<Value>, ApiError> {
-    let cfg = st.config_snapshot();
-    let out = crate::lyrics::qr_create(&cfg)
-        .await
-        .map_err(ApiError::internal)?;
-    Ok(Json(ok(out)))
-}
-
-#[derive(serde::Deserialize)]
-pub struct PollQuery {
-    pub key: Option<String>,
-}
-
-/// `GET /api/lyrics/login/poll?key=<unikey>` → `{ code, message, loggedIn, nickname }`
-///
-/// 803 = 登录成功：Cookie 落进 `config.neteaseCookie`（搜索 / 取歌词 / 下封面都读它），
-/// 并顺手问一下账号信息，界面就能显示「已登录为 xxx」。
-pub async fn login_poll(
-    State(st): State<Arc<AppState>>,
-    Query(q): Query<PollQuery>,
-) -> Result<Json<Value>, ApiError> {
-    let key = q
-        .key
-        .map(|k| k.trim().to_string())
-        .filter(|k| !k.is_empty())
-        .ok_or_else(|| ApiError::bad_request("缺少二维码 key"))?;
-
-    let cfg = st.config_snapshot();
-    let (status, cookie) = crate::lyrics::qr_poll(&cfg, &key)
-        .await
-        .map_err(ApiError::internal)?;
-
-    let code = status.get("code").and_then(|v| v.as_i64()).unwrap_or(0);
-    let message = status
-        .get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or("状态未知")
-        .to_string();
-
-    let mut logged_in = false;
-    if code == 803 && cookie.contains("MUSIC_U") {
-        save_netease_cookie(&st, &cookie)?;
-        logged_in = true;
-    }
-    // 803 但没拿到 Cookie 是要能看出来的：不给一句话，用户只会以为「扫码成功了却没登录」
-    let message = if code == 803 && !logged_in {
-        "登录成功，但网易云没有下发 Cookie（登录态存不下来）".to_string()
-    } else {
-        message
-    };
-
-    // 昵称只用来显示，失败不该让整次轮询变成错误
-    let nickname = if logged_in {
-        crate::lyrics::account_info(&st.config_snapshot())
-            .await
-            .ok()
-            .and_then(|v| v.get("nickname").and_then(|n| n.as_str()).map(String::from))
-            .unwrap_or_default()
-    } else {
-        String::new()
-    };
-
-    Ok(Json(ok(json!({
-        "code": code,
-        "message": message,
-        "loggedIn": logged_in,
-        "nickname": nickname,
-    }))))
-}
-
-/// `POST /api/lyrics/login/account` → `{ loggedIn, nickname, avatarUrl }`
-///
-/// 只做「我现在是谁」的自我介绍：没登录、网络不通都当「没登录」处理，不报错中断页面。
-pub async fn login_account(State(st): State<Arc<AppState>>) -> Result<Json<Value>, ApiError> {
-    let cfg = st.config_snapshot();
-    let info = crate::lyrics::account_info(&cfg).await.unwrap_or_else(|_| {
-        json!({ "loggedIn": false, "nickname": "", "avatarUrl": "", "userId": "" })
-    });
-    Ok(Json(ok(info)))
-}
-
 /// 退出登录：把该来源的 Cookie 清空。
 ///
 /// 和 `save_netease_cookie` 对称 —— 同样走 `save_config` + 内存快照，
@@ -330,7 +246,7 @@ pub async fn logout(
 /// 把登录拿到的 Cookie 写进配置并落盘。
 ///
 /// 走的就是 `save_config` + 内存快照，和设置页保存 Cookie 是同一条路 ——
-/// 所以「扫码/短信登录完之后能不能取到歌词」这件事只取决于 `crate::lyrics::cookie_of`
+/// 所以「短信登录完之后能不能取到歌词」这件事只取决于 `crate::lyrics::cookie_of`
 /// 读的 `neteaseCookie`，这里写的正是它。
 fn save_netease_cookie(st: &Arc<AppState>, cookie: &str) -> Result<(), ApiError> {
     let mut next = st.config_snapshot();
@@ -455,10 +371,8 @@ pub async fn login_cellphone(
     save_netease_cookie(&st, &cookie)?;
 
     // 顺手拿昵称，登录成功的提示就能写成「已登录为 xxx」；拿不到也不影响登录本身
-    let nickname = crate::lyrics::account_info(&st.config_snapshot())
+    let nickname = crate::lyrics::account_nickname(&st.config_snapshot())
         .await
-        .ok()
-        .and_then(|v| v.get("nickname").and_then(|n| n.as_str()).map(String::from))
         .unwrap_or_default();
 
     Ok(Json(ok(json!({ "loggedIn": true, "phone": phone, "nickname": nickname }))))

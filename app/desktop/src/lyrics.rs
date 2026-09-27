@@ -1,4 +1,4 @@
-//! 歌词：网易云 / QQ 音乐的搜索、歌词抓取、扫码与短信验证码登录，以及 LRC ↔ SRT 转换。
+//! 歌词：网易云 / QQ 音乐的搜索、歌词抓取、短信验证码登录，以及 LRC ↔ SRT 转换。
 //!
 //! 分工：平台相关的请求与解析都在这里（和 `bili.rs` 一个位置），路由在
 //! `server/lyrics.rs`，业务逻辑不碰 axum。
@@ -19,7 +19,7 @@
 //! `/api/cloudsearch/pc`、`/api/song/lyric`、`/api/song/detail` 直接可用，
 //! 于是这里按实测端点重写，省掉整套加密。QQ 歌词同理用实测可用的
 //! `fcg_query_lyric_new.fcg`，而不是它那套要解密 + 解压的 `lyric_download.fcg`。
-//! 登录它没有（它是手工填 Cookie），扫码与短信验证码登录这两条完全按实测接口自己写。
+//! 登录它没有（它是手工填 Cookie），短信验证码登录这条完全按实测接口自己写。
 
 use std::path::Path;
 use std::time::Duration;
@@ -130,63 +130,6 @@ async fn get_json(
     let text = get_text(client, url, ua, referer, cookie).await?;
     serde_json::from_str(&text)
         .map_err(|_| format!("返回的不是合法 JSON（可能触发了风控）：{url}"))
-}
-
-/// 一次 POST 表单的结果：JSON 体 + 响应头（登录成功的 Cookie 在 **Set-Cookie** 里）。
-pub struct FormReply {
-    pub json: Value,
-    pub headers: reqwest::header::HeaderMap,
-    /// 原始响应体，出错时截一段给用户看
-    pub text: String,
-    pub status: u16,
-}
-
-/// POST 表单（`application/x-www-form-urlencoded`）取 JSON。
-///
-/// 扫码登录的两个接口官方走的就是这个：`method:"post"` + `data:{type:1}`，
-/// 参数在**请求体**里而不是 query 上。实测 GET query 也能通，但按官方写法对齐，
-/// 真机扫码那一步才有可比性（8821 就是在这类差异里冒出来的）。
-/// 体里没有参数时用空串（`/api/w/nuser/account/get` 官方就是空 body）。
-async fn post_form_json(
-    client: &reqwest::Client,
-    url: &str,
-    form: &[(&str, String)],
-    ua: &str,
-    referer: &str,
-    cookie: &str,
-) -> Result<FormReply, String> {
-    let body = form
-        .iter()
-        .map(|(k, v)| format!("{}={}", k, crate::net::encode_component(v)))
-        .collect::<Vec<_>>()
-        .join("&");
-    let mut req = client
-        .post(url)
-        .header("Content-Type", "application/x-www-form-urlencoded")
-        .header("User-Agent", ua)
-        .header("Referer", referer)
-        .header("Origin", referer.trim_end_matches('/'))
-        .body(body);
-    if !cookie.is_empty() {
-        req = req.header("Cookie", cookie);
-    }
-    let res = req.send().await.map_err(|e| {
-        if e.is_timeout() {
-            format!("请求超时（20 秒）：{url}")
-        } else {
-            format!("网络请求失败：{e}")
-        }
-    })?;
-    let status = res.status().as_u16();
-    // 响应头先摘下来：登录成功时 Cookie 是在 Set-Cookie 里下发的，body 解析失败也不能丢
-    let headers = res.headers().clone();
-    let text = res.text().await.unwrap_or_default();
-    if !(200..300).contains(&status) {
-        return Err(format!("HTTP {status}：{url}"));
-    }
-    let json = serde_json::from_str(&text)
-        .map_err(|_| format!("返回的不是合法 JSON（可能触发了风控）：{url}"))?;
-    Ok(FormReply { json, headers, text, status })
 }
 
 async fn get_bytes(
@@ -624,132 +567,21 @@ pub async fn download_cover(cfg: &Value, url: &str, dest: &Path) -> Result<u64, 
     Ok(bytes.len() as u64)
 }
 
-/* ══════════════════════════ 扫码登录（网易云） ══════════════════════════ */
+/* ══════════════════════════ 短信验证码登录（网易云） ══════════════════════════ */
 
-/// 扫码登录的三个端点、以及二维码内容，全部按官方 `pt_frame_index_*.js` 逐字节对齐：
-///   1. `POST /api/login/qrcode/unikey`，表单体 `type=1`
-///   2. 二维码内容 = `http://music.163.com/login?codekey=<key>`（**http**，不是 https）
-///   3. `POST /api/login/qrcode/client/login`，表单体 `key=<key>&type=1`
+/// 问一下「现在登录的是谁」，只为把界面徽章写成「已登录为 xxx」。
 ///
-/// 为什么较这个真：真机扫到码那一刻会返回 8821「请切换其他登录方式或升级新版本再试」，
-/// 而「申请 key → 轮询出 801」这两步 GET / POST 都能过，差异只可能藏在这些细节里。
-/// 8821 是不是就此解决**没法在代码里验证**，得真机扫一次才算数 —— 见 `scan_hint`。
-const QR_LOGIN_URL_PREFIX: &str = "http://music.163.com/login?codekey=";
-
-/// 申请二维码，返回 `{ key, url }`。`url` 由前端用 `js/qr.js` 本地画成二维码。
-///
-/// 二维码里带的是登录 token（unikey），所以**绝不走任何外部二维码服务** ——
-/// 交给第三方画码等于把登录态送出去。网易云也不提供二维码图片接口，前端画码是唯一选择。
-pub async fn qr_create(cfg: &Value) -> Result<Value, String> {
-    let client = client(cfg)?;
-    let reply = post_form_json(
-        &client,
-        "https://music.163.com/api/login/qrcode/unikey",
-        &[("type", "1".to_string())],
-        DEFAULT_UA,
-        REFER_NETEASE,
-        "",
-    )
-    .await?;
-
-    let key = s(&reply.json, "/unikey");
-    if key.is_empty() {
-        let head: String = reply.json.to_string().chars().take(200).collect();
-        return Err(format!("申请二维码失败：接口没有返回 unikey，原始响应：{head}"));
-    }
-
-    Ok(json!({
-        "key": key,
-        "url": format!("{QR_LOGIN_URL_PREFIX}{key}"),
-    }))
-}
-
-/// 轮询扫码状态，返回（转发给前端的状态, 803 时下发的 Cookie）。
-/// 800 二维码过期 / 801 等待扫码 / 802 已扫待确认 / 803 登录成功
-///
-/// Cookie 优先取响应体的 `/cookie`（这条实测有效），拿不到再从 Set-Cookie 响应头拼
-/// —— 网易云换过下发方式，两条路都留着才不至于登录成功却存不下登录态。
-pub async fn qr_poll(cfg: &Value, key: &str) -> Result<(Value, String), String> {
-    let client = client(cfg)?;
-    let reply = post_form_json(
-        &client,
-        "https://music.163.com/api/login/qrcode/client/login",
-        &[("key", key.to_string()), ("type", "1".to_string())],
-        DEFAULT_UA,
-        REFER_NETEASE,
-        "",
-    )
-    .await?;
-    let json = &reply.json;
-
-    let code = n(json, "/code");
-    // 网易云自己带了 message 就原样用它（例如 801 的「等待扫码」）；没有才退回本地文案
-    let theirs = s(json, "/message");
-    let message = match code {
-        800 => "二维码已过期，请重新获取".to_string(),
-        801 => {
-            if theirs.is_empty() {
-                "等待扫码".to_string()
-            } else {
-                theirs
-            }
-        }
-        802 => {
-            if theirs.is_empty() {
-                "已扫码，请在手机上确认".to_string()
-            } else {
-                theirs
-            }
-        }
-        803 => "登录成功".to_string(),
-        // 8821：网易云把这条路关了（「请切换其他登录方式或升级新版本再试」）。
-        // 单独给一句人话，并指到手机上能用的那条路 —— 只报错误码等于让用户干瞪眼。
-        8821 => format!(
-            "网易云不接受这次扫码（8821：{}）。请改用上面的「手机号 + 短信验证码」登录，或填 Cookie。",
-            if theirs.is_empty() { "请切换其他登录方式或升级新版本再试" } else { &theirs }
-        ),
-        // 认不出的码不要吞掉 —— 之前这里只回一句「未知状态」，
-        // 结果既没法排查也没法告诉用户发生了什么。再没有 message 就把原始响应截一段。
-        0 => {
-            let head: String = reply.text.chars().take(200).collect();
-            format!("网易云返回了非预期内容（HTTP {}，可能被风控或接口变更）：{head}", reply.status)
-        }
-        other => {
-            if theirs.is_empty() {
-                let head: String = reply.text.chars().take(160).collect();
-                format!("网易云返回未知状态码 {other}：{head}")
-            } else {
-                format!("网易云返回未知状态码 {other}：{theirs}")
-            }
-        }
-    };
-
-    let mut cookie = s(json, "/cookie");
-    if !cookie.contains("MUSIC_U") {
-        let from_header = cookie_from_set_cookie(&reply.headers);
-        if from_header.contains("MUSIC_U") {
-            cookie = from_header;
-        }
-    }
-
-    Ok((json!({ "code": code, "message": message }), cookie))
-}
-
-/// 803 之后官方接着调的那一步：拿账号信息，好让界面显示「已登录为 xxx」。
-///
-/// 没登录时回 `{"code":200,"account":null,"profile":null}`（实测），所以三个字段都当可空处理。
-/// 返回 `{ loggedIn, nickname, avatarUrl, userId }`，调用方只用来自我介绍，失败不影响别的功能。
-pub async fn account_info(cfg: &Value) -> Result<Value, String> {
-    let client = client(cfg)?;
+/// 只用昵称（原 `account_info` 还回头像与 userId，没人用，已删）。
+/// 没登录时接口回 `{"code":200,"account":null,"profile":null}`（实测），所以全程当可空处理；
+/// 失败就回空串 —— 它只是装饰，不该让登录本身报错。
+pub async fn account_nickname(cfg: &Value) -> Result<String, String> {
     let cookie = cookie_of(cfg, "netease");
     if cookie.is_empty() {
-        return Ok(json!({ "loggedIn": false, "nickname": "", "avatarUrl": "", "userId": "" }));
+        return Ok(String::new());
     }
-    // 空 body：官方这一步就没有参数
-    let reply = post_form_json(
-        &client,
+    let json = get_json(
+        &client(cfg)?,
         "https://music.163.com/api/w/nuser/account/get",
-        &[],
         DEFAULT_UA,
         REFER_NETEASE,
         &cookie,
@@ -757,29 +589,17 @@ pub async fn account_info(cfg: &Value) -> Result<Value, String> {
     .await?;
 
     // 昵称的落点在不同版本里有 profile.nickname / profile.userName 两种，都认
-    let mut nickname = s(&reply.json, "/profile/nickname");
-    if nickname.is_empty() {
-        nickname = s(&reply.json, "/profile/userName");
-    }
-    let logged_in = !nickname.is_empty() || n(&reply.json, "/account/id") != 0;
-
-    Ok(json!({
-        "loggedIn": logged_in,
-        "nickname": nickname,
-        "avatarUrl": https_url(&s(&reply.json, "/profile/avatarUrl")),
-        "userId": s(&reply.json, "/account/id"),
-    }))
+    let nickname = s(&json, "/profile/nickname");
+    Ok(if nickname.is_empty() { s(&json, "/profile/userName") } else { nickname })
 }
-
-/* ══════════════════════════ 短信验证码登录（网易云） ══════════════════════════ */
 
 /// 短信登录的路子（`/api/sms/captcha/sent` + `/api/w/login/cellphone`）**全是明文**，
 /// 实测不需要任何加密：发码接口直接回 `{"code":200,"data":true}`；
 /// 登录接口用假验证码回 `{"msg":"验证码错误","code":503}`（**没有** "ENC" 那一套）。
 /// 对照组 `/api/login/cellphone` 才回 `{"code":401,"message":"无权限访问. ENC"}` —— 别换回去。
 ///
-/// 它是扫码之外的第二条路：扫码在有些号/有些版本上会被 8821 挡掉，短信验证码不受影响。
-
+/// 它是网易云唯一还能用的登录路：扫码那条真机实测始终被 8821 挡掉（服务端风控），已整体移除。
+///
 /// 手机号只认「1 开头 + 11 位数字」。
 ///
 /// 这层校验是**发短信前的第一道闸**：格式不对就地报错，绝不让请求出网。
@@ -1382,18 +1202,6 @@ mod tests {
         assert_eq!(c, "MUSIC_U=abc123; __csrf=xyz");
         // 没有 Set-Cookie 时给空串，调用方据此判断「没拿到」
         assert_eq!(cookie_from_set_cookie(&HeaderMap::new()), "");
-    }
-
-    /// 二维码内容**必须是 http://**（官方 JS 里就是 `var X2C = "http://music.163.com/login?codekey=" + key`）。
-    /// 之前写成 https:// 是三个差异之一，真机扫码那一步才暴露出来 —— 这里钉死它。
-    #[test]
-    fn qr_content_uses_http_and_the_official_prefix() {
-        assert_eq!(
-            format!("{QR_LOGIN_URL_PREFIX}abc-123"),
-            "http://music.163.com/login?codekey=abc-123"
-        );
-        assert!(QR_LOGIN_URL_PREFIX.starts_with("http://"));
-        assert!(!QR_LOGIN_URL_PREFIX.starts_with("https://"));
     }
 
     #[test]
