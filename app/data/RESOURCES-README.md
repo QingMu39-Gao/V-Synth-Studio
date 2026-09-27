@@ -53,8 +53,8 @@
 
 | `id` | 名称 | 条目数 | 定位 |
 | --- | --- | --- | --- |
+| `project-share` | 工程分享 | 3 | **置顶第一栏**。别人做好的工程与 MIDI：MIDIshow、BowlRoll、vspx.top |
 | `free-audio` | 免费音源 / 伴奏 / 素材音乐 | 6 | 2 音乐库 + 2 音效库 + 2 音色库（sf2 / 免费 VST / 采样） |
-| `project-share` | 工程分享 | 3 | 别人做好的工程与 MIDI：MIDIshow、BowlRoll、vspx.top |
 | `editors` | 编辑器 / 声库官网 | 10 | **同一公司只留一条**，且只收根域名官网首页 |
 | `utau` | UTAU 系与开源歌声合成 | 8 | 这一类**不分公司、有一个收一个**（免费开源为主） |
 
