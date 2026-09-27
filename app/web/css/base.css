@@ -79,17 +79,23 @@
   --info-dim: rgba(74, 168, 255, 0.14);
   --info-fg: #a8d3ff;
 
-  /* 形状：苹果常用 10~14px 卡片、8~10px 控件 */
-  --radius-lg: 20px;
-  --radius: 14px;
-  --radius-sm: 10px;
-  --radius-xs: 7px;
+  /* 形状：**浮起**语言要更大的圆角 —— 圆角越大越像"一片浮着的面"，
+     小圆角读起来是"嵌进背景里的框"。 */
+  --radius-lg: 26px;
+  --radius: 18px;
+  --radius-sm: 13px;
+  --radius-xs: 9px;
   --radius-pill: 999px;
+  /* 外壳留白：侧栏与主区之间、以及它们与窗口边缘的距离 */
+  --shell-gap: 12px;
 
-  /* 阴影：多层柔和，暗色也不糊成一团黑 */
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35), 0 2px 8px rgba(0, 0, 0, 0.25);
-  --shadow: 0 2px 6px rgba(0, 0, 0, 0.3), 0 14px 34px rgba(0, 0, 0, 0.38);
-  --shadow-lg: 0 8px 22px rgba(0, 0, 0, 0.4), 0 32px 72px rgba(0, 0, 0, 0.5);
+  /* 阴影：**这是「浮起」语言的主要手段**。
+     浮起靠的是"离背景有多远"，所以阴影要更长、更散、更低对比（大范围柔和扩散），
+     而不是又短又黑的一圈描边 —— 后者看起来是贴纸不是浮片。
+     三层：贴地接触影 + 主体扩散 + 远处环境影。 */
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.28), 0 3px 10px rgba(0, 0, 0, 0.2);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.24), 0 10px 26px rgba(0, 0, 0, 0.3), 0 28px 56px rgba(0, 0, 0, 0.24);
+  --shadow-lg: 0 6px 16px rgba(0, 0, 0, 0.3), 0 24px 56px rgba(0, 0, 0, 0.38), 0 48px 100px rgba(0, 0, 0, 0.32);
   --shadow-accent: 0 2px 8px rgba(0, 0, 0, 0.18), 0 8px 22px var(--accent-glow);
 
   /* 氛围光（body::before） */
@@ -395,6 +401,10 @@ html.booted #app { animation: appPop 600ms var(--spring) both; }
   display: grid;
   grid-template-columns: var(--sidebar-w) 1fr;
   height: 100vh;
+  /* 给四周留出内边距 + 栏间间隙 —— 侧栏与主区就都成了"浮在背景上的两片"，
+     而不是贴边切开的两个区域。这是整个新语言最关键的一处结构改动。 */
+  padding: var(--shell-gap);
+  gap: var(--shell-gap);
 }
 
 /* ---- 侧边栏（高斯模糊落点 ①） ---- */
@@ -402,7 +412,10 @@ html.booted #app { animation: appPop 600ms var(--spring) both; }
   background: var(--veil);
   backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
   -webkit-backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
-  border-right: 1px solid var(--hairline);
+  /* 浮起：圆角 + 阴影取代 border-right。整条栏是一块浮片，不是被切开的一侧。 */
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
   display: flex;
   flex-direction: column;
   min-height: 0;
@@ -719,3 +732,57 @@ html::before { background-color: var(--bg-0); }
 /* 纸面/面板需要一点底，否则背景图会从卡片缝隙里透上来影响读文字。
    这里给应用主容器一层极淡的遮罩，文字区域的可读性优先于背景好看。 */
 #app { position: relative; z-index: 1; }
+
+/* ═══════════════════ 浮起语言：主区与顶栏 ═══════════════════
+
+   外壳改成「侧栏 + 主区」两片浮起的面之后，主区内部也要跟上：
+   顶栏原本是一条贴边横杠，现在做成浮片；内容区四周留白加大。
+
+   这一段的规则都靠层叠覆盖前面的定义，不动原规则的其余部分 ——
+   新语言集中在这里，要回退只需删掉这一段。 */
+
+.main {
+  /* 主区自己也是一片浮起的面 */
+  background: var(--veil);
+  backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
+  -webkit-backdrop-filter: blur(var(--blur-chrome)) saturate(var(--sat));
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  overflow: hidden;
+}
+
+.topbar {
+  border-bottom: none;
+  background: transparent;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  padding: 0 4px;
+}
+
+/* 内容区：低密度。四周留白比原来大一圈，卡片之间也拉开。 */
+.content,
+.view,
+.page {
+  padding: 24px 26px 30px;
+}
+
+.card {
+  /* 卡片浮起：更大的圆角、去掉描边、靠阴影分层。
+     描边是「嵌进背景」，阴影才是「浮在背景上」—— 二选一，不要都上，
+     都上会显得又硬又脏。 */
+  border: none;
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow);
+  background: var(--glass);
+  padding: 22px 24px;
+}
+
+.card:hover {
+  box-shadow: var(--shadow-lg);
+}
+
+/* 通用间距调大（低密度） */
+.col.gap-sm { gap: 10px; }
+.col.gap    { gap: 16px; }
+.col.gap-lg { gap: 22px; }
+.row.gap-sm { gap: 10px; }
