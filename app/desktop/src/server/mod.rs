@@ -9,7 +9,7 @@
 //!   convert.rs  转换链路（阶段 2）
 //!   tools.rs    工具与声库探测（阶段 3）
 //!   media.rs    视频解析 / 下载 / 音频（阶段 4）
-//!   lyrics.rs   歌词：搜索 / 取词 / 存 LRC·SRT / 封面 / 扫码登录
+//!   lyrics.rs   歌词：搜索 / 取词 / 存 LRC·SRT / 封面 / 扫码与短信验证码登录
 
 pub mod convert;
 pub mod lyrics;
@@ -132,6 +132,9 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/lyrics/cover", post(lyrics::cover))
         .route("/api/lyrics/login/qr", post(lyrics::login_qr))
         .route("/api/lyrics/login/poll", get(lyrics::login_poll))
+        .route("/api/lyrics/login/account", post(lyrics::login_account))
+        .route("/api/lyrics/login/sms", post(lyrics::login_sms))
+        .route("/api/lyrics/login/cellphone", post(lyrics::login_cellphone))
         // ── 前端静态文件 ──────────────────────────────────
         .fallback(simple::static_files)
         .with_state(state)

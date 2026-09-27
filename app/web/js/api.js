@@ -82,9 +82,15 @@ export const api = {
   lyricsParseLink: (payload) => request('/api/lyrics/parse-link', { method: 'POST', body: payload }),
   lyricsSave: (payload) => request('/api/lyrics/save', { method: 'POST', body: payload }),
   lyricsCover: (payload) => request('/api/lyrics/cover', { method: 'POST', body: payload }),
-  // 二维码由后端抓下来转成 data URL —— 前端的 <img> 请求不走程序里的代理设置
+  // 网易云登录：扫码 + 手机号验证码两条路，Cookie 兜底。
+  // 扫码按官方写法（POST + 表单体，二维码内容是 http://）；8821 表示网易云挡了这条路，
+  // 界面上要引导用户改用下面的手机号验证码。
   lyricsQr: () => request('/api/lyrics/login/qr', { method: 'POST', body: {}, timeout: 30000 }),
   lyricsPoll: (key) => request(`/api/lyrics/login/poll?key=${encodeURIComponent(key)}`, { timeout: 30000 }),
+  lyricsAccount: () => request('/api/lyrics/login/account', { method: 'POST', body: {}, timeout: 30000 }),
+  // 手机号 + 短信验证码（明文接口，不需要加密）
+  lyricsSms: (phone) => request('/api/lyrics/login/sms', { method: 'POST', body: { phone }, timeout: 30000 }),
+  lyricsCellphone: (phone, captcha) => request('/api/lyrics/login/cellphone', { method: 'POST', body: { phone, captcha }, timeout: 30000 }),
 
   jobs: () => request('/api/jobs'),
   job: (id) => request(`/api/jobs/get?id=${id}`),

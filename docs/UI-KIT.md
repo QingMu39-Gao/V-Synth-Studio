@@ -113,13 +113,16 @@ api.lyricsGet({ source, id })           // 返回 { id, source, song:{name,artis
 api.lyricsParseLink({ url })            // 返回 { source, id }；先判 QQ songmid 再判网易云 id=，顺序不能反
 api.lyricsSave({ source, id, lyric, trans, durationSec, format:'lrc'|'srt', bilingual, outDir, name })
 api.lyricsCover({ url, outDir, name })
-api.lyricsQr()                          // 返回 { key, url }：url 是二维码内容，前端用 js/qr.js 本地画
-api.lyricsPoll(key)                     // 返回 { code, message, loggedIn }；800 过期 / 801 待扫 / 802 待确认 / 803 成功
+api.lyricsQr()                          // POST 返回 { key, url }：url 是二维码内容（http://music.163.com/login?codekey=<key>），前端用 js/qr.js 本地画
+api.lyricsPoll(key)                     // 返回 { code, message, loggedIn, nickname }；800 过期 / 801 待扫 / 802 待确认 / 803 成功 / 8821 网易云挡了扫码
+api.lyricsAccount()                     // 返回 { loggedIn, nickname, avatarUrl, userId }；没登录回 loggedIn:false，不报错
+api.lyricsSms(phone)                    // 发短信验证码，返回 { sent:true }；号码格式不对/没注册直接报错
+api.lyricsCellphone(phone, captcha)     // 手机号 + 验证码登录，返回 { loggedIn:true, nickname }，Cookie 存进 config.neteaseCookie
 ```
 
 - 歌词文件一律 UTF-8（无 BOM）；`format:'srt'` 时后端按 LRC 时间轴生成字幕块，`bilingual` 打开且译文非空则一条字幕两行（原文 + 译文）。
 - Cookie 存在 `config.neteaseCookie` / `config.qqCookie`，**回显一律是占位串「已设置」**（`/api/config` 与 `/api/state` 都打码）；把「已设置」原样提交回来不会被写进配置。
-- 二维码由前端本地生成（`js/qr.js`，手写的最小实现）—— 网易云没有二维码图片接口，且二维码里是登录 token，不能交给外部服务。
+- **网易云登录三条路**：扫码（二维码本地生成，内容是 `http://music.163.com/login?codekey=<key>`；申请 key 与轮询都是 **POST + 表单体**，和官方 JS 一致）、手机号 + 短信验证码（扫码被 8821 挡掉时的正路）、Cookie 兜底。8821 要在界面上引导用户改用短信验证码，不能只报错误码。
 
 
 ## 5. 硬性要求

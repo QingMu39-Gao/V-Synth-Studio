@@ -1,6 +1,6 @@
 //! 歌词路由
 //!
-//! 搜索 / 取歌词 / 解析链接 / 存文件 / 下封面 / 扫码登录。
+//! 搜索 / 取歌词 / 解析链接 / 存文件 / 下封面 / 扫码与短信验证码登录。
 //! 平台相关的实现全在 `crate::lyrics`，这里只做参数校验、配置读取与错误映射。
 //!
 //! 响应形状是新增的（原来的 31 个路由一个都没动），前端 `api.js` 直接按这里的形状写。
@@ -216,8 +216,9 @@ pub async fn cover(
     }))))
 }
 
-/* ══════════════════════ 网易云扫码登录 ══════════════════════ */
+/* ══════════════════════════ 网易云扫码登录 ══════════════════════════ */
 
+/// `POST /api/lyrics/login/qr` → `{ key, url }`。`url` 由前端用 js/qr.js 本地画成二维码。
 pub async fn login_qr(State(st): State<Arc<AppState>>) -> Result<Json<Value>, ApiError> {
     let cfg = st.config_snapshot();
     let out = crate::lyrics::qr_create(&cfg)
@@ -231,6 +232,10 @@ pub struct PollQuery {
     pub key: Option<String>,
 }
 
+/// `GET /api/lyrics/login/poll?key=<unikey>` → `{ code, message, loggedIn, nickname }`
+///
+/// 803 = 登录成功：Cookie 落进 `config.neteaseCookie`（搜索 / 取歌词 / 下封面都读它），
+/// 并顺手问一下账号信息，界面就能显示「已登录为 xxx」。
 pub async fn login_poll(
     State(st): State<Arc<AppState>>,
     Query(q): Query<PollQuery>,
@@ -253,23 +258,181 @@ pub async fn login_poll(
         .unwrap_or("状态未知")
         .to_string();
 
-    // 803 = 登录成功，响应里带的是登录后的 Cookie 串，直接落进配置
     let mut logged_in = false;
-    if code == 803 && !cookie.is_empty() {
-        let mut next = st.config_snapshot();
-        if let Some(map) = next.as_object_mut() {
-            map.insert("neteaseCookie".into(), json!(cookie));
-        }
-        crate::server::simple::save_config(&st.writable, &next).map_err(ApiError::from)?;
-        if let Ok(mut guard) = st.config.lock() {
-            *guard = next;
-        }
+    if code == 803 && cookie.contains("MUSIC_U") {
+        save_netease_cookie(&st, &cookie)?;
         logged_in = true;
     }
+    // 803 但没拿到 Cookie 是要能看出来的：不给一句话，用户只会以为「扫码成功了却没登录」
+    let message = if code == 803 && !logged_in {
+        "登录成功，但网易云没有下发 Cookie（登录态存不下来）".to_string()
+    } else {
+        message
+    };
+
+    // 昵称只用来显示，失败不该让整次轮询变成错误
+    let nickname = if logged_in {
+        crate::lyrics::account_info(&st.config_snapshot())
+            .await
+            .ok()
+            .and_then(|v| v.get("nickname").and_then(|n| n.as_str()).map(String::from))
+            .unwrap_or_default()
+    } else {
+        String::new()
+    };
 
     Ok(Json(ok(json!({
         "code": code,
-        "message": if code == 803 && !logged_in { "登录成功，但没拿到 Cookie" } else { message.as_str() },
+        "message": message,
         "loggedIn": logged_in,
+        "nickname": nickname,
     }))))
+}
+
+/// `POST /api/lyrics/login/account` → `{ loggedIn, nickname, avatarUrl }`
+///
+/// 只做「我现在是谁」的自我介绍：没登录、网络不通都当「没登录」处理，不报错中断页面。
+pub async fn login_account(State(st): State<Arc<AppState>>) -> Result<Json<Value>, ApiError> {
+    let cfg = st.config_snapshot();
+    let info = crate::lyrics::account_info(&cfg).await.unwrap_or_else(|_| {
+        json!({ "loggedIn": false, "nickname": "", "avatarUrl": "", "userId": "" })
+    });
+    Ok(Json(ok(info)))
+}
+
+/// 把登录拿到的 Cookie 写进配置并落盘。
+///
+/// 走的就是 `save_config` + 内存快照，和设置页保存 Cookie 是同一条路 ——
+/// 所以「扫码/短信登录完之后能不能取到歌词」这件事只取决于 `crate::lyrics::cookie_of`
+/// 读的 `neteaseCookie`，这里写的正是它。
+fn save_netease_cookie(st: &Arc<AppState>, cookie: &str) -> Result<(), ApiError> {
+    let mut next = st.config_snapshot();
+    if let Some(map) = next.as_object_mut() {
+        map.insert("neteaseCookie".into(), json!(cookie));
+    }
+    crate::server::simple::save_config(&st.writable, &next).map_err(ApiError::from)?;
+    if let Ok(mut guard) = st.config.lock() {
+        *guard = next;
+    }
+    Ok(())
+}
+
+/* ══════════════════════ 网易云登录：手机号 + 短信验证码 ══════════════════════ */
+
+/// 请求体里的手机号：去空格、去 `+86` / `86` 前缀、去常见分隔符。
+///
+/// 归一化是为了**只做一次格式校验**：`phone_ok` 是发短信前的闸门，
+/// 让「138 0000 0000」「+8613800000000」这类写法也能顺利过闸，而不是被误判成格式错误。
+fn phone_of(body: &Value) -> Result<String, ApiError> {
+    let raw = body
+        .get("phone")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    let mut digits: String = raw
+        .chars()
+        .filter(|c| !matches!(c, ' ' | '-' | '+' | '(' | ')'))
+        .collect();
+    if let Some(rest) = digits.strip_prefix("86") {
+        if rest.len() >= 11 {
+            digits = rest.to_string();
+        }
+    }
+    if !crate::lyrics::phone_ok(&digits) {
+        return Err(ApiError::bad_request(
+            "手机号格式错误：需要 11 位数字且以 1 开头（不用填 +86）",
+        ));
+    }
+    Ok(digits)
+}
+
+/// 发短信验证码。`{ phone }` → `{ sent: true, exists }`
+///
+/// 先查一次性「号码存不存在」（只在明确回答「没有」时才拦），省一条真短信。
+pub async fn login_sms(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let phone = phone_of(&body)?;
+    let cfg = st.config_snapshot();
+
+    // 查不出来（None）不拦：那只是风控/网络的问题，直接发码让发码接口自己说话
+    match crate::lyrics::phone_exists(&cfg, &phone).await {
+        Ok(Some(false)) => {
+            return Err(ApiError::bad_request(
+                "这个手机号在网易云没有注册过，短信没发出去。请检查号码，或改用 Cookie 登录",
+            ))
+        }
+        _ => {}
+    }
+
+    let res = crate::lyrics::sms_send(&cfg, &phone).await.map_err(ApiError::internal)?;
+
+    // 网易云的成功形状是 `{"code":200,"data":true}`；码不是 200 就把它自己的话透出来
+    let code = res.get("code").and_then(|v| v.as_i64()).unwrap_or(0);
+    if code != 200 {
+        return Err(ApiError::bad_request(sms_error(&res, code)));
+    }
+
+    Ok(Json(ok(json!({ "sent": true, "phone": phone }))))
+}
+
+/// 发码失败的说明：优先用网易云自己的话，认不出的码也把原始响应截一段带上。
+fn sms_error(res: &Value, code: i64) -> String {
+    let their = res
+        .get("message")
+        .or_else(|| res.get("msg"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if !their.is_empty() {
+        return format!("发送验证码失败：{their}（code {code}）");
+    }
+    let raw: String = res.to_string().chars().take(200).collect();
+    format!("发送验证码失败（网易云返回 code {code}，没有说明）：{raw}")
+}
+
+/// 手机号 + 验证码登录。`{ phone, captcha }` → `{ loggedIn: true }`
+///
+/// 成功时把 Cookie 写进 `config.neteaseCookie` —— 搜索、取歌词、下封面都读这个字段
+/// （见 `crate::lyrics::cookie_of`），所以保存完立刻就能用。
+pub async fn login_cellphone(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let phone = phone_of(&body)?;
+    let captcha = body
+        .get("captcha")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if captcha.is_empty() {
+        return Err(ApiError::bad_request("请先填短信验证码"));
+    }
+
+    let cfg = st.config_snapshot();
+    let cookie = crate::lyrics::cellphone_login(&cfg, &phone, &captcha)
+        .await
+        // 验证码错误 / 号码没注册 / 接口改了：都要原样让用户看到，别压成一句「登录失败」
+        .map_err(ApiError::bad_request)?;
+    if !cookie.contains("MUSIC_U") {
+        return Err(ApiError::internal(format!(
+            "登录接口没有返回 MUSIC_U，拿到的 Cookie 用不了（{} 字符）",
+            cookie.chars().count()
+        )));
+    }
+
+    save_netease_cookie(&st, &cookie)?;
+
+    // 顺手拿昵称，登录成功的提示就能写成「已登录为 xxx」；拿不到也不影响登录本身
+    let nickname = crate::lyrics::account_info(&st.config_snapshot())
+        .await
+        .ok()
+        .and_then(|v| v.get("nickname").and_then(|n| n.as_str()).map(String::from))
+        .unwrap_or_default();
+
+    Ok(Json(ok(json!({ "loggedIn": true, "phone": phone, "nickname": nickname }))))
 }

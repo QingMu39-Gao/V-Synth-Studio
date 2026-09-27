@@ -413,7 +413,17 @@
 .lyrics-results { max-height: 320px; overflow: auto; }
 .lyrics-results .list-item { display: flex; align-items: center; gap: 9px; width: 100%; }
 
+/* 二维码本地画在 canvas 上（js/qr.js），白底是为了扫码时对比度够 */
 .lyrics-qr { width: 168px; height: 168px; padding: 6px; border-radius: var(--radius-sm); background: #fff; }
+
+/* 可折叠说明块：原生 <details>，不用 JS 控制展开 */
+.lyrics-help { border: 1px solid var(--border); border-radius: var(--radius-sm); background: var(--glass); padding: 9px 11px; }
+.lyrics-help > summary { cursor: pointer; font-size: 12.5px; color: var(--text-1); }
+.lyrics-help > summary:hover { color: var(--text-0); }
+.lyrics-help[open] > summary { margin-bottom: 9px; }
+.lyrics-help ol { margin: 0; padding-left: 20px; }
+.lyrics-help li { font-size: 12.5px; line-height: 1.9; color: var(--text-2); }
+.lyrics-help li .mono { color: var(--text-0); }
 
 .lyrics-cover { width: 64px; height: 64px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--border); }
 
