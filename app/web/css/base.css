@@ -29,9 +29,9 @@
      两层用法见文件末尾「桌面背景图」一节：底层重模糊填满、上层原图 contain。 */
   --bg-image: url("/img/bg/dark.jpg");
   --bg-blur: 64px;
-  --bg-blur-dim: 46%;
+  --bg-blur-dim: 78%;
   --bg-detail: 0.36;
-  --bg-veil: rgba(9, 11, 16, 0.78);
+  --bg-veil: rgba(9, 11, 16, 0.34);
   --overlay: rgba(5, 7, 11, 0.55);
   --sunken: #070a10;
 
@@ -149,9 +149,9 @@
   --boot-veil: rgba(248, 248, 251, 0.14);
   --bg-image: url("/img/bg/light.jpg");
   --bg-blur: 58px;
-  --bg-blur-dim: 118%;
+  --bg-blur-dim: 112%;
   --bg-detail: 0.36;
-  --bg-veil: rgba(250, 250, 252, 0.8);
+  --bg-veil: rgba(250, 250, 252, 0.42);
   --overlay: rgba(18, 20, 26, 0.34);
   --sunken: #f3f4f7;
 
