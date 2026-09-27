@@ -786,3 +786,64 @@ html::before { background-color: var(--bg-0); }
 .col.gap    { gap: 16px; }
 .col.gap-lg { gap: 22px; }
 .row.gap-sm { gap: 10px; }
+
+/* ═══════════════ 尺度：这一节决定"疏朗"还是"局促" ═══════════════
+
+   前面几轮改的是圆角、阴影、模糊 —— 那些是**装饰**。
+   眼睛最先读到的其实是**尺度**：字号多大、间距多宽、一屏放多少东西。
+   装饰改十处也不如尺度改一处。
+
+   所以这里把量级整体抬上去：基础字号 +1，卡片内边距近乎翻倍，
+   区块间隙翻倍，导航行高抬起来。这一节才是"低密度大留白"的实体。 */
+
+:root {
+  --font-size-base: 15px;
+  --pad-card: 34px 36px;      /* 卡片内边距：22/24 → 34/36 */
+  --pad-view: 40px 44px 52px; /* 内容区四周：24/26/30 → 40/44/52 */
+  --gap-section: 34px;        /* 区块之间 */
+  --gap-card: 22px;           /* 卡片之间 */
+  --nav-h: 46px;              /* 导航行高：原来约 36 */
+}
+
+body { font-size: var(--font-size-base); line-height: 1.7; }
+
+/* 卡片：内边距翻倍，圆角再放大一档 */
+.card {
+  padding: var(--pad-card);
+  border-radius: 28px;
+}
+
+/* 内容区：四周大幅留白 */
+.content, .view, .page { padding: var(--pad-view); }
+
+/* 区块与卡片之间的间隙 */
+.view > * + * { margin-top: var(--gap-section); }
+.res-grid, .grid, .cards { gap: var(--gap-card); }
+
+/* 导航：行高抬起来，图标与文字之间也拉开 */
+.nav { padding: 16px 14px; gap: 4px; }
+.nav-item {
+  min-height: var(--nav-h);
+  padding: 0 16px;
+  gap: 13px;
+  border-radius: var(--radius);
+  font-size: 15px;
+}
+.nav-group, .nav-label, .nav-section {
+  padding: 18px 16px 8px;
+  font-size: 11.5px;
+  letter-spacing: 0.08em;
+}
+
+/* 侧栏底部状态区也松一点 */
+.sidebar-foot { padding: 20px 22px 24px; font-size: 12px; gap: 9px; }
+
+/* 排版层级拉开：标题更大，副文案更安静 */
+h1 { font-size: 30px; letter-spacing: -0.02em; }
+h2 { font-size: 20px; letter-spacing: -0.01em; }
+.card h2, .card-title { font-size: 19px; }
+.sub, .card-sub, .field-hint {
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.65;
+}
