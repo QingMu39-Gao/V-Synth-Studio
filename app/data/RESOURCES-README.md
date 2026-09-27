@@ -20,7 +20,7 @@
 > 它们随 Node 后端一起删除了。现在 `resources.json` 里的 `verifySummary`
 > 是最后一次校验的结果快照；要重新校验需要另写工具。
 
-当前 `resources.json` 为 **7 个分组 / 121 条条目**，全部带 `desc` 与 `official` 标记。
+当前 `resources.json` 为 **3 个分组 / 24 条条目**，全部带 `desc` 与 `official` 标记。
 
 ---
 
@@ -33,7 +33,7 @@
   "notice": "安全提示文案",           // 前端顶部横幅展示
   "verifySummary": {                 // 最近一次校验的汇总（由 apply 脚本写入）
     "checkedAt": "2026-09-26",
-    "total": 121, "ok": 104, "warn": 17, "dead": 0, "passRate": 100
+    "total": 24, "ok": 21, "warn": 3, "dead": 0, "passRate": 88
   },
   "groups": [ /* 见下 */ ]
 }
@@ -49,20 +49,23 @@
 | `description` | string | 一句话说明这一栏解决什么问题 |
 | `items` | array | 条目列表，可为空 |
 
-当前 **7 个分组、121 条**（`icon` 沿用原有取值，未新增图标名）：
+当前 **3 个分组、24 条**：
 
 | `id` | 名称 | 条目数 | 定位 |
 | --- | --- | --- | --- |
-| `stem-separation` | 人声分离 / 伴奏提取 | 11 | 拆人声与伴奏（MVSEP 在线 + UVR/Demucs 离线） |
-| `free-audio` | 免费音源 / 伴奏 / 素材音乐 | 18 | 可合法使用的音乐与音效，逐条标注能否下 WAV |
-| `character-art` | 歌姬立绘 / 官方素材 / 音源资料 | 10 | 角色形象、声库一览、音源资料库（**不收规约条款页**） |
-| `editors` | 编辑器获取（官方 / 免费 / 开源 / 试用） | 17 | 只收正规渠道 |
-| `plugins` | 第三方脚本与插件 | 47 | **本库重点**：SynthV 脚本 / OpenUtau 插件与引擎 / VOCALOID Job Plugin / UTAU 工具 |
-| `learning` | 教程与文档 | 8 | 官方文档与手册；社区入口用**搜索页**而非单个视频 |
-| `safety` | 安全提示 | 10 | 盗版风险说明 + 官方查毒入口 |
+| `free-audio` | 免费音源 / 伴奏 / 素材音乐 | 6 | 2 音乐库 + 2 音效库 + 2 音色库（sf2 / 免费 VST / 采样） |
+| `editors` | 编辑器 / 声库官网 | 10 | **同一公司只留一条**，且只收根域名官网首页 |
+| `utau` | UTAU 系与开源歌声合成 | 8 | 这一类**不分公司、有一个收一个**（免费开源为主） |
 
-> 原 `free-alternatives`（免费替代方案）分组已按用户要求**整组删除**，
-> 其内容与 `editors`／`plugins` 重复，不再单独成栏。
+> **2026-09 大幅精简**：原来有 7 个分组、121 条，用户反馈「收录太多了」。
+> 已删除：`stem-separation`（人声分离）、`character-art`（歌姬立绘）、
+> `plugins`（第三方脚本与插件，47 条）、`learning`（教程与文档）、`safety`（安全提示）。
+> 原 `editors`（编辑器获取）被新的 `editors`（编辑器 / 声库官网）取代。
+>
+> 两条收录规则的区别很重要：
+> - **商业产品**：一个公司一条。收了 CeVIO 就不再单列 KAFU 的声库（KAFU 是 CeVIO 的声库）；
+>   收了 VOCALOID 就不再单列 Miku / 洛天依的编辑器页。
+> - **开源 / 免费项目**：有一个收一个。OpenUtau、UTAU、DiffSinger、NNSVS 属于这一类。
 
 ### 2.2 `items[]` —— 条目
 
@@ -130,7 +133,7 @@ Musopen、Pixabay、Dreamtonics 官网、爱给网、Booth 这类**完全正常*
 - `bandcamp.com`、`openverse.org`、`commons.wikimedia.org`、`incompetech.com` —— 持续连接超时
 - `resource.dreamtonics.com/script/` 与 `utaformatix.dreamtonics.com` —— 分别返回 404 与 DNS 解析失败
   - 更正（2026-09-26 复核）：脚本手册的实际路径是 **`resource.dreamtonics.com/scripting/`**（无 `/script`），
-    已作为 `plugins/dt-scripting-manual` 收录；
+    （原先收在已删除的 `plugins` 分组里，指向 Dreamtonics 官方的脚本 API 手册）；
   - `sv2.docs.dreamtonics.com`（SynthV Studio 2 官方文档站）对脚本请求返回 403，浏览器正常，可自行访问。
 
 ---
@@ -151,12 +154,12 @@ Musopen、Pixabay、Dreamtonics 官网、爱给网、Booth 这类**完全正常*
 
 1. **只收官方、开源、免费或官方试用渠道。**
    绝不收录破解版、学习版、激活器、注册机，以及网盘转载的盗版声库与编辑器。
-   这类压缩包是木马与挖矿程序的主要投放渠道（详见 `safety` 分组）。
+   这类压缩包是木马与挖矿程序的主要投放渠道（见本文件顶部的 `notice` 安全提示，前端会把它渲染成横幅）。
 2. **不收录盗版分发渠道（明确黑名单）。**
    以下站点属于盗版声库／破解编辑器的分发渠道，**永久不收录、也不作为「替代方案」间接推荐**：
    瑟狐下载站、`pan.vocaloid.world`、`vocakey`（vocakey.wikidot.com）。
    理由有两条：一是收录即等于协助侵权；二是这类来源无法验证安全性
-   （无数字签名、二次打包、常带启动器 exe），与 `safety` 分组的结论直接冲突。
+   （无数字签名、二次打包、常带启动器 exe），与本库「只收录官方、开源与免费渠道」的原则直接冲突。
 3. **以「一个想调音的 P 主会不会主动点它」为取舍标准。**
    利用規約 / 使用条款 / Terms / 帮助中心 / 支持页 / 论坛首页 / 纯产品营销页 → **不收**；
    真正能学到东西的教程（官方手册的具体章节、入门教学、调声教程）→ 收。
@@ -173,20 +176,33 @@ Musopen、Pixabay、Dreamtonics 官网、爱给网、Booth 这类**完全正常*
 
 ---
 
-## 6. 数据现状（2026-09-26 校验）
+## 6. 数据现状（2026-09-27 校验）
 
-- 分组 **7** 个，条目 **121** 条，全部带 `desc` 与 `official` 标记
-- 校验结果：**正常 104 / 需浏览器访问 17 / 失效 0**，可用率 100%
-  （`warn` 均为 403 反爬，Dreamtonics 官网、Musopen、Pixabay、爱给网等，浏览器打开正常）
-- `plugins`（第三方脚本与插件）共 **47** 条，按来源分五块（组内也按这个顺序排列）：
-  1. **通用工具** 6 条——vLabeler、UtaFormatix、WORLD/pyworld、RVC/so-vits-svc；
-  2. **Synthesizer V 脚本** 19 条——官方脚本仓库与 API 手册、真实唱法参数迁移、
-     歌词转音素／批量歌词编辑、跨语言发音词典（中日韩 + 方言）、音高曲线自动生成、自动和声；
-  3. **OpenUtau** 6 条——官方仓库的插件/引擎机制、词典编辑器、多语言 YAML 词典、
-     日语↔韩语与中文↔日语 phonemizer、粤语插件；
-  4. **VOCALOID Job Plugin** 6 条——跨语种词典 + 批量歌词改写、和声生成、
-     音符参数同步复制、Job Plugin 开发辅助与中文 API 文档；
-  5. **UTAU 原音设定 / 音源工具** 10 条——setParam 原音设定、moresampler2、ENUNU、
-     oatsu 插件集、批量包络编辑、CVVC/VCCV 拆音、utau-kua、vLabeler 重叠检查、Vocal2Midi、utsu。
-- `free-audio` 共 18 条，其中明确标注能否下载 WAV 的条目以 `WAV 可下` / `WAV 不提供` / `WAV 需会员` 等标签标出
-- 本次改造删除了 `free-alternatives` 分组，以及 25 条规约／条款／支持页／论坛首页／营销页类条目（另有 1 条重复条目合并）
+- 分组 **3** 个，条目 **24** 条，全部带 `desc` 与 `official` 标记
+- 校验结果：**正常 21 / 需浏览器访问 3 / 失效 0**，可用率 88%
+  （`warn` 全是 403 反爬：Musopen、Musical Artifacts、Dreamtonics —— 浏览器打开都正常。
+  这印证了「403 不算失效」这条规则的必要性：只看状态码会误杀三个好站。）
+- `free-audio` 6 条：2 音乐（Free Music Archive、Musopen）、
+  2 音效（Freesound、淘声网）、2 音色库（Musical Artifacts 的 sf2/sfz、Spitfire LABS 的免费 VST）
+- `editors` 10 条：Yamaha、CeVIO、Dreamtonics、ACE Studio、AH-Software、
+  Crypton、INTERNET、1st Place、Vsinger、DeepVocal —— **一司一条**
+- `utau` 8 条：OpenUtau、UTAU、DiffSinger、NNSVS、VOICEVOX、COEIROINK、Neutrino、Sinsy
+  —— 开源/免费项目**有一个收一个**
+
+### 校验工具
+
+```powershell
+node tests\manual\check-resources.mjs          # 只报告
+node tests\manual\check-resources.mjs --write  # 同时把结果写回 verified 字段与 verifySummary
+```
+
+超时与连接错误会自动重试 3 次 —— 境内访问境外站点抖动常见，
+不重试会把「偶尔慢」误报成「站点有问题」（实测 COEIROINK、VOICEVOX 都出现过）。
+
+### 历史
+
+这份库经历过两轮大幅调整：
+1. 早期删除 `free-alternatives`（免费替代方案）分组，以及 25 条规约/条款/支持页类条目；
+2. 2026-09 按「收录太多了」的反馈精简，7 个分组 121 条 → **3 个分组 24 条**。
+   删掉的是 `stem-separation`、`character-art`、`plugins`（47 条）、`learning`、`safety`。
+   那些内容的详细来源清单见 git 历史：`git log --all -- app/data/resources.json`
