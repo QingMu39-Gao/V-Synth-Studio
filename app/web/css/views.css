@@ -404,6 +404,27 @@
 .settings-nav button:hover { background: var(--glass-hover); color: var(--text-0); }
 .settings-nav button.active { background: var(--accent-dim); color: var(--accent); font-weight: 500; }
 
+/* ------------------------------------------------------------ 歌词 */
+
+/* 左：搜索 / 链接 / 登录；右：预览 / 保存 */
+.lyrics-layout { display: grid; grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.1fr); gap: 16px; align-items: start; }
+@media (max-width: 1080px) { .lyrics-layout { grid-template-columns: 1fr; } }
+
+.lyrics-results { max-height: 320px; overflow: auto; }
+.lyrics-results .list-item { display: flex; align-items: center; gap: 9px; width: 100%; }
+
+.lyrics-qr { width: 168px; height: 168px; padding: 6px; border-radius: var(--radius-sm); background: #fff; }
+
+.lyrics-cover { width: 64px; height: 64px; border-radius: var(--radius-sm); object-fit: cover; border: 1px solid var(--border); }
+
+/* 歌词正文：时间 / 原文 / 译文 三列，长歌词自己滚 */
+.lyrics-preview { max-height: 46vh; overflow: auto; }
+.lyrics-line { display: grid; grid-template-columns: 66px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; padding: 3px 2px; border-radius: 4px; }
+.lyrics-line:hover { background: var(--glass-hover); }
+.lyrics-line .t { color: var(--text-3); font-size: 11.5px; line-height: 1.6; }
+.lyrics-line .orig { color: var(--text-0); font-size: 13px; line-height: 1.6; word-break: break-word; }
+.lyrics-line .trans { color: var(--text-2); font-size: 13px; line-height: 1.6; word-break: break-word; }
+
 /* ------------------------------------------------------------ 任务面板 */
 
 .job-row {

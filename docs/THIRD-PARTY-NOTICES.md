@@ -98,3 +98,28 @@ reader/writer，因此不再使用 UtaFormatix3 的任何代码或素材。
 本程序**不收录**任何破解、激活器或盗版声库/编辑器的分发链接 —— 详见
 `app/data/RESOURCES-README.md` 的收录原则。原因不是保守，而是这类资源在原理上
 无法验证安全性（无数字签名、二次打包、常捆绑启动器），是木马和挖矿程序的高发区。
+
+---
+
+## 163MusicLyrics（歌词处理部分，Apache-2.0）
+
+<https://github.com/jitwxs/163MusicLyrics>
+
+本工作站的「歌词」页在**歌词文本处理**上移植了该项目的实现（Apache License 2.0）：
+
+| 移植内容 | 位置 | 来源 |
+| --- | --- | --- |
+| LRC 时间戳多写法解析（`[mm:ss]` / `[mm:ss.SS]` / `[mm:ss:SS]` / `[mm:ss:SS.SSS]` / `[mm]`，含毫秒位 1/2/3 位的换算） | `app/desktop/src/lyrics.rs` | `Core/Models/MusicLyricsVO.cs` 的 `LyricTimestamp` |
+| LRC→SRT 的结束时间规则（下一时间戳收尾、同时间戳多行同收、末句用歌曲时长） | 同上 | `Core/Utils/SrtUtils.cs` 的 `LrcToSrt` |
+| 译文对齐与容错（精确匹配 + ±50ms 抖动容忍、译文缺失处理） | 同上 | `Core/Utils/LyricUtils.cs` 的 `ResolveTransLyricDigitDeviationAndLost` |
+| QQ 歌词丢弃 `[offset:0]` / `[kana:` 之前的头部内容 | 同上 | `LyricUtils.SplitLrc` |
+| 空行 / `//` / 纯音乐占位文案判定 | 同上 | `LyricVo.IsIllegalContent` / `IsPureMusic` |
+| 双语组织方式（STAGGER：同时间戳连写两行） | 同上 | `LyricUtils.FormatLyric` |
+
+**未移植、按实测接口自行实现的部分**：全部 HTTP 调用与端点选择。
+该项目走网易云的 `weapi`（AES + RSA）加密链路；本工作站改用明文端点
+（`/api/cloudsearch/pc`、`/api/song/lyric`、`/api/song/detail`），
+QQ 侧用 `search_for_qq_cp`（搜索）与 `fcg_query_lyric_new.fcg`（歌词），
+均为其源码中未使用的接口。扫码登录、链接解析、封面下载、前端二维码生成器亦为自研。
+
+源文件中的移植处均有行内注释标注来源。

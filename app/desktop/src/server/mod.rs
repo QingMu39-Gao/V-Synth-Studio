@@ -9,8 +9,10 @@
 //!   convert.rs  转换链路（阶段 2）
 //!   tools.rs    工具与声库探测（阶段 3）
 //!   media.rs    视频解析 / 下载 / 音频（阶段 4）
+//!   lyrics.rs   歌词：搜索 / 取词 / 存 LRC·SRT / 封面 / 扫码登录
 
 pub mod convert;
+pub mod lyrics;
 pub mod media;
 pub mod simple;
 pub mod tools;
@@ -122,6 +124,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/video/download", post(media::video_download))
         .route("/api/audio/probe", post(media::audio_probe))
         .route("/api/audio/run", post(media::audio_run))
+        // ── 歌词（新增，不动上面 31 个路由）───────────────
+        .route("/api/lyrics/search", post(lyrics::search))
+        .route("/api/lyrics/get", post(lyrics::get))
+        .route("/api/lyrics/parse-link", post(lyrics::parse_link))
+        .route("/api/lyrics/save", post(lyrics::save))
+        .route("/api/lyrics/cover", post(lyrics::cover))
+        .route("/api/lyrics/login/qr", post(lyrics::login_qr))
+        .route("/api/lyrics/login/poll", get(lyrics::login_poll))
         // ── 前端静态文件 ──────────────────────────────────
         .fallback(simple::static_files)
         .with_state(state)

@@ -21,22 +21,42 @@ use super::{ok, AppState};
 
 /* ══════════════════════════════════ 健康检查 ══════════════════════════════════ */
 
+/// 对外显示的版本号。
+///
+/// Cargo 的 `version` 必须是合法 semver（`1.1.0-beta`），但那个字符串给人看太啰嗦。
+/// 界面上要的是 `1.1beta`，所以单独列一个常量 —— 改版本号时两处都要改。
+pub const APP_VERSION: &str = "1.1beta";
+
+/// 作者标识。出现在「关于」里，也散落在源码注释中作为出处水印。
+pub const AUTHOR_TAG: &str = "QingMu39";
+
 pub async fn health(State(st): State<Arc<AppState>>) -> Json<Value> {
     Json(ok(json!({
-        "name": "翻调工作站",
-        "version": env!("CARGO_PKG_VERSION"),
-        // Node 版这里是 node 版本号，界面「关于」里会显示。
-        // 换成 Rust 后端后没有 Node 了，改成运行时标识，字段名保持不变（前端读的是这个键）
-        "node": format!("Rust {} (无 Node 后端)", rustc_version()),
+        "name": "清沐的虚拟歌姬工作站",
+        "version": APP_VERSION,
+        // 这个键历史上叫 node（前端读的就是它），现在装的是「运行环境」——
+        // 显示在「关于」里，让人一眼看出跑在哪套系统上。
+        // 刻意不写实现语言：用户不关心后端用什么写的，那是一行噪音。
+        "node": platform_desc(),
+        "author": AUTHOR_TAG,
         "pid": std::process::id(),
         "startedAt": now_millis() - st.started.elapsed().as_millis() as u64,
         "uptimeSec": st.started.elapsed().as_secs(),
     })))
 }
 
-fn rustc_version() -> &'static str {
-    // 编译期注入的 rustc 版本拿不到（那要 build script），给个够用的常量
-    "1.98+"
+/// 「关于」里那行运行环境，例如 `Windows (x86_64)`。
+///
+/// 公开：`/api/tools/detect` 也用它填同一个字段。
+pub fn platform_desc() -> String {
+    let os = if cfg!(target_os = "windows") {
+        "Windows"
+    } else if cfg!(target_os = "macos") {
+        "macOS"
+    } else {
+        "Linux"
+    };
+    format!("{os} ({})", std::env::consts::ARCH)
 }
 
 fn now_millis() -> u64 {
@@ -53,6 +73,9 @@ pub fn default_config(root: &Path) -> Value {
     let downloads = crate::platform::downloads_dir();
     json!({
         "bilibiliCookie": "",
+        // 歌词页用：网易云 / QQ 音乐的登录态（扫码登录成功后也会落到这里）
+        "neteaseCookie": "",
+        "qqCookie": "",
         "proxy": "",
         "outputDir": downloads.clone(),
         "downloadDir": downloads,
@@ -123,7 +146,27 @@ pub fn save_config(writable: &Path, cfg: &Value) -> std::io::Result<()> {
 }
 
 pub async fn config_get(State(st): State<Arc<AppState>>) -> Json<Value> {
-    Json(ok(json!({ "config": st.config_snapshot() })))
+    Json(ok(json!({ "config": mask_secrets(&st.config_snapshot()) })))
+}
+
+/// Cookie 类配置回显时的占位串。前端认它：看到「已设置」就只当有值，不会把它提交回来。
+pub const MASKED: &str = "已设置";
+
+/// 把 Cookie 的值换成「已设置」再回给前端。
+///
+/// 为什么：`/api/config` 与 `/api/state` 的结果会进前端全局状态，也常被贴进截图或日志，
+/// 而 Cookie 就是账号登录态 —— 回显真值等于把账号摊开。前端把占位串原样提交回来时
+/// `config_post` 会跳过它，所以不会出现「真值被占位串覆盖」这种反向事故。
+fn mask_secrets(cfg: &Value) -> Value {
+    let mut out = cfg.clone();
+    if let Some(map) = out.as_object_mut() {
+        for (k, v) in map.iter_mut() {
+            if k.ends_with("Cookie") && v.as_str().is_some_and(|s| !s.is_empty()) {
+                *v = json!(MASKED);
+            }
+        }
+    }
+    out
 }
 
 pub async fn config_post(
@@ -133,8 +176,8 @@ pub async fn config_post(
     let mut cfg = st.config_snapshot();
     if let (Some(dst), Some(src)) = (cfg.as_object_mut(), body.as_object()) {
         for (k, v) in src {
-            // 脱敏字段：前端把打码后的值原样传回来时不要覆盖真实值
-            if k == "bilibiliCookie" && v.as_str() == Some("已设置") {
+            // 脱敏字段：前端把打码后的占位串原样传回来时不要覆盖真实值
+            if k.ends_with("Cookie") && v.as_str() == Some(MASKED) {
                 continue;
             }
             dst.insert(k.clone(), v.clone());
@@ -144,7 +187,8 @@ pub async fn config_post(
     if let Ok(mut guard) = st.config.lock() {
         *guard = cfg.clone();
     }
-    Ok(Json(ok(json!({ "config": cfg }))))
+    // 回显也要打码：不然刚保存完 Cookie，明文就从响应里漏回前端了
+    Ok(Json(ok(json!({ "config": mask_secrets(&cfg) }))))
 }
 
 /* ══════════════════════════════════ 状态聚合 ══════════════════════════════════ */
@@ -158,7 +202,8 @@ pub async fn state(State(st): State<Arc<AppState>>) -> Json<Value> {
         "transformOps": crate::data::transform_ops(),
         "audioFormats": crate::data::audio_formats(),
         "pinyin": crate::data::pinyin_summary(&st.root),
-        "config": cfg,
+        // Cookie 打码后再给前端（见 mask_secrets）：这一份会进前端全局状态
+        "config": mask_secrets(&cfg),
         "paths": {
             "root": st.root.to_string_lossy(),
             "outputDir": cfg.get("outputDir").cloned().unwrap_or(json!("")),

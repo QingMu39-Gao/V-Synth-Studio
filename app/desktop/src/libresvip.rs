@@ -1,4 +1,5 @@
 //! LibreSVIP 引擎封装
+//! · QingMu39
 //!
 //! 工程转换和「读取工程」两件事都交给它：
 //!   - 转换：`libresvip-cli proj convert <in> <out>`

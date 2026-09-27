@@ -1,3 +1,4 @@
+/* 清沐的虚拟歌姬工作站 · QingMu39 */
 /**
  * 应用入口：状态、路由、视图挂载
  */
@@ -12,6 +13,7 @@ const VIEWS = [
   { id: 'convert', title: '工程转换', sub: '离线把工程转到另一个编辑器', iconName: 'swap', group: '工作台' },
   { id: 'video', title: '视频解析', sub: 'B 站 / YouTube 等平台的 MV 下载', iconName: 'video', group: '素材获取' },
   { id: 'audio', title: '音频工具', sub: '人声分离 / 格式转换 / 变调变速', iconName: 'wave', group: '素材获取' },
+  { id: 'lyrics', title: '歌词', sub: '网易云 / QQ 音乐搜词，导出 LRC · SRT', iconName: 'music', group: '素材获取' },
   { id: 'resources', title: '资源库', sub: '立绘、声库、插件、音源站（仅链接）', iconName: 'library', group: '素材获取' },
   { id: 'settings', title: '设置', sub: '路径、Cookie、外部工具', iconName: 'gear', group: '系统' },
 ]

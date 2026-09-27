@@ -1,4 +1,5 @@
-// 清沐的虚拟歌姬工作站 —— Tauri 桌面外壳 + 内嵌 Rust 后端
+// 清沐的虚拟歌姬工作站  ·  QingMu39
+// Tauri 桌面外壳 + 内嵌 HTTP 后端
 //
 // 架构：
 //   一个进程搞定所有事 —— 窗口、HTTP 服务、转换编排、任务系统全在这里。
@@ -23,6 +24,7 @@ mod audio;
 mod bili;
 mod data;
 mod libresvip;
+mod lyrics;
 mod net;
 mod platform;
 mod server;

@@ -12,33 +12,36 @@ use serde_json::{json, Value};
 
 /// 系统的「下载」目录。
 ///
-/// Windows 上 Explorer 会把用户改过的下载路径写进注册表，所以要读它；
+/// Windows 上 Explorer 会把用户改过的下载路径写进注册表，那是权威来源；
 /// 读不到就退回 `%USERPROFILE%\Downloads`。macOS/Linux 直接 `$HOME/Downloads`。
+///
+/// **绝不返回空串。** 早先的写法是「目录不存在就跳过」——三条来源都不存在时返回 ""，
+/// 结果程序没有输出目录，界面上是个空字段，用户完全不知道文件会存到哪。
+/// 现在改成：拿到的路径就算还不存在也采用（下载目录本来就可能没建过），
+/// 最后兜底到用户主目录，保证调用方永远有一个可用的绝对路径。
 pub fn downloads_dir() -> String {
+    // 1) 注册表（用户可能把下载目录改到别的盘）
     #[cfg(windows)]
-    {
-        if let Some(p) = windows_downloads_from_registry() {
-            if Path::new(&p).exists() {
-                return p;
-            }
+    if let Some(p) = windows_downloads_from_registry() {
+        if !p.trim().is_empty() {
+            // 不存在就先建出来 —— 不建的话后面写文件会失败
+            let _ = std::fs::create_dir_all(&p);
+            return p;
         }
     }
 
+    // 2) 用户主目录下的 Downloads
     if let Some(home) = home_dir() {
         let d = home.join("Downloads");
-        if d.exists() {
+        if d.is_dir() {
             return d.to_string_lossy().to_string();
         }
+        // 3) 主目录本身总存在，用它兜底（下载目录建不出来时的最后退路）
+        return home.to_string_lossy().to_string();
     }
 
-    // 兜底：找一个存在的同名目录，再不行就交给调用方（返回空串）
-    for base in [std::env::temp_dir()] {
-        let d = base.join("Downloads");
-        if d.exists() {
-            return d.to_string_lossy().to_string();
-        }
-    }
-    String::new()
+    // 4) 连主目录都拿不到（极少见）：用临时目录，至少不是空串
+    std::env::temp_dir().to_string_lossy().to_string()
 }
 
 pub fn home_dir() -> Option<PathBuf> {

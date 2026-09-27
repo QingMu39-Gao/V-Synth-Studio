@@ -105,6 +105,23 @@ api.saveConfig(patch)
 
 **yt-dlp 解析返回**（`source === 'ytdlp'`）：`{ info: { title, uploader, durationSec, thumbnail, formats:[{formatId,resolution,ext,note,isVideo,isAudio,filesize}], subtitles } }`
 
+**歌词页接口**（`app/web/js/views/lyrics.js` + 后端 `lyrics.rs` / `server/lyrics.rs`）：
+
+```js
+api.lyricsSearch({ source, keyword })   // source: 'netease'|'qq'，返回 { songs:[{id,name,artists,album,cover,durationSec}] }
+api.lyricsGet({ source, id })           // 返回 { id, source, song:{name,artists,album,cover,durationSec}, lyric, trans }
+api.lyricsParseLink({ url })            // 返回 { source, id }；先判 QQ songmid 再判网易云 id=，顺序不能反
+api.lyricsSave({ source, id, lyric, trans, durationSec, format:'lrc'|'srt', bilingual, outDir, name })
+api.lyricsCover({ url, outDir, name })
+api.lyricsQr()                          // 返回 { key, url }：url 是二维码内容，前端用 js/qr.js 本地画
+api.lyricsPoll(key)                     // 返回 { code, message, loggedIn }；800 过期 / 801 待扫 / 802 待确认 / 803 成功
+```
+
+- 歌词文件一律 UTF-8（无 BOM）；`format:'srt'` 时后端按 LRC 时间轴生成字幕块，`bilingual` 打开且译文非空则一条字幕两行（原文 + 译文）。
+- Cookie 存在 `config.neteaseCookie` / `config.qqCookie`，**回显一律是占位串「已设置」**（`/api/config` 与 `/api/state` 都打码）；把「已设置」原样提交回来不会被写进配置。
+- 二维码由前端本地生成（`js/qr.js`，手写的最小实现）—— 网易云没有二维码图片接口，且二维码里是登录 token，不能交给外部服务。
+
+
 ## 5. 硬性要求
 
 - 全部文案中文，语气务实、不要营销腔。

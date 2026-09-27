@@ -1,4 +1,5 @@
 //! 阶段 4：视频解析 / 下载 / 音频处理
+//! · QingMu39
 //!
 //! 4 个路由：`video/parse`、`video/download`、`audio/probe`、`audio/run`。
 //! 实现是 Node 版（`app/server/index.mjs` + `net/*.mjs` + `core/audio.mjs`）的逐行移植，

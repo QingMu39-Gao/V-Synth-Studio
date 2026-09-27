@@ -121,10 +121,24 @@ function typeName(v) {
  */
 const INTENDED = [
   {
+    // 用户要求：产品改名成「清沐的虚拟歌姬工作站」，显示版本改 1.1beta。
+    // （打包元数据仍是 1.1.0 —— MSI 只认纯数字版本，所以两者刻意分开，
+    //   显示走 APP_VERSION 常量，打包走 Cargo.toml。）
+    match: /^health\.(name|version):/,
+    why: '改名 + 版本号 1.0.0 → 1.1beta，用户要求的显示变更',
+  },
+  {
+    // 夹具是在 harness 沙箱里抓的，那时 HOME 下没有 Downloads 目录，
+    // 所以「下载」这个快捷位置没被列出来。本机有就多一项。
+    // 数量与内容都随机器环境变，不是接口契约的一部分。
+    match: /^fs-roots\.roots/,
+    why: '文件系统根列表随机器环境变（多一个「下载」快捷位置），不是接口形状变更',
+  },
+  {
     // 重写的目标就是去掉 Node。这个字段在 Node 版里报的是 process.version，
     // 现在后端是 Rust，如实报运行时会话即可。前端只是显示，不依赖它的值。
     match: /\.node:/,
-    why: 'Node 版报的是 process.version；现在没有 Node 后端了，改成 Rust 运行时标识',
+    why: 'Node 版报的是 process.version；现在改成平台描述（Windows (x86_64)），不再暴露实现语言',
   },
   {
     // Node 版的候选路径表里没有 H:\ACE Studio，所以把已装的 ACE Studio 判成未装。

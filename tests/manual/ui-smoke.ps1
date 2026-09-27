@@ -81,6 +81,8 @@ $views = @(
   @{ id = 'convert';   name = '工程转换';   expect = @('来源工程', '目标格式', '转换处理', '输出设置', 'dropzone') },
   @{ id = 'video';     name = '视频解析';   expect = @('video-parse-bar', '解析') },
   @{ id = 'audio';     name = '音频工具';   expect = @('op-card', 'audio-layout') },
+  # 歌词页：搜索区与保存区是静态渲染出来的，不依赖网络，所以断言这两块
+  @{ id = 'lyrics';    name = '歌词';       expect = @('lyrics-layout', 'lyrics-search', 'lyrics-save') },
   @{ id = 'resources'; name = '资源库';     expect = @('res-toolbar', 'res-grid') },
   @{ id = 'settings';  name = '设置';       expect = @('settings-layout', 'settings-nav') }
 )

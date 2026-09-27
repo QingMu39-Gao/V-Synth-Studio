@@ -632,8 +632,8 @@ export async function render(ctx) {
         iconName: 'info',
         body: h('div.col.gap-lg', [
           h('div.grid.grid-4', [
-            statBlock('程序版本', health?.version ?? state.version ?? '1.0.0'),
-            statBlock('Node 版本', health?.node ?? '未知'),
+            statBlock('程序版本', health?.version ?? state.version ?? '1.1beta'),
+            statBlock('运行环境', health?.node ?? '未知'),
             statBlock('运行端口', health?.pid ? `PID ${health.pid}` : '—', { sub: health?.uptimeSec ? `已运行 ${Math.floor(health.uptimeSec / 60)} 分钟` : '' }),
             statBlock('外部工具', `${['ffmpeg', 'ytdlp'].filter((k) => state.tools?.[k]?.available).length} / 2`, { sub: state.tools?.python?.available ? '含 Python' : '无 Python' }),
           ]),
@@ -702,7 +702,7 @@ export async function render(ctx) {
 
   mount(headerActions, [
     h('span.chip', state.config?.bilibiliCookie ? 'B 站 Cookie 已设置' : 'B 站 Cookie 未设置'),
-    h('span.chip.info', `v${state.version ?? '1.0.0'}`),
+    h('span.chip.info', `v${state.version ?? '1.1beta'}`),
   ])
 
   renderNav()

@@ -138,7 +138,7 @@ pub fn detect_all(root: &Path) -> Value {
         "checkedAt": iso_now(),
         "platform": crate::platform::node_platform_name(),
         // Node 版这里是 process.version；现在没有 Node 了，改成运行时标识
-        "node": format!("Rust {}（内嵌后端）", env!("CARGO_PKG_VERSION")),
+        "node": crate::server::simple::platform_desc(),
         "root": root.to_string_lossy(),
         "editors": editors,
         "tools": detect_tools(root),

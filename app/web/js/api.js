@@ -76,6 +76,16 @@ export const api = {
   resources: (reload) => request(`/api/resources${reload ? '?reload=1' : ''}`, { timeout: 30000 }),
   checkLinks: (ids) => request('/api/resources/check', { method: 'POST', body: { ids } }),
 
+  // 歌词页（网易云 / QQ 音乐）
+  lyricsSearch: (payload) => request('/api/lyrics/search', { method: 'POST', body: payload }),
+  lyricsGet: (payload) => request('/api/lyrics/get', { method: 'POST', body: payload }),
+  lyricsParseLink: (payload) => request('/api/lyrics/parse-link', { method: 'POST', body: payload }),
+  lyricsSave: (payload) => request('/api/lyrics/save', { method: 'POST', body: payload }),
+  lyricsCover: (payload) => request('/api/lyrics/cover', { method: 'POST', body: payload }),
+  // 二维码由后端抓下来转成 data URL —— 前端的 <img> 请求不走程序里的代理设置
+  lyricsQr: () => request('/api/lyrics/login/qr', { method: 'POST', body: {}, timeout: 30000 }),
+  lyricsPoll: (key) => request(`/api/lyrics/login/poll?key=${encodeURIComponent(key)}`, { timeout: 30000 }),
+
   jobs: () => request('/api/jobs'),
   job: (id) => request(`/api/jobs/get?id=${id}`),
   cancelJob: (id) => request('/api/jobs/cancel', { method: 'POST', body: { id } }),
