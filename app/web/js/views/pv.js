@@ -9,7 +9,9 @@
  * 由下面的 fill() 填进它的歌词框（细节见该函数）。
  */
 
-import { h, mount } from '../ui.js'
+import { h, mount, button, toast } from '../ui.js'
+import { pickDirectory } from '../components/dirPicker.js'
+import { api } from '../api.js'
 
 /** 与歌词页约定的交接键：两边都要用，改名字要一起改 */
 const LS_LYRICS = 'qingmu.pv.lyrics'
@@ -83,6 +85,47 @@ async function fill(w, text) {
   return { ok: got === text, got: got.length, want: text.length }
 }
 
+/**
+ * 人在这一页时，不该为了读一个 .lrc 先跑去「歌词」页绕一圈。
+ *
+ * 复用后端 `/api/lyrics/import`（它已经处理好 GBK 探测与译文拆分），
+ * 拿回来的 `lrc` / `tlyric` 直接填进 JIZURA —— 走的是和「歌词页带过来」
+ * 完全相同的 fill()。
+ */
+async function importFromFile(w, status) {
+  // ⚠️ pickDirectory **不返回路径**，结果是从 onPick 回调出来的（见 dirPicker.js:106）。
+  // 写成 `const path = await pickDirectory(...)` 会永远拿到 undefined，点了没反应还查不出原因。
+  pickDirectory({
+    title: '选择歌词文件（.lrc）',
+    mode: 'file',
+    exts: ['lrc'],
+    initial: '',
+    onPick: (path) => loadInto(w, status, path),
+  })
+}
+
+/** 读文件 → 填进 JIZURA。抽出来是因为它是 onPick 回调，不是 pickDirectory 的返回值 */
+async function loadInto(w, status, path) {
+  status.textContent = '正在读取歌词文件…'
+  try {
+    const res = await api.lyricsImport({ path })
+    // 有译文就按「原文 + 译文」一起给 JIZURA，它自己会按时间轴对上
+    const text = res.tlyric?.trim() ? `${res.lrc}\n\n${res.tlyric}` : res.lrc
+    const r = await fill(w, text)
+    lsSet(LS_SENT, text)
+    if (r.ok) {
+      const note = res.encoding === 'gbk' ? '（按 GBK 读取）' : ''
+      status.textContent = `已导入「${res.song?.name ?? '歌词'}」${note}，共 ${text.split('\n').length} 行。`
+      toast('歌词已导入编辑器', 'ok')
+    } else {
+      status.textContent = `导入后填写可能没成功（${r.got ?? 0} / 应为 ${r.want ?? 0} 字）：${r.why ?? '读回值不一致'}`
+    }
+  } catch (err) {
+    status.textContent = `导入失败：${err.message}`
+    toast(err.message, 'err')
+  }
+}
+
 export async function render(ctx) {
   const { container } = ctx
 
@@ -97,9 +140,10 @@ export async function render(ctx) {
 
   mount(container, h('div.pv-view', [iframe]))
 
-  // head 上的状态条：够用就好，不做额外工具条占高度
+  // head 上：状态条 + 导入按钮。不做额外工具条占高度 —— 这是个编辑器，空间都留给它
+  const importBtn = button('导入歌词文件', { iconName: 'file', size: 'btn-sm', onClick: () => importFromFile(iframe.contentWindow, status) })
   const head = document.getElementById('header-actions')
-  if (head) mount(head, status)
+  if (head) mount(head, h('div.row.gap-sm', [status, importBtn]))
 
   // 等 iframe 加载完。
   //
