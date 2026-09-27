@@ -80,6 +80,8 @@ export const api = {
   lyricsSearch: (payload) => request('/api/lyrics/search', { method: 'POST', body: payload }),
   lyricsGet: (payload) => request('/api/lyrics/get', { method: 'POST', body: payload }),
   lyricsParseLink: (payload) => request('/api/lyrics/parse-link', { method: 'POST', body: payload }),
+  // 本地 .lrc 文件导入：返回形状和 lyricsGet 一样，外加 encoding（utf-8 / gbk）
+  lyricsImport: (payload) => request('/api/lyrics/import', { method: 'POST', body: payload }),
   lyricsSave: (payload) => request('/api/lyrics/save', { method: 'POST', body: payload }),
   lyricsCover: (payload) => request('/api/lyrics/cover', { method: 'POST', body: payload }),
   // 网易云登录：手机号验证码 + Cookie 兜底。

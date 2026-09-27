@@ -36,8 +36,11 @@ libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
 # Windows 注册表（读 VOCALOID 声库）与进程管理
+# Win32_Globalization 只有一个用处：导入歌词时用 MultiByteToWideChar 把 GBK 转成
+# UTF-8（国内老 LRC 有相当一部分是 GBK）。同一份 kernel32 绑定，不引编码库、不加体积。
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
+    "Win32_Globalization",
     "Win32_System_Registry",
     "Win32_System_Threading",
     "Win32_System_JobObjects",

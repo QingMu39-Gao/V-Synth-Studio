@@ -13,13 +13,16 @@ import {
   h, mount, icon, toast, button, card, segmented, emptyState, alertBox,
   switchToggle, formatDuration,
 } from '../ui.js'
-import { directoryInput } from '../components/dirPicker.js'
+import { directoryInput, pickDirectory } from '../components/dirPicker.js'
 
 /** 后端对已保存的 Cookie 只回显这个占位串（真实值不出后端） */
 const MASK = '已设置'
 
 /** 「用这段歌词做文字 PV」把 LRC 交给文字 PV 页用的 localStorage 键（两边要一致） */
 const LS_PV_LYRICS = 'qingmu.pv.lyrics'
+
+/** 导入文件时后端读到的编码 → 界面上给用户看的说法 */
+const ENC_LABEL = { 'utf-8': 'UTF-8', gbk: 'GBK', unknown: '编码没认出来' }
 
 const SOURCES = [
   { value: 'netease', label: '网易云' },
@@ -112,6 +115,7 @@ export async function render(ctx) {
     onkeydown: (e) => { if (e.key === 'Enter') doParseLink() },
   })
   const linkBtn = button('解析链接', { iconName: 'link', onClick: () => doParseLink() })
+  const importBtn = button('从文件导入', { iconName: 'file', onClick: () => importLrc() })
 
   const loginChip = h('span.chip')
   const phoneInput = h('input.input', {
@@ -256,17 +260,58 @@ export async function render(ctx) {
   async function loadLyric(id, src) {
     try {
       const res = await api.lyricsGet({ source: src, id })
-      current = { ...res, id, source: src }
-      const song = res.song ?? {}
-      nameInput.value = [song.name, song.artists].filter(Boolean).join(' - ')
-      renderPreview()
-      renderMeta()
+      adopt(res, id, src)
       if (!String(res.trans ?? '').trim()) {
         toast('这首歌没有翻译歌词，只能导出原文', 'info')
       }
     } catch (err) {
       toast(err.message, 'err')
       mount(previewBox, alertBox('err', err.message))
+    }
+  }
+
+  /**
+   * 取到歌词之后统一接管。
+   *
+   * 「搜到的歌」和「导入的本地文件」都走这里 —— 后面的预览 / 保存 / 带去文字 PV
+   * 就都不用分叉，只在来源那一行文字上有区别。
+   */
+  function adopt(res, id, src) {
+    current = { ...res, id, source: src }
+    const song = res.song ?? {}
+    nameInput.value = [song.name, song.artists].filter(Boolean).join(' - ')
+    renderPreview()
+    renderMeta()
+  }
+
+  /* ── 从本地 .lrc 文件导入 ── */
+  async function importLrc() {
+    await pickDirectory({
+      mode: 'file',
+      exts: ['lrc'],
+      title: '选择 LRC 文件',
+      initial: state.paths?.downloadDir ?? '',
+      onPick: (path) => loadFromFile(path),
+    })
+  }
+
+  async function loadFromFile(path) {
+    importBtn.classList.add('loading')
+    importBtn.disabled = true
+    try {
+      const res = await api.lyricsImport({ path })
+      adopt(res, res.id ?? path, res.source ?? 'file')
+      if (res.encoding === 'unknown') {
+        toast('这个文件既不是 UTF-8 也不是 GBK，显示出来可能是乱码', 'warn')
+      } else {
+        toast(res.encoding === 'gbk' ? '已按 GBK 读取本地歌词' : '已导入本地歌词', 'ok')
+      }
+    } catch (err) {
+      toast(err.message, 'err')
+      mount(previewBox, alertBox('err', err.message))
+    } finally {
+      importBtn.classList.remove('loading')
+      importBtn.disabled = false
     }
   }
 
@@ -298,7 +343,7 @@ export async function render(ctx) {
       mount(previewBox, emptyState({
         iconName: 'music',
         title: '还没有选中歌曲',
-        desc: '上面搜一首歌，或粘贴链接；歌词取回来会显示在这里。',
+        desc: '上面搜一首歌、粘贴链接，或从文件导入 LRC；歌词取回来会显示在这里。',
       }))
       return
     }
@@ -352,9 +397,18 @@ export async function render(ctx) {
       h('div', { style: { minWidth: '0' } }, [
         h('div.strong.truncate', song.name || '(未取到歌名)'),
         h('div.small.muted.truncate', [song.artists, song.album].filter(Boolean).join(' · ')),
-        h('div.tiny.dim', `${current.source === 'qq' ? 'QQ 音乐' : '网易云'} · ${current.id}${song.durationSec ? ` · ${formatDuration(song.durationSec)}` : ''}`),
+        h('div.tiny.dim.truncate', `${sourceLabel()} · ${current.id}${song.durationSec ? ` · ${formatDuration(song.durationSec)}` : ''}`),
       ]),
     ]))
+  }
+
+  /** 来源那一行字：本地文件顺带说清是按什么编码读进来的（编码猜错时这是唯一的线索） */
+  function sourceLabel() {
+    if (current?.source === 'file') {
+      const enc = ENC_LABEL[current.encoding]
+      return `本地文件${enc ? `（${enc}）` : ''}`
+    }
+    return current?.source === 'qq' ? 'QQ 音乐' : '网易云'
   }
 
   /* ── 保存 ── */
@@ -655,12 +709,20 @@ export async function render(ctx) {
     }),
     card({
       title: '粘贴链接',
-      sub: '不想搜就在播放器里复制链接过来',
+      sub: '不想搜就复制链接过来；手上有 LRC 文件也可以直接读',
       iconName: 'link',
       className: 'lyrics-link',
-      body: h('div.col', [
-        h('div.input-group', [linkInput, linkBtn]),
-        h('div.field-hint', '支持网易云歌曲链接 / 歌曲 ID，以及 QQ 音乐的 songDetail 链接 / songmid。'),
+      body: h('div.col.gap-lg', [
+        h('div.field', [
+          h('div.input-group', [linkInput, linkBtn]),
+          h('div.field-hint', '支持网易云歌曲链接 / 歌曲 ID，以及 QQ 音乐的 songDetail 链接 / songmid。'),
+        ]),
+        h('div.field', [
+          h('label.field-label', '从文件导入（本地已有的 .lrc）'),
+          h('div.row', [importBtn]),
+          h('div.field-hint', '选一个 .lrc 文件，读进来之后的预览、保存、带去「文字 PV」都和搜到的歌一样，只是来源标成「本地文件」。'),
+          h('div.field-hint', 'UTF-8 与 GBK（国内老歌词常见）都能读，读的是哪种会写在右边歌词预览的来源那一行。译文尽量拆出来：`原文 / 译文` 这种一行两段、以及前后两段同时间轴的写法都认；拆不出来就整份当原文。'),
+        ]),
       ]),
     }),
     card({

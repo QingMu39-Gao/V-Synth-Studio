@@ -173,6 +173,34 @@ pub async fn save(
     }))))
 }
 
+/* ══════════════════════════════ POST /api/lyrics/import ══════════════════════════════ */
+
+/// 从本地 `.lrc` 文件导入歌词（用户手上已有的歌词，不用去搜）。
+///
+/// 返回的形状和 `/api/lyrics/get` **一样**（另有 `encoding` 字段如实说明读到的是
+/// UTF-8 还是 GBK），所以前端「搜到的歌」和「导入的文件」共用同一套预览 / 保存 /
+/// 带去文字 PV 的逻辑，不用分叉。
+pub async fn import(Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
+    let raw = body
+        .get("path")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if raw.is_empty() {
+        return Err(ApiError::bad_request("请先选一个 .lrc 文件"));
+    }
+
+    let path = PathBuf::from(&raw);
+    if !path.is_file() {
+        return Err(ApiError::bad_request(format!("找不到这个文件：{raw}")));
+    }
+
+    // 文件读不了 / 编码读不对 / 里面没有时间轴：都是用户能自己处理的事，按 400 回去
+    let data = crate::lyrics::import_file(&path).map_err(ApiError::bad_request)?;
+    Ok(Json(ok(data)))
+}
+
 /* ══════════════════════════════ POST /api/lyrics/cover ══════════════════════════════ */
 
 pub async fn cover(

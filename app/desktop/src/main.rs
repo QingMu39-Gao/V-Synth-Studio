@@ -131,7 +131,7 @@ fn main() {
                 }
             };
 
-            let port = free_port();
+            let port = pick_port();
 
             /*
              * 服务跑在进程内的 tokio 任务里，**不是子进程**。
@@ -320,6 +320,35 @@ fn user_data_dir() -> PathBuf {
         .or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
         .unwrap_or_else(std::env::temp_dir);
     base.join("com.qingmu.vocalworkstation")
+}
+
+/// 界面用的首选端口。
+///
+/// **端口必须稳定**：localStorage 按 origin（协议 + 主机 + 端口）隔离，
+/// 端口一变就等于换了一套存储 —— JIZURA 的教程标记、界面设置、
+/// **工程自动保存（jizura.project.\*）** 全都会丢。
+///
+/// 选 17878：在 Windows 的动态端口范围（49152 起）之外，不会被临时连接占用，
+/// 也不撞常见服务端口。只绑 127.0.0.1，不暴露到局域网。
+const PREFERRED_PORT: u16 = 17878;
+
+/// 优先用固定端口，被占用了才退回随机 —— 但要在日志里说清楚，
+/// 否则以后「设置和工程怎么又没了」没法排查。
+fn pick_port() -> u16 {
+    if port_is_free(PREFERRED_PORT) {
+        return PREFERRED_PORT;
+    }
+    let fallback = free_port();
+    note!(
+        "端口 {PREFERRED_PORT} 已被别的程序占用，本次改用随机端口 {fallback}。\
+         注意：界面设置、教程标记与 PV 工程自动保存都与端口绑定，这一次不会延续。"
+    );
+    fallback
+}
+
+/// 端口能不能绑（只探 127.0.0.1，和 serve 的绑定范围一致）
+fn port_is_free(port: u16) -> bool {
+    std::net::TcpListener::bind(("127.0.0.1", port)).is_ok()
 }
 
 /// 让系统分一个空闲端口

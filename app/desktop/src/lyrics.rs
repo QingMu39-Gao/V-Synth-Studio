@@ -1000,6 +1000,210 @@ pub fn render(
     }
 }
 
+/* ══════════════════════════════ 本地 LRC 导入 ══════════════════════════════ */
+
+/// 读一个本地 LRC 文件，返回和 `fetch` **同样的形状** ——
+/// 前端「搜歌」和「从文件导入」两条路共用一套预览 / 保存 / 带去 PV 的逻辑。
+///
+/// 编码：先按 UTF-8，读不出合法 UTF-8 再按 GBK(936) 重读（国内老 LRC 很多是 GBK，
+/// 硬按 UTF-8 读就是满屏乱码，而用户看不出来是编码问题）。读的是哪一种如实回给界面。
+pub fn import_file(path: &Path) -> Result<Value, String> {
+    let bytes = std::fs::read(path).map_err(|e| format!("读不了这个文件：{e}"))?;
+    if bytes.is_empty() {
+        return Err("这个文件是空的".to_string());
+    }
+
+    let (text, encoding) = decode_text(&bytes);
+    let (lyric, trans) = split_bilingual(&text);
+    if parse_lrc(&lyric, "netease").is_empty() {
+        return Err("这个文件里没有可识别的时间轴，不像是 LRC 歌词".to_string());
+    }
+
+    Ok(json!({
+        "source": "file",
+        // id 用完整路径：界面上显示来源、以及以后要「打开所在目录」都用得上
+        "id": path.to_string_lossy(),
+        "song": {
+            // 文件名当歌名（去掉 .lrc），保存和带去文字 PV 时就有名字可用
+            "name": path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default(),
+            "artists": "",
+            "album": "",
+            "cover": "",
+            "durationSec": 0,
+        },
+        "lyric": lyric,
+        "trans": trans,
+        "encoding": encoding,
+    }))
+}
+
+/// 按 UTF-8 读；不是合法 UTF-8 就按 GBK(936) 重读。返回（文本, 编码名）。
+///
+/// 判据用「是不是合法 UTF-8」而不是「替换字符占比」：合法就是零替换字符，
+/// 非法就说明根本不是 UTF-8 —— 少一个阈值要调。
+fn decode_text(bytes: &[u8]) -> (String, &'static str) {
+    let bytes = bytes.strip_prefix(&[0xEF, 0xBB, 0xBF][..]).unwrap_or(bytes);
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return (text.to_string(), "utf-8");
+    }
+    match gbk_to_string(bytes) {
+        Some(text) => (text, "gbk"),
+        // 两种都不是：有损解码，让用户看到乱码本身，而不是一个空文件
+        None => (String::from_utf8_lossy(bytes).to_string(), "unknown"),
+    }
+}
+
+/// GBK(936) → UTF-8。走系统 API，不引编码库。
+///
+/// windows-sys 本来就在依赖里（注册表、进程管理在用），这里只多开一个
+/// `Win32_Globalization` feature —— 同一份 kernel32 绑定，不增加体积。
+#[cfg(windows)]
+fn gbk_to_string(bytes: &[u8]) -> Option<String> {
+    use windows_sys::Win32::Globalization::MultiByteToWideChar;
+
+    const CP_GBK: u32 = 936;
+    let len = bytes.len() as i32;
+    // 先问要多少个 UTF-16 码元，再一次性转（两步是 Win32 的固定用法）
+    let need = unsafe { MultiByteToWideChar(CP_GBK, 0, bytes.as_ptr(), len, std::ptr::null_mut(), 0) };
+    if need <= 0 {
+        return None;
+    }
+    let mut buf = vec![0u16; need as usize];
+    let got = unsafe { MultiByteToWideChar(CP_GBK, 0, bytes.as_ptr(), len, buf.as_mut_ptr(), need) };
+    if got <= 0 {
+        return None;
+    }
+    buf.truncate(got as usize);
+    Some(String::from_utf16_lossy(&buf))
+}
+
+#[cfg(not(windows))]
+fn gbk_to_string(_bytes: &[u8]) -> Option<String> {
+    // ponytail: 非 Windows 只认 UTF-8；真要在那边读 GBK 就换个纯 Rust 编码库
+    None
+}
+
+/// 把 LRC 拆成（原文, 译文）。认不出来就整份当原文、译文给空串 —— 不报错、不瞎猜。
+///
+/// 认两种国内常见的双语写法（判据都要「成规模」，见下）：
+///   1. 一行两段：`[00:12.00]原文 / 译文`（`/` `／` `|` 都算分隔符）
+///   2. 两段同时间轴：先把原文列一遍，再从头把译文列一遍
+fn split_bilingual(text: &str) -> (String, String) {
+    inline_bilingual(text)
+        .or_else(|| dual_track_bilingual(text))
+        .unwrap_or_else(|| (text.to_string(), String::new()))
+}
+
+/// 一行的（时间标签前缀, 正文）。元信息行（`[ti:]` `[offset:0]`）没有正文，返回 None。
+fn timed_line(line: &str) -> Option<(&str, &str)> {
+    let mut end = 0;
+    let mut hit = false;
+    loop {
+        let rest = &line[end..];
+        let lead = rest.len() - rest.trim_start().len();
+        let rest = &rest[lead..];
+        if !rest.starts_with('[') {
+            break;
+        }
+        let Some(close) = rest.find(']') else { break };
+        if parse_timestamp(&rest[..=close]).is_none() {
+            break;
+        }
+        hit = true;
+        end += lead + close + 1;
+    }
+    let content = line[end..].trim();
+    if hit && !content.is_empty() {
+        Some((&line[..end], content))
+    } else {
+        None
+    }
+}
+
+/// `原文 / 译文` → 两段。取**第一个**分隔符（译文里再出现斜杠不该被当第二段）；
+/// 有一边是空的就不算，返回 None。
+fn split_pair(content: &str) -> Option<(&str, &str)> {
+    let (at, sep) = content.char_indices().find(|(_, c)| matches!(c, '/' | '／' | '|'))?;
+    let left = content[..at].trim_end();
+    let right = content[at + sep.len_utf8()..].trim();
+    if left.is_empty() || right.is_empty() {
+        None
+    } else {
+        Some((left, right))
+    }
+}
+
+/// 写法 1：逐行拆 `原文 / 译文`。
+///
+/// 要求**至少一半**的歌词行拆得开才认：只有个别行带斜杠（`AC/DC` 这种）说明这不是
+/// 双语文件，硬拆会把原文拆坏。拆不开的行原样留在原文里。
+fn inline_bilingual(text: &str) -> Option<(String, String)> {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let mut orig = String::new();
+    let mut trans = String::new();
+    let (mut hits, mut total) = (0usize, 0usize);
+
+    for line in normalized.lines() {
+        let Some((tag, content)) = timed_line(line) else {
+            // 元信息行、空行原样留下（原文那份里）
+            orig.push_str(line.trim_end());
+            orig.push('\n');
+            continue;
+        };
+        total += 1;
+        match split_pair(content) {
+            Some((a, b)) => {
+                hits += 1;
+                orig.push_str(&format!("{tag}{a}\n"));
+                trans.push_str(&format!("{tag}{b}\n"));
+            }
+            None => {
+                orig.push_str(line.trim_end());
+                orig.push('\n');
+            }
+        }
+    }
+
+    if total == 0 || hits * 2 < total {
+        return None;
+    }
+    Some((orig, trans))
+}
+
+/// 写法 2：前后两段的时间戳逐条相同 —— 前一半是原文，后一半是译文。
+///
+/// 逐条比对是这里唯一的判据，比「行数一样」严得多：正常的歌词不可能两次出现
+/// 一模一样的时间序列，所以误判概率极低；对不上就当普通歌词（整份原文）。
+fn dual_track_bilingual(text: &str) -> Option<(String, String)> {
+    let normalized = text.replace("\r\n", "\n").replace('\r', "\n");
+    let lines: Vec<&str> = normalized.lines().collect();
+    let timed: Vec<(usize, u64)> = lines
+        .iter()
+        .enumerate()
+        .filter_map(|(i, line)| {
+            let tag = first_tag(line)?;
+            parse_timestamp(&tag).map(|ms| (i, ms))
+        })
+        .collect();
+
+    if timed.len() < 4 || timed.len() % 2 != 0 {
+        return None;
+    }
+    let (first, second) = timed.split_at(timed.len() / 2);
+    if first.iter().map(|(_, ms)| ms).ne(second.iter().map(|(_, ms)| ms)) {
+        return None;
+    }
+
+    let at = second[0].0;
+    if at == 0 {
+        return None;
+    }
+    Some((
+        format!("{}\n", lines[..at].join("\n").trim_end()),
+        format!("{}\n", lines[at..].join("\n").trim_end()),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1255,5 +1459,79 @@ mod tests {
         );
         assert!(parse_link("").is_err());
         assert!(parse_link("随便写点什么").is_err());
+    }
+
+    /* ── 本地 LRC 导入 ── */
+
+    #[test]
+    fn splits_inline_bilingual_lrc() {
+        let (orig, trans) =
+            split_bilingual("[ti:x]\n[00:12.00]原文一 / 译文一\n[00:15.00]原文二|译文二\n");
+        assert_eq!(orig, "[ti:x]\n[00:12.00]原文一\n[00:15.00]原文二\n");
+        assert_eq!(trans, "[00:12.00]译文一\n[00:15.00]译文二\n");
+    }
+
+    #[test]
+    fn splits_dual_track_bilingual_lrc() {
+        let raw = "[ti:x]\n[00:01.00]原文一\n[00:03.00]原文二\n[00:01.00]译文一\n[00:03.00]译文二\n";
+        let (orig, trans) = split_bilingual(raw);
+        assert_eq!(orig, "[ti:x]\n[00:01.00]原文一\n[00:03.00]原文二\n");
+        assert_eq!(trans, "[00:01.00]译文一\n[00:03.00]译文二\n");
+        assert_eq!(parse_lrc(&trans, "netease").len(), 2);
+    }
+
+    /// 只有个别行带斜杠时**不能**当双语拆 —— 拆了就是把原文改坏（`AC/DC`）。
+    #[test]
+    fn single_slash_is_not_bilingual() {
+        let raw = "[00:01.00]AC/DC\n[00:03.00]Back in Black\n[00:05.00]Highway to Hell\n";
+        let (orig, trans) = split_bilingual(raw);
+        assert_eq!(trans, "");
+        assert_eq!(orig, raw);
+    }
+
+    /// 时间戳对不上就是普通歌词，不许硬拆成两半。
+    #[test]
+    fn dual_track_needs_matching_timestamps() {
+        let raw = "[00:01.00]第一句\n[00:03.00]第二句\n[00:05.00]第三句\n[00:07.00]第四句\n";
+        let (_, trans) = split_bilingual(raw);
+        assert_eq!(trans, "");
+    }
+
+    #[test]
+    fn decode_takes_utf8_bom_off_and_survives_gbk() {
+        let (text, enc) = decode_text("\u{FEFF}[00:01.00]晴天\n".as_bytes());
+        assert_eq!(enc, "utf-8");
+        assert_eq!(text, "[00:01.00]晴天\n");
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn decode_falls_back_to_gbk() {
+        // GBK(936) 的「晴天」是 C7 E7 CC EC —— 不是合法 UTF-8，只能靠 GBK 才读得对
+        let bytes: &[u8] = &[
+            0x5b, 0x30, 0x30, 0x3a, 0x30, 0x31, 0x2e, 0x30, 0x30, 0x5d, 0xc7, 0xe7, 0xcc, 0xec,
+            0x0a,
+        ];
+        let (text, enc) = decode_text(bytes);
+        assert_eq!(enc, "gbk");
+        assert_eq!(text, "[00:01.00]晴天\n");
+    }
+
+    #[test]
+    fn import_file_uses_stem_as_song_name() {
+        let path = std::env::temp_dir().join("qingmu-import-测试.lrc");
+        std::fs::write(&path, "[00:01.00]原文\n[00:03.00]第二句\n").unwrap();
+
+        let v = import_file(&path).unwrap();
+        assert_eq!(v["source"], "file");
+        assert_eq!(v["song"]["name"], "qingmu-import-测试");
+        assert_eq!(v["encoding"], "utf-8");
+        assert_eq!(v["trans"], "");
+        assert!(v["lyric"].as_str().unwrap().contains("第二句"));
+
+        // 没有时间轴的文件要明确报错，而不是给一份空歌词
+        std::fs::write(&path, "这不是歌词\n").unwrap();
+        assert!(import_file(&path).is_err());
+        let _ = std::fs::remove_file(&path);
     }
 }

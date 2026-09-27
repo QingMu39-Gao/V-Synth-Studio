@@ -128,6 +128,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/lyrics/search", post(lyrics::search))
         .route("/api/lyrics/get", post(lyrics::get))
         .route("/api/lyrics/parse-link", post(lyrics::parse_link))
+        // 本地 .lrc 文件导入：形状和 /api/lyrics/get 一致，前端两条路共用一套渲染
+        .route("/api/lyrics/import", post(lyrics::import))
         .route("/api/lyrics/save", post(lyrics::save))
         .route("/api/lyrics/cover", post(lyrics::cover))
         .route("/api/lyrics/login/sms", post(lyrics::login_sms))

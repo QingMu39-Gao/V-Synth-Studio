@@ -111,6 +111,8 @@ api.saveConfig(patch)
 api.lyricsSearch({ source, keyword })   // source: 'netease'|'qq'，返回 { songs:[{id,name,artists,album,cover,durationSec}] }
 api.lyricsGet({ source, id })           // 返回 { id, source, song:{name,artists,album,cover,durationSec}, lyric, trans }
 api.lyricsParseLink({ url })            // 返回 { source, id }；先判 QQ songmid 再判网易云 id=，顺序不能反
+api.lyricsImport({ path })              // 从本地 .lrc 导入；返回形状同 lyricsGet，source='file'、song.name=文件名
+                                        // 另有 encoding:'utf-8'|'gbk'|'unknown'，如实说明读到的是哪一种
 api.lyricsSave({ source, id, lyric, trans, durationSec, format:'lrc'|'srt', bilingual, outDir, name })
 api.lyricsCover({ url, outDir, name })
 api.lyricsSms(phone)                    // 发短信验证码，返回 { sent:true }；号码格式不对/没注册直接报错
@@ -119,6 +121,8 @@ api.lyricsLogout(source)                // 退出登录：清掉该来源的 Coo
 ```
 
 - 歌词文件一律 UTF-8（无 BOM）；`format:'srt'` 时后端按 LRC 时间轴生成字幕块，`bilingual` 打开且译文非空则一条字幕两行（原文 + 译文）。
+- **导入本地 LRC** 是唯一读 GBK 的地方：先按 UTF-8 读，不是合法 UTF-8 就用系统的 `MultiByteToWideChar(936)` 重读（windows-sys 已在依赖里，没引编码库），读的是哪一种写进响应的 `encoding`，界面上显示在来源那一行。译文尽量拆：`原文 / 译文` 这种一行两段、前后两段同时间轴都认，拆不出来整份当原文（不报错）。
+- 前端「搜到的歌」和「导入的文件」都汇到 `adopt(res, id, src)` 一个函数里，预览 / 保存 / 带去文字 PV 三条路**不分叉**；只有来源那一行文字按 `source` 区分（`'file'` → 本地文件）。
 - Cookie 存在 `config.neteaseCookie` / `config.qqCookie`，**回显一律是占位串「已设置」**（`/api/config` 与 `/api/state` 都打码）；把「已设置」原样提交回来不会被写进配置。
 - **网易云登录两条路**：手机号 + 短信验证码、Cookie 兜底。**扫码登录已整体移除**
   （`/api/lyrics/login/qr|poll|account` 三条路由 + `js/qr.js` + 界面二维码区块）：
