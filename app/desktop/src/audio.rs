@@ -1,4 +1,4 @@
-//! 音频工具（依赖外部 ffmpeg，不随程序分发）
+//! 音频工具（依赖外部的 ffmpeg —— 它**随包分发**在 `tools/ffmpeg/`，不再联网下载）
 //!
 //! 对应 Node 的 `core/audio.mjs`：格式转换、从视频提取音频、变调、变速、裁剪、响度标准化。
 //! ffmpeg 缺失时所有函数都会抛出带引导的中文错误。
@@ -39,7 +39,8 @@ fn ffprobe_path(ffmpeg: &Path) -> Option<PathBuf> {
 }
 
 fn ffmpeg_error() -> String {
-    "未找到 ffmpeg。音频工具需要它：请在「设置 → 外部工具」一键获取，或自行安装后把 ffmpeg.exe 放入 tools 目录。"
+    "未找到 ffmpeg。它随程序一起打包，出现这个提示说明 tools 目录缺失或不完整 —— \
+     从压缩包里把 tools 整个目录重新解压到程序根目录即可。音频工具需要它。"
         .to_string()
 }
 

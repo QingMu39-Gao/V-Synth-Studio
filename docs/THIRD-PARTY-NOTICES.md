@@ -82,16 +82,18 @@ LGPL 只要求附许可全文并允许用户替换该组件，不要求源码要
 
 ---
 
-## 历史：UtaFormatix3（已不再使用）
+## 历史：UtaFormatix3（已不再使用，代码与参考文件均已删除）
 
 早期版本的格式写出模块以 UtaFormatix3 的模板为骨架，参考实现放在
-`app/server/core/formats/`。
+`app/server/core/formats/`，另在 `docs/reference/utaformatix3/`（19 个 Kotlin 文件）
+留了一份源码参考。
 
-**该架构已整体删除** —— 格式转换现在交给 LibreSVIP（40 种格式），不需要自己写
-reader/writer，因此不再使用 UtaFormatix3 的任何代码或素材。
+**两处都已删除** —— 格式转换现在交给 LibreSVIP（40 种格式），不需要自己写
+reader/writer，因此不再使用 UtaFormatix3 的任何代码或素材。本程序不含该项目的任何代码，
+**无需署名**。
 
 保留此段只为说明历史来源。若日后重新引入相关代码，需恢复 Apache-2.0 署名：
-<https://github.com/sdercolin/utaformatix3>
+<https://github.com/sdercolin/utaformatix3>（Copyright 2020 sdercolin）
 
 ---
 
@@ -108,9 +110,9 @@ reader/writer，因此不再使用 UtaFormatix3 的任何代码或素材。
 ---
 
 ## 收录原则
-本程序**不收录**任何破解、激活器或盗版声库/编辑器的分发链接 —— 详见
-`app/data/RESOURCES-README.md` 的收录原则。原因不是保守，而是这类资源在原理上
-无法验证安全性（无数字签名、二次打包、常捆绑启动器），是木马和挖矿程序的高发区。
+本程序**不收录**任何破解、激活器或盗版声库/编辑器的分发链接 —— 收录原则见 `AGENTS.md` 第七节。
+原因不是保守，而是这类资源在原理上无法验证安全性（无数字签名、二次打包、常捆绑启动器），
+是木马和挖矿程序的高发区。
 
 ---
 

@@ -13,6 +13,12 @@ use tokio::io::AsyncReadExt;
 
 use crate::net::{Cancel, CANCELED};
 
+/// yt-dlp 缺失时的统一提示。它**随程序打包**，所以「找不到」只可能是
+/// tools 目录被删或解压不完整 —— 不要引导用户去联网下载（境内下不动）。
+const NOT_FOUND: &str =
+    "未找到 yt-dlp。它随程序一起打包，出现这个提示说明 tools 目录缺失或不完整 —— \
+     从压缩包里把 tools 整个目录重新解压到程序根目录即可。";
+
 #[derive(Clone)]
 pub struct Found {
     /// "binary" 或 "python"
@@ -277,10 +283,7 @@ pub async fn inspect(
     proxy: Option<&str>,
     cookies_from_browser: Option<&str>,
 ) -> Result<Value, String> {
-    let found = find_ytdlp(tools_dir).await.ok_or_else(|| {
-        "未找到 yt-dlp。请在「设置 → 外部工具」中一键获取，或手动放置 yt-dlp.exe 到 tools 目录。"
-            .to_string()
-    })?;
+    let found = find_ytdlp(tools_dir).await.ok_or(NOT_FOUND)?;
 
     let mut args = base_args(&found, proxy, cookies_from_browser);
     args.push("-J".into());
@@ -343,7 +346,7 @@ pub async fn download(
 ) -> Result<Vec<String>, String> {
     let found = find_ytdlp(tools_dir)
         .await
-        .ok_or_else(|| "未找到 yt-dlp。请在「设置 → 外部工具」中一键获取。".to_string())?;
+        .ok_or_else(|| NOT_FOUND.to_string())?;
     let _ = std::fs::create_dir_all(opts.out_dir);
 
     let mut args = base_args(&found, opts.proxy, opts.cookies_from_browser);

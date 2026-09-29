@@ -1,10 +1,10 @@
 # 清沐的虚拟歌姬工作站
 
-翻调 P 主的本地工作台。**完全离线运行，单进程，不需要 Node.js。**
+翻调 P 主的本地工作台。**完全离线运行，工程文件不出本机。**
 
-> **接手这个项目？先读 [`docs/HANDOFF.md`](docs/HANDOFF.md)。**
-> 那份文档写的是看代码看不出来的东西：架构为什么长这样、踩过哪些坑、
-> 当前进行到哪一步、下一步该往哪走。这份 README 只是产品与使用说明。
+> **要改代码？读 [`AGENTS.md`](AGENTS.md)。**
+> 那份写的是看代码看不出来的东西：架构为什么长这样、踩过哪些坑、怎么编译怎么验证。
+> 这份 README 只讲这是什么、怎么用。
 
 ---
 
@@ -17,32 +17,25 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 
 `build.ps1` 编完会**自动把 exe 复制到程序根目录**，所以双击启动器跑的就是刚编出来的版本。
 
-> ⚠️ **不要直接用 `cargo build`** —— 它只编译，**不复制**。根目录那个 exe 会悄悄停在旧版本，
-> 于是「代码是对的、测试也过了」，但你双击启动器跑的是几天前的二进制。
-> 这个坑真实发生过：`/api/fs/raw` 加好之后一直用 `cargo build`，根目录的 exe 没更新，
-> 音频播放直接 404。
->
-> 只有需要**不经复制**地快速验证编译能否通过时，才直接用 cargo（例如 `cargo check`）。
+> ⚠️ **不要直接用 `cargo build`** —— 它只编译，**不复制**。根目录那个 exe 会悄悄停在旧版本。
+> 详见 `AGENTS.md`。
 
 | 命令 | 用途 |
 |---|---|
 | `build.ps1` | debug 版（默认，编得快，带控制台窗口方便看日志） |
 | `build.ps1 -Release` | release 版（体积小、跑得快，无控制台窗口） |
-| `build.ps1 -Bundle` | 出安装包 —— **见 `docs/PACKAGING.md`，现在还不能直接打** |
-
-编译需要 MSVC 工具链（`H:\DevTools\安装VC工具链.bat` 装一次即可）。
-直接用 `cargo build` 会报 `linker link.exe not found` —— 必须先加载 vcvars。
+| `build.ps1 -Bundle` | 出安装包 —— **见 `AGENTS.md`，现在还不能直接打** |
 
 ---
 
 ## 运行要求
 
-**只需要 WebView2 运行时**（Win11 和较新的 Win10 都预装）。
+**用户只需要 WebView2 运行时**（Win11 和较新的 Win10 都预装）。
 
-| 依赖 | 需要吗 | 依据 |
+| 依赖 | 用户需要吗 | 依据 |
 |---|---|---|
 | VC++ 运行库 | **不需要** | 已静态链接，导入表里没有 `VCRUNTIME140.dll` |
-| Node.js | **不需要** | 后端是 Rust |
+| Node.js | **不需要** | 后端是 Rust（只有跑测试的开发机需要） |
 | Python | **不需要** | LibreSVIP 自带运行时 |
 | WebView2 | **需要** | 唯一的硬依赖 |
 
@@ -60,7 +53,7 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 | 类别 | 格式 |
 |---|---|
 | VOCALOID | `.vsqx` `.vsq` `.vpr` `.vog` `.vspx` |
-|  Synthesizer V | `.svp` `.s5p` |
+| Synthesizer V | `.svp` `.s5p` |
 | UTAU / OpenUtau | `.ust` `.ustx` |
 | CeVIO / ACE / DeepVocal | `.ccs` `.acep` `.dv` `.dspx` |
 | 通用交换 | `.mid` `.musicxml` `.ufdata` |
@@ -77,82 +70,47 @@ B 站原生解析（WBI 签名、DASH 流、番剧）+ yt-dlp 兜底（YouTube �
 ### 音频处理
 
 基于 ffmpeg：格式转换（WAV/FLAC/MP3/M4A/OGG/Opus）、变调变速、裁剪、响度归一化、音频提取。
+带波形编辑器。
+
+### 歌词
+
+网易云 / QQ 音乐搜索与取词、双语、封面、本地 `.lrc` 导入（含 GBK 自动识别），导出 LRC / SRT。
+
+### 文字 PV
+
+JIZURA 本地部署，歌词一键带入，导出 MP4 / PNG 序列。字体已离线化。
 
 ### 资源导航
 
-各类网站跳转与整理：人声分离、免费音源（标注**能否下 WAV**）、歌姬立绘与授权规约、
-编辑器官方获取渠道、插件与工具、教程文档。
+4 组 27 条：工程分享、免费音源、编辑器/声库官网、UTAU 系开源项目。
 
 **关于「破解版 / 学习版」**：本库**不收录**任何破解、激活器、网盘转载的盗版声库或编辑器链接。
 原因不是保守，而是这类资源在原理上无法验证安全性 —— 无数字签名、二次打包、常捆绑启动器，
 是木马和挖矿程序的高发区。只收录官方、开源与免费试用渠道。
 
----
+### 双主题
 
-## 架构
-
-```
-清沐的虚拟歌姬工作站.exe      ← Tauri 外壳 + 内嵌 Rust 后端（同一个进程）
-app/web/                     ← 界面（纯 HTML/CSS/JS，无构建步骤）
-app/data/                    ← 配置、资源库、拼音词典
-app/desktop/                 ← Rust 源码
-tools/                       ← ffmpeg / LibreSVIP / yt-dlp
-```
-
-**窗口和 HTTP 服务跑在同一个进程里** —— 没有 node.exe，也没有 sidecar 子进程。
-关掉窗口就是完全退出，不存在"外壳死了后端还在跑"的孤儿状态。
-
-Rust 后端约 5,900 行，实现 31 个 HTTP 路由；前端零构建步骤。
-
-### 为什么是 Rust 而不是 Node
-
-原来用 Node 后端（约 19,000 行）+ Tauri 外壳拉子进程的方式。改成 Rust 之后：
-
-| | 旧（sidecar） | 现在 |
-|---|---|---|
-| 进程数 | 9 | 8（其中 6 个是 WebView2） |
-| 内存 | 494 MB | 472 MB |
-| node.exe | 1 个 | **0 个** |
-| 崩溃残留 | Node 会变孤儿 | 无 |
-
-省下的几十 MB 不是重点，**重点是架构上不再有"两个进程要同步生死"这件事**。
-
-### 刻意不做的事
-
-- **不做音频渲染** —— 这是工程数据转换工具，不合成歌声。要出声音得用对应编辑器。
-- **不检测本机声库**（曾经做过，784 行，已删）—— 它只被用来"显示装了什么"，
-  **转换路径从头到尾没调用过**。换声库跟这个检测毫无关系。
-- **不检测本机编辑器**（曾经 16 个，现在只留 UVR）—— 只有 UVR 被真正用到
-  （音频页的人声分离要跳过去）。其余只是"从工作站启动别的编辑器"，
-  而用户桌面本来就有快捷方式，绕这一层没意义，还带来 56 条要跟着版本维护的路径。
+亮 / 暗，跟随系统，可切换。
 
 ---
 
-## 测试
+## 自己构建
 
-```powershell
-# 对照测试：把 Rust 后端的响应和从 Node 版抓的真实夹具逐字段比
-$exe='app\desktop\target\debug\qingmu-workstation.exe'
-Start-Process $exe -ArgumentList '--serve','--port=8891'
-node tests\contract\verify.mjs 8891
-```
+编译需要 MSVC 工具链（`H:\DevTools\安装VC工具链.bat` 装一次即可）。
+直接用 `cargo build` 会报 `linker link.exe not found` —— 必须先加载 vcvars，
+`build.ps1` 会处理。
 
-夹具在 `tests/contract/fixtures/`（17 个），是 Node 后端还在时抓的真实响应，
-**永久基准**。`verify.mjs` 逐字段 diff，并把「有意差异」单独标注（每条都写了理由）。
-
-当前：**17/17 一致**。
-
-`--serve` 模式只跑服务不开窗口，专门给测试用。
+完整流程、平台差异与打包现状见 **[`AGENTS.md`](AGENTS.md)**。
 
 ---
 
-## 已知限制
+## 分发与授权
 
-- **打包还没做** —— MSI 打出来跑不起来，原因是 Tauri 的 `resources` 目录布局和
-  程序的 `find_app_root()` 对不上。详见 `docs/PACKAGING.md`。
-- **UTAU Shift-JIS** —— 纯 Rust 侧不生成 Shift-JIS，默认写 UTF-8。老版本 UTAU
-  可能需要手动转码。
-- **YouTube 在境内不可达** —— 相关功能要走代理（设置页可配）。
+随包分发了几个独立的外部程序（FFmpeg / LibreSVIP / yt-dlp / JIZURA / 字体），
+各自的许可与合规要求见 **[`docs/THIRD-PARTY-NOTICES.md`](docs/THIRD-PARTY-NOTICES.md)**。
+
+> ⚠️ 当前 `tools/ffmpeg/` 是 **GPL v3** 构建。分发前请先读那份文档 ——
+> 换成 LGPL 构建可以省掉大部分合规负担，而且不影响本程序的功能。
 
 ---
 
@@ -160,9 +118,9 @@ node tests\contract\verify.mjs 8891
 
 | 路径 | 说明 |
 |---|---|
-| `docs/PACKAGING.md` | 打包前置条件与运行时依赖实测 |
-| `docs/PLATFORM-PORT.md` | 移植 macOS 的平台边界地图 |
-| `docs/THIRD-PARTY-NOTICES.md` | 第三方组件的授权说明 |
-| `tests/contract/` | 契约对照测试与基准夹具 |
-| `tests/manual/` | 手工验证脚本 |
-| `tests/samples/` | 样本工程（**用户的真实作品不入库**，见其 README） |
+| `app/desktop/` | Tauri 外壳 + 内嵌 Rust 后端 |
+| `app/web/` | 界面（纯 HTML/CSS/JS） |
+| `app/data/` | 配置、资源库、拼音词典 |
+| `tools/` | 随包分发的 ffmpeg / LibreSVIP / yt-dlp |
+| `tests/` | 契约测试、冒烟测试、样本 |
+| `AGENTS.md` | **给开发者/智能体的技术文档** |
