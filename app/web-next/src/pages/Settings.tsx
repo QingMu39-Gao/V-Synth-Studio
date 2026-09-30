@@ -1,10 +1,10 @@
-import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useState } from 'react'
 import { api } from '@/lib/api'
 import type { AppState, HealthInfo } from '@/lib/types'
 import { Button } from '@/components/Button'
 import { Field, TextInput } from '@/components/Field'
 import { Chip, Panel, PanelHead, Stat } from '@/components/Panel'
-import { useMaterial, type GlassMaterial } from '@/lib/useGlass'
+import { useGlobalGlass, useMaterial, type GlassMaterial } from '@/lib/useGlass'
 import type { ThemeMode } from '@/App'
 
 /**
@@ -142,6 +142,7 @@ function Appearance({
   onOpaqueChange: (v: boolean) => void
 }) {
   const { material, setMaterial } = useMaterial()
+  const { globalGlass, setGlobalGlass } = useGlobalGlass()
 
   const MATERIALS: { id: GlassMaterial; label: string; desc: string }[] = [
     {
@@ -180,6 +181,28 @@ function Appearance({
               <span className="choice-desc">{m.desc}</span>
             </button>
           ))}
+        </div>
+
+        {/*
+          全局玻璃开关。关掉就回到「只有操作层是玻璃」的那一版
+          （面板改用库的 MaterialView），**背景参数两档共用、不受影响**。
+        */}
+        <div className="stack" style={{ marginBlockStart: 'var(--lg-space-5)' }}>
+          <label className="toggle-row">
+            <input
+              type="checkbox"
+              checked={globalGlass}
+              onChange={(e) => setGlobalGlass(e.target.checked)}
+            />
+            <span>全局玻璃：内容区的面板也用玻璃材质</span>
+          </label>
+          <p className="hint" style={{ marginBlockStart: 0 }}>
+            {globalGlass
+              ? '开：正文区那几块面板也是玻璃面（有折射和高光边）。'
+              : '关：面板退回轻量材质（只有模糊和底色），玻璃只留在栏、侧栏和控件上。'}
+            这一项**只切面板材质，背景图参数两档共用**。折射元素越多开销越大，
+            低端机或远控桌面建议关掉。
+          </p>
         </div>
       </Panel>
 

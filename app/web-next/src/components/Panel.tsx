@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
+import { MaterialView } from '@ttqtt/liquid-glass-react'
 import { GlassContent, GlassLayer } from '@/components/Glass'
-import { useMaterial } from '@/lib/useGlass'
+import { useGlobalGlass, useMaterial } from '@/lib/useGlass'
 
 /**
  * 面板 / 卡片 —— **现在是玻璃面**（用户要求「全局玻璃」）。
@@ -32,6 +33,23 @@ export function Panel({
   className?: string
   padded?: boolean
 }) {
+  const { globalGlass } = useGlobalGlass()
+
+  /* 关掉「全局玻璃」就回到换库之后那一版：面板是库的 `MaterialView`
+     （模糊 + 底色，不折射、无高光边），只有栏 / 侧栏 / 控件是玻璃。
+     注意 **背景参数两档共用**，这个开关不碰背景。 */
+  if (!globalGlass) {
+    return (
+      <MaterialView
+        thickness="thin"
+        radius={20}
+        className={`panel ${padded ? 'panel-padded' : ''} ${className}`}
+      >
+        {children}
+      </MaterialView>
+    )
+  }
+
   return (
     <GlassPanel
       className={`panel ${className}`}

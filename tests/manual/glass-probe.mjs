@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 新前端（/next/）玻璃材质的实测探针
  *
  *   node tests/manual/glass-probe.mjs [port] [theme] [material]
@@ -42,6 +42,12 @@ const SUFFIX = OVERRIDE.length
 const BASE = `http://127.0.0.1:${PORT}`
 /** 第 6 个参数：落在哪个视图（dashboard / settings / …），用来截图核对具体页面 */
 const PAGE = process.argv[6] ?? ''
+/** 第 7 个参数：额外写进 localStorage 的键值，k=v,k=v。用来验「开关关掉」那一档 */
+const LS = (process.argv[7] ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => { const i = s.indexOf('='); return [s.slice(0, i), s.slice(i + 1)] })
 const CDP_PORT = 9334
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const PROFILE = `${process.env.TEMP}\\glass-probe-profile`
@@ -150,6 +156,12 @@ const PROBE = String.raw`(async () => {
   const scrollEl = document.querySelector('.app-sidebar, .lg-tabbar') ?? document.body
   return {
     theme: document.documentElement.dataset.lgTheme,
+    /* 回读 localStorage：验「开关有没有写进去 / 页面有没有读到」 */
+    ls: {
+      theme: localStorage.getItem('qingmu.theme'),
+      glass: localStorage.getItem('qingmu.glass'),
+      globalGlass: localStorage.getItem('qingmu.globalGlass'),
+    },
     glass,
     materials,
     svgFilters,
@@ -202,11 +214,12 @@ try {
   })
 
   // 先落到同源的一个真实页面，再写 localStorage —— about:blank 上写的是另一个源。
-  await cdp.send('Page.navigate', { url: `${BASE}/next/${PAGE ? `#/${PAGE}` : ``}` })
+  await cdp.send('Page.navigate', { url: `${BASE}/next/` })
   await sleep(1200)
   await cdp.evalJs(`(() => {
     localStorage.setItem('qingmu.theme', ${JSON.stringify(THEME)});
     localStorage.setItem('qingmu.glass', ${JSON.stringify(MATERIAL)});
+    for (const [k, v] of ${JSON.stringify(LS)}) localStorage.setItem(k, v);
     return true
   })()`)
   /**
@@ -226,7 +239,16 @@ try {
         if (performance.now() < 10000) requestAnimationFrame(tick);
       })();`,
   })
-  await cdp.send('Page.navigate', { url: `${BASE}/next/${PAGE ? `#/${PAGE}` : ``}` })
+  /**
+   * ⚠️ **必须真·重载**（`Page.reload`），不能只 `Page.navigate` 到同一个 URL。
+   *
+   * 踩过：写 localStorage 之后再 `navigate` 到同一个地址，浏览器可能按**同文档导航**
+   * 处理 —— 页面没重建，`useGlass` / `useGlobalGlass` 那两个模块级缓存的旧值还在，
+   * 于是「localStorage 里明明是 off，界面还是全局玻璃」，看着像开关失效。
+   * 视图切换改用 hash：`hashchange` 会被应用自己接住，不需要换文档。
+   */
+  await cdp.send('Page.reload', { ignoreCache: true })
+  if (PAGE) await cdp.evalJs(`(() => { location.hash = '#/${PAGE}'; return true })()`)
 
   // 等应用真渲染出来（后端 /api/state 本机要几秒），别写死 sleep。
   // 两个条件都要等：玻璃面出现 + 总览页不再显示「正在读取环境状态」占位 —— 只等前者会截到半成品。
