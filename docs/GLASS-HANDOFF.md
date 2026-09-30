@@ -146,7 +146,63 @@ node tests\manual\glass-probe.mjs 8891 light frosted   # 也可 dark / liquid
 挤压（「滑动时缩放」）现在只改**一个**喂进 `transform` 的变量（`--lg-lens-swell-y`），
 所以不存在「动画抢走 transform」的问题 —— 上一版需要分两层正是因为这个冲突，现在不需要了。
 
-### 2.2 仍然存在、但**属于库的设计**的两件事
+### 2.2 第二轮（用户复报「除了侧栏都没有实现对应的玻璃材质」）
+
+上一轮把材质参数修对了，但用户看到的仍然是「只有侧栏有玻璃」。**这次不是参数问题**，
+三件事各自独立，任何一件都能单独造成那个观感：
+
+**① 背景层自己糊过头了（最要命的一条）。**
+
+`--bg-blur` 原来是亮色 12px / 暗色 14px。整页先被自己糊成一团奶白，
+玻璃压上去**再糊一次等于没糊** —— 唯一还能看出差别的只剩 40px 模糊的侧栏。
+**玻璃的观感来自「背后有东西被它糊掉」，不是来自玻璃自己。**
+
+实测（`glass-probe.mjs` 的第 5 个参数可以临时覆盖令牌再截图）：
+
+```powershell
+node tests\manual\glass-probe.mjs 8891 light frosted '--bg-blur=0px'
+node tests\manual\glass-probe.mjs 8891 light frosted '--bg-blur=3px'
+```
+
+现取值：亮色 **3px** / 暗色 **4px**（`app/web-next/src/index.css` 的
+`[data-lg-theme=...]` 两处）。改完玻璃边缘立刻把背后的细节糊开，材质成立。
+
+**② 材质没写在 `GlassProvider` 上 —— 库的控件根本不跟着切。**
+
+只有自家包装的两个面（顶栏 / 侧栏）传了 `material`。库的控件
+（`GlassButton` / `GlassSegmentedControl` / `TabBar` …）**不接材质参数，读的是 policy**。
+实测：切到「液态玻璃」时侧栏变 `clear`，而按钮和分段控件仍是 `regular`。
+
+修法一行：`<GlassProvider material={materialOptions(material).material}>`。
+（`GlassPolicy` 里没有 `refraction`，折射仍按面给。）
+
+**③ 控件层全是手写的平控件，顶栏却是一整块玻璃。**
+
+手写 `.btn`（背景 + 描边 + `scale(.97)`）**材质是零**；`.seg` 只是换个底色。
+于是整屏的材质只剩两块大板。而库的规矩恰恰相反 —— 它的 `GlassToolbar` 注释写着：
+
+> 工具栏本身不携带背景：它是一行**分组**，玻璃是每一组。
+
+本轮改法：
+
+| 改了什么 | 怎么改 |
+|---|---|
+| 按钮 | `components/Button.tsx` 换成库的 `GlassButton`（`default→glass`、`primary→glassProminent`、`ghost→plain`、`danger→destructive`，`size→controlSize`）。手写 `.btn*` / 加载转圈全部删除 |
+| 顶栏材质切换 | 换成库的 `GlassSegmentedControl`（自带滑动透镜、可拖） |
+| 顶栏本身 | **去掉那层大玻璃**，留一条平的行 —— 玻璃交给里面的控件 |
+| 平栏的代价 | 内容会从它下面经过 → 加库的 `ScrollEdge`（不给 `targetRef` 即「盯页面滚动」），吸顶时自动亮起 |
+| 侧栏的主题切换 | **故意留着**手写 `.seg`：它在侧栏那块玻璃**里面**，库的规矩是不要玻璃叠玻璃 |
+
+改完实测（四种组合都跑过）：
+
+| | 毛玻璃 | 液态玻璃 |
+|---|---|---|
+| 玻璃面 | 分段控件 1 + 按钮 8 + 侧栏 1，**全部 `regular`** | 同样 10 个面，**全部 `clear`** |
+| 位移贴图 | 0（纯 CSS，零开销） | **10**（每个控件都折射） |
+| 背景层模糊 | 3px / 4px | 同 |
+| `ScrollEdge` | 滚动时 `data-active=true`、opacity 1 | 同 |
+
+### 2.3 仍然存在、但**属于库的设计**的两件事
 
 - **液态玻璃（`clear`）在明亮模式下就是灰调。** `clear` + 浅背景 = 库的 35% 黑压（第 3 节）。
   这不是 bug，是这个材质的适用条件。想更亮就别用 `clear` —— 所以它不再是默认。

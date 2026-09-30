@@ -4,8 +4,16 @@ import type { AppState } from '@/lib/types'
 import { Icon, type IconName } from '@/components/Icon'
 import { GlassPanel } from '@/components/Panel'
 import { Button } from '@/components/Button'
-import { BackdropToneProvider, GlassProvider, MaterialView, useGlassPolicy } from '@ttqtt/liquid-glass-react'
-import { useMaterial } from '@/lib/useGlass'
+import {
+  BackdropToneProvider,
+  GlassProvider,
+  GlassSegmentedControl,
+  MaterialView,
+  ScrollEdge,
+  useGlassPolicy,
+} from '@ttqtt/liquid-glass-react'
+import { useMaterial, type GlassMaterial } from '@/lib/useGlass'
+import { materialOptions } from '@/components/Glass'
 import { Dashboard } from '@/pages/Dashboard'
 import { Settings } from '@/pages/Settings'
 import { Placeholder } from '@/pages/Placeholder'
@@ -139,6 +147,12 @@ export default function App() {
     <GlassProvider
       theme={theme}
       transparency={opaque ? 'opaque' : 'system'}
+      /* ⚠️ 材质要写在 **Provider** 上，不能只给自家包装的面传：库的控件
+         （GlassButton / GlassSegmentedControl / TabBar…）不接材质参数，读的是 policy。
+         之前漏了这行，实测「切到液态玻璃只有侧栏变 clear，按钮还是 regular」——
+         用户看到的就是「除了侧栏都没有实现对应的玻璃材质」。
+         GlassPolicy 里没有 refraction，所以折射仍由 materialOptions() 按面给。 */
+      material={materialOptions(material).material}
       /*
         折射（SVG 位移滤镜）**只在选「液态玻璃」时打开**。
         库默认是关的，理由两条，都写在它的 README 和 AGENTS.md 里：
@@ -153,27 +167,33 @@ export default function App() {
     >
       <ToneScope>
         <div className="app">
-          {/* ── 顶栏：玻璃（浮起来的那一层）────────────────────── */}
-          <GlassPanel
-            className="app-topbar"
-            contentClassName="app-topbar-inner"
-            radius={20}
-            padding={0}
-          >
-            <div className="brand">
-              <span className="brand-mark" aria-hidden="true" />
-              <span className="brand-name">V-Synth-Studio</span>
+          {/* 平栏的代价：内容会从它下面经过。库的 ScrollEdge 就是治这个的
+              （它的注释：「不是装饰、不是色块，只在内容真的从浮动 UI 下面经过时出现」）。
+              不给 targetRef 就是盯页面滚动 —— 正是我们这个场景。 */}
+          <ScrollEdge edge="top" variant="soft" height={64} className="app-top-edge" />
+          {/* ── 顶栏：**本身不画底** ────────────────────────────────
+              库的 `GlassToolbar` 注释说得很直接：「工具栏本身不携带背景 ——
+              它是一行**分组**，玻璃是每一组」。所以这里不再套一层大玻璃：
+              留一条平的行，玻璃交给里面的控件（材质分段控件、重新检测按钮）。
+              以前这里是「一块大玻璃 + 两个手写平控件」，结果是
+              「玻璃叠玻璃」被避开的同时，整屏只剩侧栏有材质。 */}
+          <header className="app-topbar">
+            <div className="app-topbar-inner">
+              <div className="brand">
+                <span className="brand-mark" aria-hidden="true" />
+                <span className="brand-name">V-Synth-Studio</span>
+              </div>
+              <div className="topbar-actions">
+                <span className="topbar-status" data-dead={dead ? 'true' : undefined}>
+                  {dead ? '服务未连接' : refreshing ? '连接中…' : `${formatCount} 种格式`}
+                </span>
+                <MaterialSwitch />
+                <Button size="sm" icon="refresh" onClick={refreshState} disabled={refreshing}>
+                  重新检测
+                </Button>
+              </div>
             </div>
-            <div className="topbar-actions">
-              <span className="topbar-status" data-dead={dead ? 'true' : undefined}>
-                {dead ? '服务未连接' : refreshing ? '连接中…' : `${formatCount} 种格式`}
-              </span>
-              <MaterialSwitch />
-              <Button size="sm" icon="refresh" onClick={refreshState} disabled={refreshing}>
-                重新检测
-              </Button>
-            </div>
-          </GlassPanel>
+          </header>
 
           <div className="app-body">
             {/* ── 侧栏：玻璃（浮起来的那一层）──────────────────── */}
@@ -374,32 +394,38 @@ function ToneScope({ children }: { children: React.ReactNode }) {
 /* ══════════════════════════════════════════════════════════════ 材质开关 ══ */
 
 /**
- * 毛玻璃 / 液态玻璃切换。
+ * 毛玻璃 / 液态玻璃切换 —— **库的 `GlassSegmentedControl`**。
  *
- * 两种材质的**唯一**区别在 `components/Glass.tsx` 的 `materialOptions()`：
+ * 它本身就是一块玻璃胶囊（`GlassSurface` + 会滑动的选择透镜，且能按住拖动切换），
+ * 正好是库的演示页里那种控件。之前这里是手写的 `.seg`：一个灰底 + `aria-pressed`
+ * 换底色，一万年也看不出材质。
+ *
+ * 两种材质的**唯一**区别仍在 `components/Glass.tsx` 的 `materialOptions()`：
  * `frosted` = `material:"regular"` + 不折射；`liquid` = `material:"clear"` + 折射 32。
  */
 function MaterialSwitch() {
   const { material, setMaterial } = useMaterial()
   return (
-    <div className="seg" role="group" aria-label="玻璃材质">
-      {(['frosted', 'liquid'] as const).map((m) => (
-        <button
-          key={m}
-          type="button"
-          className="seg-item"
-          aria-pressed={material === m}
-          onClick={() => setMaterial(m)}
-        >
-          {m === 'frosted' ? '毛玻璃' : '液态玻璃'}
-        </button>
-      ))}
-    </div>
+    <GlassSegmentedControl
+      aria-label="玻璃材质"
+      items={[
+        { value: 'frosted', label: '毛玻璃' },
+        { value: 'liquid', label: '液态玻璃' },
+      ]}
+      value={material}
+      onValueChange={(v) => setMaterial(v as GlassMaterial)}
+    />
   )
 }
 
 /* ══════════════════════════════════════════════════════════════ 主题开关 ══ */
 
+/**
+ * 主题切换。**故意留着手写的 `.seg`，不换成库的 `GlassSegmentedControl`。**
+ *
+ * 它在侧栏那块玻璃**里面** —— 库的规矩是「不要玻璃叠玻璃」（放玻璃上的元素用填充和
+ * 透明度，不再叠一层）。顶栏那个可以，因为顶栏本身已经不是玻璃了。
+ */
 function ThemeSwitch({ value, onChange }: { value: ThemeMode; onChange: (m: ThemeMode) => void }) {
   const labels: Record<ThemeMode, string> = { system: '跟随系统', light: '明亮', dark: '黑暗' }
   const order: ThemeMode[] = ['system', 'light', 'dark']

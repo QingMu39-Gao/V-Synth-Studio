@@ -40,10 +40,20 @@
    所以这里跟着它走，不用再记一份。 */
 [data-lg-theme='dark'] {
   --bg-image: var(--bg-image-dark);
-  /* 这几个值是一组，别单独动 —— 旧前端踩了两轮才调好：
-     「通透」靠**低模糊 + 低遮罩**，不是靠加大模糊。
-     高模糊 + 高遮罩 = 图被糊成一片均匀深灰，看着就是「图压根不显示」。 */
-  --bg-blur: 14px;
+  /**
+   * ⚠️ **背景自身的模糊必须很小 —— 它直接决定玻璃还看不看得出来。**
+   *
+   * 这里原来是 14px（亮色 12px），结果是：整页先被自己糊成一团奶白，
+   * 玻璃压上去再糊一次，**等于没糊** —— 唯一还能看出差别的只剩 40px 模糊的侧栏，
+   * 于是用户看到的就是「除了侧边栏都没有实现玻璃材质」。
+   *
+   * 实测（把 `--bg-blur` 覆盖成 0 / 3px 各截一张，见 `tests/manual/out/`）：
+   * 图一旦有细节，玻璃边缘立刻把背后的东西糊开了，材质成立。
+   * 玻璃的观感来自「背后有东西被它糊掉」，不是来自玻璃自己。
+   *
+   * 「通透」仍然靠低不透明度 + 低模糊，但**背景这一层要留住细节**。
+   */
+  --bg-blur: 4px;
   --bg-dim: 100%;
   --bg-contrast: 118%; /* 暗色图本身有对比（黑底 + 白锐利细节 + 青绿色块），再拉一点更锐 */
   --bg-veil: rgba(9, 11, 16, 0.3);
@@ -60,7 +70,7 @@
    
      曾经写的是 `brightness(82%) contrast(112%)`，实测整张图糊成纯灰 ——
      玻璃压在上面完全没有东西可采样。 */
-  --bg-blur: 12px;
+  --bg-blur: 3px; /* 同上：这一层糊过头，玻璃就没东西可糊了（实测 12px 时材质全看不出来） */
   --bg-dim: 100%;
   --bg-contrast: 145%;
   /* 遮罩也要很轻。这张图本身够亮，重遮罩只会把它抹平 */
@@ -127,30 +137,40 @@ body::before {
   gap: var(--lg-space-4);
 }
 
-/* ── 顶栏（玻璃）──────────────────────────────────────────────── */
+/* ── 顶栏：**本身没有底**，玻璃在里面的控件上 ──────────────────
+   库的 `GlassToolbar` 注释：「工具栏本身不携带背景 —— 它是一行**分组**，玻璃是每一组」。
+   以前这里是一整块玻璃，于是要么「玻璃叠玻璃」（控件再叠一层），
+   要么控件是手写的平控件（用户看到的「除了侧栏都没材质」）。 */
 .app-topbar {
   flex: none;
   /**
-   * 顶栏**吸顶**：内容从它下面滚过去，玻璃才有东西可以折射、可以模糊。
-   *
-   * 原来它是文档流里的一条横栏（`position: static`），背后永远是页面背景的一部分 ——
-   * 材质再对也看不出来，用户当时说的是「只有侧栏看得出液态玻璃」。
-   * 玻璃的观感来自「有东西从背后经过」，这不是参数问题。
+   * 吸顶：内容从它下面滚过去 —— 玻璃的观感来自「有东西从背后经过」。
+   * 平栏吸顶本身不需要模糊，但里面的玻璃控件（分段控件 / 按钮）需要。
    */
   position: sticky;
   top: var(--lg-space-4);
   z-index: 10;
 }
+/**
+ * 内容从平栏下面经过时的「溶解边」—— 库的 `ScrollEdge`。
+ *
+ * 它默认是 `position: absolute`；库自己对「页面滚动」的做法是改成 fixed
+ * （`Screen[data-scroll="page"] > .lg-screen-edge`），这里照做。
+ * 层级压在顶栏**下面**一层：顶栏里的玻璃控件要盖在它上面。
+ */
+.app-top-edge {
+  position: fixed;
+  inset-inline: 0;
+  inset-block-start: 0;
+  z-index: 9;
+}
 .app-topbar-inner {
   display: flex;
   align-items: center;
   gap: var(--lg-space-3);
-  padding: var(--lg-space-3) var(--lg-space-4);
+  /* 平栏，横向不加内边距（要和内容列对齐）；高度与玻璃版保持一致，
+     侧栏的吸顶偏移 `calc(var(--lg-space-4) + 76px)` 是按这个算的。 */
   min-height: 60px;
-  /* 这里**不能**写 `height: 100%`。父级是库生成的 `.lg-content`，它的高度是
-     `auto`（由内容决定），百分比高度会解析成 0 → 内容直接塌掉。
-     曾经写过一次，是为了治「玻璃比内容高一截」，而那其实是类名挂漏导致的，
-     根因修掉后这条只剩副作用。 */
 }
 .brand {
   display: flex;
@@ -569,111 +589,16 @@ body::before {
   color: var(--lg-label-secondary);
 }
 
-/* ── 按钮 ───────────────────────────────────────────────────── */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  border: 1px solid transparent;
-  border-radius: var(--lg-radius-s);
-  font: inherit;
-  font-size: 14px;
-  font-weight: 500;
-  cursor: pointer;
-  white-space: nowrap;
-  transition:
-    background 140ms ease-out,
-    transform 90ms ease-out;
-}
-.btn:active:not(:disabled) {
-  transform: scale(0.97);
-}
-.btn:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-.btn:focus-visible {
-  outline: 2px solid var(--lg-accent);
-  outline-offset: 2px;
-}
-.btn-md {
-  min-height: 38px;
-  padding-inline: var(--lg-space-4);
-}
-.btn-sm {
-  min-height: 32px;
-  padding-inline: var(--lg-space-3);
-  font-size: 13px;
-}
-.btn-lg {
-  min-height: 46px;
-  padding-inline: var(--lg-space-5);
-  font-size: 15px;
-}
-.btn-icon-only {
-  padding-inline: var(--lg-space-3);
-}
-.btn-default {
-  background: var(--lg-fill-quaternary);
-  border-color: var(--lg-separator);
-  color: var(--lg-label);
-}
-.btn-default:hover:not(:disabled) {
-  background: var(--lg-fill-tertiary);
-}
-/* 一屏只有一个主操作 —— 用 accent-fill + 它的对比色（量过 4.98:1），
-   不是 accent 本身（配白字只有 3.52:1）。 */
-.btn-primary {
-  background: var(--lg-accent-fill);
-  color: var(--lg-accent-contrast);
-  border-color: transparent;
-}
-.btn-primary:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
-.btn-ghost {
-  background: transparent;
-  color: var(--lg-accent);
-}
-.btn-ghost:hover:not(:disabled) {
-  background: var(--lg-fill-quaternary);
-}
-.btn-danger {
-  background: var(--lg-red-fill, var(--lg-red));
-  color: #fff;
-}
-/* 玻璃按钮：**内容层不用它**。保留给将来放在栏 / 浮层里的控件。 */
-.btn-glass {
-  background: var(--lg-fill-tertiary);
-  border-color: var(--lg-separator);
-  color: var(--lg-label);
-}
+/* ── 按钮 ─────────────────────────────────────────────────────
+   按钮**没有自己的样式了** —— 全部是库的 `GlassButton`（见 `components/Button.tsx`）。
+   这里只留「排成一行」。删掉的手写 `.btn` / `.btn-*` / 加载转圈（`GlassButton` 自带）
+   是死代码：手写按钮的材质是零，正是用户说的「除了侧栏都没实现玻璃材质」。 */
 .btn-row {
   display: flex;
   align-items: center;
   gap: var(--lg-space-3);
   flex-wrap: wrap;
 }
-.btn-spinner {
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  border: 2px solid currentColor;
-  border-block-start-color: transparent;
-  animation: btn-spin 700ms linear infinite;
-}
-@keyframes btn-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-@media (prefers-reduced-motion: reduce) {
-  .btn-spinner {
-    animation-duration: 2s;
-  }
-}
-
 /* ── 分段控件（材质 / 主题切换）───────────────────────────────── */
 .seg {
   display: inline-flex;
@@ -857,7 +782,7 @@ body::before {
 @supports (corner-shape: squircle) {
   :where(
       .panel, .quick, .choice, .tool-list, .finding, .toast,
-      .btn, .input, .textarea, .chip, .seg, .seg-item,
+      .input, .textarea, .chip, .seg, .seg-item,
       .nav-row, .nav-lens
     ) {
     corner-shape: squircle;

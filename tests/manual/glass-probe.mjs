@@ -27,6 +27,18 @@ import { fileURLToPath } from 'node:url'
 const PORT = Number(process.argv[2] ?? 0) || 8891
 const THEME = process.argv[3] ?? 'light'
 const MATERIAL = process.argv[4] ?? 'liquid'
+/**
+ * 第 5 个参数：截图前覆盖几个背景令牌，用来验证「玻璃看不见」到底卡在哪一环。
+ * 形如 `--bg-blur=0px,--bg-veil=transparent`。诊断用，不改磁盘上的样式。
+ */
+const OVERRIDE = (process.argv[5] ?? '')
+  .split(',')
+  .map((s) => s.trim())
+  .filter(Boolean)
+  .map((s) => { const i = s.indexOf('='); return [s.slice(0, i), s.slice(i + 1)] })
+const SUFFIX = OVERRIDE.length
+  ? '-' + OVERRIDE.map(([k, v]) => `${k.replace(/^--/, '')}${v.replace(/[^\w]/g, '')}`).join('_')
+  : ''
 const BASE = `http://127.0.0.1:${PORT}`
 const CDP_PORT = 9334
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
@@ -236,9 +248,18 @@ try {
   })()`)
 
   const data = await cdp.evalJs(PROBE)
+  // 诊断覆盖：写在 <html> 的行内样式上，优先级高于 [data-lg-theme] 里的定义
+  if (OVERRIDE.length) {
+    await cdp.evalJs(`(() => {
+      const o = ${JSON.stringify(OVERRIDE)};
+      for (const [k, v] of o) document.documentElement.style.setProperty(k, v);
+      return o.length
+    })()`)
+    await sleep(600)
+  }
   mkdirSync(OUT, { recursive: true })
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
-  const file = join(OUT, `glass-${THEME}-${MATERIAL}.png`)
+  const file = join(OUT, `glass-${THEME}-${MATERIAL}${SUFFIX}.png`)
   writeFileSync(file, Buffer.from(shot.data, 'base64'))
 
   /**
@@ -263,9 +284,19 @@ try {
     })
     const row = document.querySelector('.nav-row[aria-current="page"]')
     const a = lens.getBoundingClientRect(), b = row.getBoundingClientRect()
+    /* 内容从平栏下面经过时，库的 ScrollEdge 应当自己亮起来（data-active） */
+    window.scrollTo(0, 400)
+    await new Promise((r) => setTimeout(r, 500))
+    const edge = document.querySelectorAll('.lg-scroll-edge')
+    const scrolled = {
+      count: edge.length,
+      active: [...edge].map((e) => e.dataset.active ?? 'false'),
+      opacity: [...edge].map((e) => getComputedStyle(e).opacity),
+    }
+    window.scrollTo(0, 0)
     return {
       lens: true, clicked: target.innerText.trim(),
-      frames: frames.length, distinct: new Set(frames).size,
+      frames: frames.length, distinct: new Set(frames).size, scrolled,
       align: {
         dx: Math.round((a.x - b.x) * 10) / 10, dy: Math.round((a.y - b.y) * 10) / 10,
         dw: Math.round((a.width - b.width) * 10) / 10, dh: Math.round((a.height - b.height) * 10) / 10,
