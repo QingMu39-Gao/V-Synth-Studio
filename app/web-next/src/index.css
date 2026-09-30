@@ -130,6 +130,16 @@ body::before {
 /* ── 顶栏（玻璃）──────────────────────────────────────────────── */
 .app-topbar {
   flex: none;
+  /**
+   * 顶栏**吸顶**：内容从它下面滚过去，玻璃才有东西可以折射、可以模糊。
+   *
+   * 原来它是文档流里的一条横栏（`position: static`），背后永远是页面背景的一部分 ——
+   * 材质再对也看不出来，用户当时说的是「只有侧栏看得出液态玻璃」。
+   * 玻璃的观感来自「有东西从背后经过」，这不是参数问题。
+   */
+  position: sticky;
+  top: var(--lg-space-4);
+  z-index: 10;
 }
 .app-topbar-inner {
   display: flex;
@@ -208,7 +218,30 @@ body::before {
   font-weight: 600;
   color: var(--lg-label-secondary);
 }
+/**
+ * 导航：**外面只有面板那一层框**（玻璃面自己），行一律透明。
+ *
+ * 选中态不是给那一行加底色，而是让一块高亮**滑过去** —— 位置由 `App.tsx` 的
+ * `useNavLens()` 实测后写进 `--lg-slot-x/y`，块本身是库的 `.lg-selection-lens`。
+ * 所以这里的行只需要三件事：不画自己的框、**绝对定位的块不会盖住它**、形状和块一致。
+ */
+.app-nav {
+  /* 高亮块是绝对定位的，量位置（offsetTop）要有这个作基准 */
+  position: relative;
+}
+.nav-lens {
+  /* 与行同心同形：面板 26px 圆角 − 12px 内边距 = 14px */
+  border-radius: 14px;
+}
+/* 滑动时挤压。只改喂进 transform 的那个变量 —— 另起一条 animation 会整个接管 transform，
+   过渡就完全不生效了（那条路踩过，表现是「瞬移」）。 */
+.app-nav[data-moving='true'] .lg-selection-lens {
+  --lg-lens-swell-x: 1.02;
+  --lg-lens-swell-y: 0.86;
+}
 .nav-row {
+  position: relative; /* z-index 只对定位元素生效，漏了这行就会被高亮块盖住 */
+  z-index: 1;
   display: flex;
   align-items: center;
   gap: var(--lg-space-2);
@@ -216,7 +249,7 @@ body::before {
   min-height: 38px;
   padding-inline: var(--lg-space-3);
   border: 0;
-  border-radius: var(--lg-radius-s);
+  border-radius: 14px; /* 同上，与高亮块同心 */
   background: transparent;
   color: var(--lg-label);
   font: inherit;
@@ -227,14 +260,18 @@ body::before {
 .nav-row:hover {
   background: var(--lg-fill-quaternary);
 }
-/* 选中态用 `--lg-accent-fill`（白字压在上面的那块底色），不是 `--lg-accent`
-   —— 后者配白字只有 3.52:1，量过的。 */
+/* 选中态：颜色来自库的 `--lg-glass-fg`（浅色近黑 / 深色近白）—— 它就是配在那块
+   高亮上的文字色。底色交给高亮块，这里一行都不画。 */
 .nav-row[aria-current='page'] {
-  background: var(--lg-accent-fill);
-  color: var(--lg-accent-contrast);
+  color: var(--lg-glass-fg);
+  font-weight: var(--lg-weight-semibold);
 }
 .nav-row[aria-current='page'] svg {
-  color: var(--lg-accent-contrast);
+  color: var(--lg-glass-fg);
+}
+/* 指向当前行时不能把选中态洗掉 */
+.nav-row[aria-current='page']:hover {
+  background: transparent;
 }
 .nav-row-label {
   flex: 1;
@@ -248,7 +285,7 @@ body::before {
   color: var(--lg-label-secondary);
 }
 .nav-row[aria-current='page'] .nav-row-tag {
-  color: var(--lg-accent-contrast);
+  color: inherit;
   opacity: 0.75;
 }
 /* 内容层自己撑满玻璃面。这一步必须在**内容层**上做，不能写在外层 ——
@@ -806,6 +843,25 @@ body::before {
 }
 .toast[data-tone='warn'] {
   border-inline-start-color: var(--lg-orange);
+}
+
+/* ── 苹果式圆角（连续曲率）─────────────────────────────────────
+   普通 `border-radius` 画的是**圆弧**：直线到圆弧的曲率是突变的，放大能看出
+   「直边突然接上一段圆」。苹果用的是 squircle（超椭圆），曲率连续过渡。
+
+   ⚠️ **不要把这个用在玻璃面上。** 库的折射位移贴图是受限的圆角矩形 / 胶囊几何
+   （它自己的 `known-limitations.md` 写着），画成 squircle 就对不上了，边缘会错位。
+   所以只给内容层和控件用 —— 这些没有 SVG 滤镜跟着。
+
+   必须配 `@supports` 兜底：不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
+@supports (corner-shape: squircle) {
+  :where(
+      .panel, .quick, .choice, .tool-list, .finding, .toast,
+      .btn, .input, .textarea, .chip, .seg, .seg-item,
+      .nav-row, .nav-lens
+    ) {
+    corner-shape: squircle;
+  }
 }
 
 /* ── 窄屏 ───────────────────────────────────────────────────── */

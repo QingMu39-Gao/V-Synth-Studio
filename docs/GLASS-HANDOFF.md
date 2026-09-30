@@ -5,7 +5,28 @@
 > 项目整体架构看 `AGENTS.md`，产品与使用看 `README.md`。
 
 **写于**：玻璃材质从手写换成 `@ttqtt/liquid-glass-react` 之后。
-**当前状态**：能跑（契约 17/17、旧前端冒烟 8/8），但**明亮模式有明确缺陷**。
+**当前状态**：能跑（契约 17/17、旧前端冒烟 8/8），**两个缺陷已定位并修掉**（见第二节）。
+明亮模式与深色模式的实测截图在 `tests/manual/out/`。
+
+---
+
+## 零、库的上游仓库在**本机磁盘上**（先看这个）
+
+```
+C:\Users\Administrator\Desktop\工作站素材\liquid-glass-react-main\liquid-glass-react-main\
+```
+
+用户提供的，是 `@ttqtt/liquid-glass-react` 的**完整源码仓库**（版本也是 0.0.2，与 npm 上装的一致）。
+npm 包里只有 `dist/`，判断行为只能靠猜；这里有：
+
+| 看什么 | 在哪 |
+|---|---|
+| 设计规则（两层结构、小玻璃/大玻璃、regular/clear、同心圆角） | `docs/design-system.md` |
+| 库自己承认的边界（SVG 几何受限、tone 是声明的） | `docs/known-limitations.md` |
+| 组件源码（`useSelectionLens`、`TabBar`、`MaterialView` …） | `src/react/**` |
+| 材质参数表（每种材质的 blur / saturation / displacement / edge） | `src/tokens/index.ts` |
+
+**这一轮的两个缺陷就是靠它定位的**，别再只对着 `node_modules` 里的 `dist` 猜。
 
 ---
 
@@ -47,78 +68,91 @@
 
 ---
 
-## 二、当前两个缺陷（用户明确报的，**都没修**）
+## 二、两个缺陷：根因与修法（**已修**，2026-10-01）
 
-### 缺陷 1：明亮模式下背景可见度低，像叠了一层白
+上一版这一节写的是「都没修」+ 一组参数猜测。**实测下来根因不是参数，是三件配置错误**
+（都违反库自己 `docs/design-system.md` 的明文规定），另外有一件是结构性误判。
 
-**实测数据**（`data-lg-theme=light`）：
+### 实测到的旧状态（1440×900，`/next/`，明亮模式，液态玻璃）
 
-| 项 | 值 | 说明 |
+| 项 | 实测值 | 判定 |
 |---|---|---|
-| `body` 背景 | `rgb(240, 240, 245)` | `--lg-bg-grouped` |
-| `--bg-veil` | `#ffffff2e` | **18% 白遮罩**，压在背景图上 |
-| 内容材质 `.lg-material-view` | `rgba(255, 255, 255, 0.82)` | **82% 白** + `blur(30px) saturate(1.8)` |
-| `data-thickness` | `regular` | |
+| 顶栏 | `data-material=clear`、`data-glass-size=**small**`、`.lg-tint = rgba(0,0,0,.35)`、`.lg-backdrop` 的模糊 = **0.75px** | 灰板 |
+| 侧栏 | 同上（228×493 的整列，却也是 `small`）；模糊 = 0.75px | 灰板 |
+| 内容面板 | 5 × `MaterialView` `thickness=regular` = `rgba(255,255,255,.82)` + `blur(30px)`，每块 1116px 宽 | 盖住整屏 |
+| 背景图 | **加载正常**（1600×1200 / 182KB），`body::before` = `blur(12px) brightness(1) contrast(1.45)` + 18% 白遮罩 | 无问题 |
+| 侧栏高亮块 | `.lg-selection-lens` 数量 = **0** | 功能缺失 |
 
-**「叠了一层白」的直接来源有两个，量级差很多：**
+### 根因（按影响排序）
 
-1. **`--bg-veil: #ffffff2e`** —— 这是我在 `index.css` 里写死的浅色遮罩。
-   旧前端在明亮模式用的是 `transparent`（它的理由是「压暗 + 撤遮罩」，
-   但那是配 `light.jpg` + `brightness(82%)` 的组合，**当前配置不是那个组合**）。
-2. **5 个 `MaterialView` 各 82% 白** —— 面板占了屏幕绝大部分面积，
-   所以真正糊住背景的是它们。想让背景透出来，主要得动这里。
+1. **默认材质选错了。** 默认给的是 `clear`（液态玻璃）。设计系统第 3 节写明 `clear`
+   **只用于媒体内容之上、且上层内容本身明亮醒目**的场合；`regular` 才是「栏、侧边栏、
+   菜单、文字较多的表面」的默认。而 `clear` 配浅色背景时库会叠一层
+   `.lg-tint = rgba(0,0,0,.35)` 的 35% 黑压，`clear/small` 的 CSS 模糊又只有 1.5px
+   （开折射后再减半 = 0.75px）—— **两者相加就是一块纯灰板**：既没有模糊，也没有
+   折射可看（背后是接近纯白的图）。这就是「液态玻璃只有侧栏看得出来」的观感来源。
+2. **侧栏用了 `size="small"`。** 设计系统第 2 节：小玻璃与大玻璃**不是同一个效果的两种大小**。
+   侧栏这种整列必须 `large`（模糊 40px、底色 0.86/0.90、**不随背景翻转**、阴影更深）。
+   给 `small` 之后它的模糊只有 1.5px，等于没糊。
+3. **内容面板 82% 白**（`thickness=regular`），5 块各 1116px 宽 —— 把背景照片整片盖掉。
+   「像叠了一层白」的主因是它们，不是背景层参数。
+4. **顶栏是文档流里的一条横栏**（`position: static`）：背后永远是页面背景的一部分，
+   **没有内容从它背后经过**。玻璃的观感来自「有东西从背后经过」，这一条不是调参能解决的。
 
-**相关位置：**
-- `src/index.css` → `[data-lg-theme='light']` 块里的 `--bg-veil` 与背景层规则
-- `src/components/Panel.tsx` → `Panel` 组件，`thickness` 默认 `'regular'`
-- 库的厚度取值（浅色）：`thin .70` / `regular .82` / `thick .93`
-  → 想更透可以降到 `thin`，但**要在浅色背景上复核文字对比度**
-  （库自己的注释警告：thin/ultraThin 上别用 `Text tone="quaternary"`，会掉到可读线以下）
+### 改了什么
 
-**没试过的方向（留给接手者）：**
-- `--bg-veil` 降到 `transparent` 或很淡，观察背景图能否出来
-- `Panel` 默认厚度从 `regular` 降到 `thin`，逐页复核文字
-- 检查背景层本身的 `filter: blur(10px) brightness(82%) contrast(112%)` 是不是压过头
+| 文件 | 改动 |
+|---|---|
+| `components/Glass.tsx` | `DEFAULT_MATERIAL`：`'liquid'` → **`'frosted'`**（默认毛玻璃；液态玻璃仍可切） |
+| `components/Panel.tsx` | `Panel` 默认厚度 `'regular'` → **`'thin'`**（.82 → .70）；`GlassPanel` 新增 `size` 透传 |
+| `App.tsx` | 侧栏 `size="large"`；导航选中态换成库的 `.lg-selection-lens`（`useNavLens`，见 §2.1） |
+| `index.css` | 顶栏 `position: sticky`；导航行透明、选中交给高亮块；`@supports (corner-shape: squircle)` 补回苹果式圆角 |
 
-### 缺陷 2：液态玻璃「只有侧边栏实现了」
+### 改后的实测值
 
-**实测 —— 顶栏和侧栏其实配置完全一样，都有折射：**
+| | 之前 | 现在 |
+|---|---|---|
+| 顶栏 | `clear/small`，tint 35% 黑，blur **0.75px** | `regular/small`，tint `rgba(252,252,254,.7)`（深色 `.78`），blur **14px** |
+| 侧栏 | `clear/small` | `regular/**large**`，tint `.86`（深色 `.9`），blur **40px** |
+| 内容面板 | 82% 白 | **70%** |
+| 侧栏高亮块 | 0 个 | 1 个，切换时逐帧 30+ 个不同取值、与选中行偏差 `0/0/0/0` |
+| 位移贴图 | 2（液态） | 毛玻璃 **0**（纯 CSS，零额外开销）／液态 2 |
 
+**怎么验**（本轮新加的探针，只用 Node 自带的 WebSocket，不装包）：
+
+```powershell
+v-synth-studio.exe --serve --port=8891          # 另开一个测试实例
+node tests\manual\glass-probe.mjs 8891 light frosted   # 也可 dark / liquid
 ```
-玻璃面0 class=app-topbar  material=clear  renderer=svg  size=small
-    backdrop=blur(0.75px) url("#lg-_r_0_") saturate(1.08) contrast(1.05)
-玻璃面1 class=app-sidebar material=clear  renderer=svg  size=small
-    backdrop=blur(0.75px) url("#lg-_r_1_") saturate(1.08) contrast(1.05)
-→ 位移贴图总数: 2
-→ 内容层用的是什么: lg-material-view × 5
-```
+它只读计算值（玻璃面的 material/size/tone、`.lg-backdrop` 的模糊、`.lg-tint` 的底色、
+面板厚度、背景层 filter、高亮块的逐帧采样与首帧落位），并把截图写到
+`tests/manual/out/glass-<主题>-<材质>.png`。
 
-所以「只有侧栏」这个感受，**真实原因是两件事**：
+### 2.1 侧栏的滑动高亮块：用库的透镜，别自己画
 
-1. **顶栏虽然也是 `clear/svg`，但视觉上看不出来。** 它是文档流里的一条横栏
-   （`position: static`），背后是页面背景的一部分；折射要「边缘把背后的内容折弯」
-   才显眼，而顶栏背后没有可折弯的对比结构。
-   ⚠️ 另外顶栏的 `backdrop` 是 `blur(0.75px)` —— **几乎不模糊**，
-   因为 `clear` 材质在 `size=small` 时 blur 只有 1.5px（减半后 0.75px）。
-   它靠折射而不是模糊，可折射又看不出来 → 结果就是「像一块纯色条」。
-2. **内容区的 5 个面板是 `MaterialView`，不是玻璃。** 这是库的设计要求
-   （见下面第四节引的原文），所以**内容区本来就不会有液态玻璃**。
+`useSelectionLens`（`src/react/controls/segmented.tsx`）就是干这个的，注释里明写
+「the same lens has to follow a row of segments and **a vertical column of sidebar rows**」——
+正是侧栏这个场景。但它**没有从包里导出**（`dist/react/index.d.ts` 只导出了
+`GlassSegmentedControl`），所以现在的做法是：
 
-**用户想要的很可能是**：让「液态玻璃」这个材质在**内容区**也看得出来。
-两条可选路（都需要先想清楚代价）：
+- **只自己写「量位置」那十来行**（`App.tsx` 的 `useNavLens`），
+- **外观、弹簧曲线、阴影全部复用库的 `.lg-selection-lens`** —— 那块 span 由
+  `--lg-slot-x/y`、`--lg-lens-shown` 驱动，三个属性都带 `@property` 声明，过渡挂在
+  `transform` 上（`--lg-duration-spring: 520ms` + `--lg-spring` 这条 `linear()` 弹簧）。
 
-- **A. 让 `Panel` 也用 `GlassSurface`**（`material="clear"` + 折射）
-  → 违反库的设计分层；满屏折射，开销三倍，且内容区文字压在折射上可能不好读。
-  实测过一版「满屏玻璃」，用户当时的评价是**「很割裂」**。
-- **B. 加大 `clear` 材质的可见度**（提高 `refraction`，或让顶栏的折射显出来）
-  → 不改变结构，只让已有的玻璃更明显。**成本低，建议先试这条。**
-  `GlassSurface` 的 `refraction` 默认按材质给（regular 18/26、clear 32/40），
-  可以显式传更大的值。
+三个坑照旧（都实测过，见第六节的验证片段）：**首帧不能滑**、**量位置用 `offsetTop`**、
+**行要 `position: relative; z-index: 1`**。
 
-**相关位置：**
-- `src/components/Glass.tsx` → `materialOptions()` 是「两种材质的唯一定义处」
-- `src/App.tsx` → 顶栏 / 侧栏两个 `GlassPanel` 调用点
-- `src/components/Panel.tsx` → `Panel`（内容层，目前是 `MaterialView`）
+挤压（「滑动时缩放」）现在只改**一个**喂进 `transform` 的变量（`--lg-lens-swell-y`），
+所以不存在「动画抢走 transform」的问题 —— 上一版需要分两层正是因为这个冲突，现在不需要了。
+
+### 2.2 仍然存在、但**属于库的设计**的两件事
+
+- **液态玻璃（`clear`）在明亮模式下就是灰调。** `clear` + 浅背景 = 库的 35% 黑压（第 3 节）。
+  这不是 bug，是这个材质的适用条件。想更亮就别用 `clear` —— 所以它不再是默认。
+- **亮色背景图本身极浅**（glitch art，像素挤在 #e0–#f5）：玻璃压在上面「有东西可折射」
+  的程度天然有限。要真正拉开层次得换一张有明暗层次的浅色图，参数层面已经到头。
+
 
 ---
 
@@ -141,7 +175,12 @@ CSS.supports('-webkit-backdrop-filter','blur(1px)') → false
 
 **修法**：`vite.config.ts` 里的 `restoreStandardBackdropFilter()` 插件
 （`enforce: 'post'` + `generateBundle`，在压缩之后补回标准属性）。
-产物里标准版从 **0 处** 变回 **15 处**。
+产物里标准版从 **0 处** 变回 **15 处**（每次构建都会打一行 warn 报数量，看到它才算生效）。
+
+⚠️ **量模糊时别量错节点**：模糊挂在 `.lg-decoration > .lg-backdrop` 这一层上
+（它消费 `--lg-backdrop` 这个自定义属性），**玻璃面根节点自己的
+`backdrop-filter` 恒为 `none`**。本轮就因为量了根节点，一度误判成「模糊全没了」。
+探针里已经按类名取到那一层。
 
 **试过、都不行的办法（别再试）：**
 
@@ -222,7 +261,21 @@ Start-Sleep -Seconds 8
 
 node tests\contract\verify.mjs 8891                                   # 应 17/17
 powershell -ExecutionPolicy Bypass -File tests\manual\ui-smoke.ps1 -BaseUrl http://127.0.0.1:8891  # 应 8/8（测的是旧前端）
+
+# 玻璃材质专项：取计算值 + 截图 + 高亮块的逐帧/首帧采样
+node tests\manual\glass-probe.mjs 8891 light frosted
+node tests\manual\glass-probe.mjs 8891 dark  liquid
 ```
+
+`glass-probe.mjs` 一次给三样东西，都是「光看源码看不出来」的：
+
+| 字段 | 说明 |
+|---|---|
+| `glass[].layers` | 每块玻璃面的 `material/size/tone` + `.lg-backdrop` 的**真实模糊**与 `.lg-tint` 的底色 |
+| `boot.settled` | 打开界面时高亮块**有没有飞过去**（首帧采样：首帧就应等于最终值） |
+| `slide.distinct` / `slide.align` | 切换时逐帧的不同取值个数（>3 才算滑动）+ 与选中行的偏差（应 `0/0/0/0`） |
+| `round` | `corner-shape: squircle` 在按钮/面板上是否真的生效、玻璃面是否保持 `round` |
+| `screenshot` | 截图落 `tests/manual/out/`，用 read_image 看 |
 
 ### ⚠️ 截图必须显式设视口
 
@@ -291,26 +344,36 @@ localStorage 改了、DOM 不动，看着就是「切材质没有任何用」。
 
 | | |
 |---|---|
-| `app/web-next/` | 当前（`@ttqtt` 库版） |
-| `app/web-next-ttqtt库版-备份/` | 20 个文件，**内容与当前一致**，冗余，可删 |
-| git | **`app/web-next` 一个 commit 都没有** |
+| `app/web-next/` | 已入库：`83320cd`（首次）+ 本轮玻璃修复的后续提交 |
+| `app/web-next-ttqtt库版-备份/` | 手工备份，**已彻底冗余，可以删** |
+| git | 干净了 —— 不用再靠手工备份回退 |
 
-⚠️ **`app/web-next` 从未提交过。** 这一轮我能「退回上一版」全靠手工备份，
-而中间我有一次**已经把备份删了**（后来靠对话记录重建）。
-
-**动手前先提交一次。** 没有回退点的代价这一轮已经付过了：
-一次改坏、一次靠记忆重建、一次备份误删。
+⚠️ 上一轮 `app/web-next` 一个 commit 都没有，回退只能靠手工备份，代价是
+「改坏一次、靠记忆重建一次、备份误删一次」。**现在有回退点了，继续用 git，别再手工复制目录。**
 
 ---
 
 ## 八、下一步建议（按优先级）
 
-1. **先提交一次**，拿到回退点。
-2. **缺陷 1**：`--bg-veil` 与 `Panel` 厚度这两处下手，改完**在明亮模式截图核对**。
-3. **缺陷 2**：先试最小改动 —— 显式加大 `refraction`（`Glass.tsx` 的
-   `materialOptions()`），看顶栏的折射能不能显出来。
-   如果用户要的是「内容区也有玻璃」，那是结构性改动，**先问清楚再动**
-   （满屏玻璃我试过，用户当时的评价是「很割裂」）。
-4. 亮色改完后**两个主题都要截图核对**，别只看一个。
-5. 剩下的页面（`convert` / `video` / `audio` / `lyrics` / `pv` / `resources`）
+1. **控件层换成库的组件。** 现在 `Button`/`Field`/`.seg`/`.input` 还是手写的
+   （虽然材质走库）。库自带 `GlassSegmentedControl`（胶囊、可拖、选中在拖动中实时更新）、
+   `GlassButton`、`TextField`、`List`…。顶栏的「毛玻璃/液态玻璃」和侧栏底部的主题切换
+   最该先换 —— 它们本来就是分段控件。
+   **换完之后再判断 shadcn 还需不需要**：库已经提供了 66 个控件，
+   `AGENTS.md` 第十一节里「接 shadcn/ui」这条待办可能是多余的。
+2. **一页页搬页面到 React**：`resources` → `dashboard` → `settings` → `lyrics` →
+   `video`/`audio`。旧前端在 `/` 一直可用，每搬完一页跑 `ui-smoke.ps1`。
+3. **`ui-smoke.ps1` 覆盖 `/next/`**：现在只有 `glass-probe.mjs` 探玻璃，
+   新前端的 8 页没有自动化冒烟。
+4. **`resolve_paths()` 改用 `resource_dir()`**（`AGENTS.md` 第八节的核心遗留问题，
+   修掉 MSI 与 macOS bundle 都靠它）。
+5. **侧栏的形态要不要换？** 库的 `TabBar` 自带透镜、拖拽换页、窄屏自动变成底部胶囊栏，
+   但它的侧栏形态是 `position: fixed` 的**整列贴窗口左边**，而且**没有分组标题**
+   （我们现在的「工作台 / 素材获取 / 系统」三组是手写的）。现在是「保留分组标题 +
+   复用库的透镜」，两条路都成立，属于**要用户拍板的结构选择**，别自作主张。
+6. **液态玻璃的观感上限**：`clear` 在浅色背景下是灰的（库的设计）。
+   要让它好看，得换一张**有明暗层次的浅色背景图**（现在这张像素挤在 #e0–#f5）。
+   这是素材问题，不是代码问题。
+7. 剩下的页面（`convert` / `video` / `audio` / `lyrics` / `pv` / `resources`）
    还在旧前端跑，`/` 上功能完整。搬迁见 `AGENTS.md` 第十一节。
+

@@ -28,7 +28,19 @@ import { createContext, useContext, type ReactNode } from 'react'
 
 export type GlassMaterial = 'frosted' | 'liquid'
 
-export const DEFAULT_MATERIAL: GlassMaterial = 'liquid'
+/**
+ * 默认毛玻璃，不是液态玻璃。
+ *
+ * 设计系统第 3 节把两者的用处分得很清：`regular`（毛玻璃）是**默认**，「栏、侧边栏、
+ * 菜单、文字较多的表面」都用它；`clear`（这里的液态玻璃）**只用于媒体内容之上、
+ * 且上层内容本身明亮醒目**的场合。
+ *
+ * 实测过默认给 `clear` 的后果（明亮模式，`tone=light`）：库会叠一层
+ * `.lg-tint = rgba(0,0,0,.35)` 的 35% 黑压，而 `clear/small` 的模糊只有 1.5px
+ * （开折射后再减半，0.75px）—— 于是顶栏和侧栏变成两块**纯灰板**，
+ * 既没有模糊也看不出折射。液态玻璃留着当可选项，但它不是这个界面的默认。
+ */
+export const DEFAULT_MATERIAL: GlassMaterial = 'frosted'
 
 const STORAGE_KEY = 'qingmu.glass'
 

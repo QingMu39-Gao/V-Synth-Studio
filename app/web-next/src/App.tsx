@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { AppState } from '@/lib/types'
 import { Icon, type IconName } from '@/components/Icon'
@@ -127,6 +127,9 @@ export default function App() {
 
   const current = PAGES.find((p) => p.id === active)!
   const { material } = useMaterial()
+  const navRef = useRef<HTMLElement>(null)
+  const lensRef = useRef<HTMLSpanElement>(null)
+  useNavLens(navRef, lensRef, active)
   const formatCount = useMemo(
     () => (state?.formats ?? []).filter((f) => f.available).length,
     [state],
@@ -178,10 +181,15 @@ export default function App() {
               className="app-sidebar"
               contentClassName="app-sidebar-inner"
               fill
+              /* 侧栏是**大玻璃**：228×500 的整列，模糊与不翻转都跟小玻璃不是一套参数 */
+              size="large"
               radius={26}
               padding={12}
             >
-              <nav aria-label="主导航">
+              <nav aria-label="主导航" className="app-nav" ref={navRef}>
+                {/* 高亮块本身来自库的 .lg-selection-lens：外观、弹簧曲线、阴影都是它的，
+                    我们只负责量位置（见 useNavLens）*/}
+                <span className="lg-selection-lens nav-lens" ref={lensRef} aria-hidden="true" />
                 {PAGES.map((p, i) => (
                   <div key={p.id}>
                     {p.group !== PAGES[i - 1]?.group && <div className="nav-group">{p.group}</div>}
@@ -259,6 +267,84 @@ export default function App() {
       </ToneScope>
     </GlassProvider>
   )
+}
+
+/* ══════════════════════════════════════════════════════════════ 侧栏高亮块 ══ */
+
+/**
+ * 让选中项外面那块高亮**滑**过去。
+ *
+ * 位置必须**实测**（`offsetTop` / `offsetHeight`），不能按数据算 —— 分组标题、行高、
+ * 「待迁」标签都会影响它。库自己的 `useSelectionLens`（`controls/segmented.tsx`）就是
+ * 这么做的，而且注释里写明「the same lens has to follow a row of segments and
+ * **a vertical column of sidebar rows**」—— 正是这个场景。但它**没有从包里导出**，
+ * 所以这里只重写「量位置」这十来行；**外观、弹簧曲线、阴影全部复用库的
+ * `.lg-selection-lens`**：那块 span 由 `--lg-slot-x/y`、`--lg-lens-shown` 驱动，
+ * 三个属性都带 `@property` 声明，过渡挂在 `transform` 上。
+ *
+ * 三个必须注意的点（都会变成看得见的 bug）：
+ *
+ *  1. **首帧不能滑。** 第一次量位置时先把 `transition` 关掉，量完强制回流再恢复；
+ *     否则打开界面会看到一个方块从左上角飞过来。
+ *  2. **用 `offsetTop`，不用 `getBoundingClientRect()`。** 侧栏内容会滚动，
+ *     rect 随滚动偏移；`offsetTop` 相对 offsetParent 恒定 ——
+ *     前提是 nav 上有 `position: relative`（CSS 里 `.app-nav` 那条）。
+ *  3. **行要 `position: relative; z-index: 1`**，否则被这块绝对定位的高亮盖住。
+ */
+function useNavLens(
+  navRef: React.RefObject<HTMLElement | null>,
+  lensRef: React.RefObject<HTMLSpanElement | null>,
+  active: string,
+) {
+  const placed = useRef(false)
+
+  useLayoutEffect(() => {
+    const nav = navRef.current
+    const lens = lensRef.current
+    if (!nav || !lens) return
+    const place = () => {
+      const row = nav.querySelector<HTMLElement>('.nav-row[aria-current="page"]')
+      const first = !placed.current
+      if (first) lens.style.transition = 'none'
+      if (row && row.offsetWidth) {
+        lens.style.width = `${row.offsetWidth}px`
+        lens.style.height = `${row.offsetHeight}px`
+        lens.style.setProperty('--lg-slot-x', `${row.offsetLeft}px`)
+        lens.style.setProperty('--lg-slot-y', `${row.offsetTop}px`)
+        lens.style.setProperty('--lg-lens-shown', '1')
+        placed.current = true
+      } else {
+        lens.style.setProperty('--lg-lens-shown', '0')
+      }
+      // 强制这一帧就落位（趁过渡还关着），再把它放回去
+      if (first) {
+        void lens.offsetWidth
+        lens.style.transition = ''
+      }
+    }
+    place()
+    const observer = new ResizeObserver(place)
+    observer.observe(nav)
+    return () => observer.disconnect()
+  }, [navRef, lensRef, active])
+
+  /** 滑动时挤压一下。只改**一个**喂进 `transform` 的变量，没有第二条动画去抢 transform。 */
+  const last = useRef<string | null>(null)
+  useEffect(() => {
+    const nav = navRef.current
+    if (last.current === null) {
+      last.current = active
+      return
+    }
+    last.current = active
+    if (!nav) return
+    nav.dataset.moving = 'true'
+    const timer = setTimeout(() => delete nav.dataset.moving, 180)
+    return () => {
+      clearTimeout(timer)
+      delete nav.dataset.moving
+    }
+  }, [active, navRef])
 }
 
 /* ══════════════════════════════════════════════════════════════ 背景色调 ══ */

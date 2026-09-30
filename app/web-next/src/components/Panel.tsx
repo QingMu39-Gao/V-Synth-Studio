@@ -38,12 +38,12 @@ export function Panel({
   children,
   className = '',
   padded = true,
-  thickness = 'regular',
+  thickness = 'thin',
 }: {
   children: ReactNode
   className?: string
   padded?: boolean
-  /** 内容层材质的厚度。想让某块更实就传 `thick` */
+  /** 内容层材质的厚度。想让某块更实就传 `regular` / `thick` */
   thickness?: 'ultraThin' | 'thin' | 'regular' | 'thick'
 }) {
   return (
@@ -65,6 +65,7 @@ export function GlassPanel({
   fill = false,
   radius,
   padding,
+  size,
 }: {
   children: ReactNode
   className?: string
@@ -73,6 +74,19 @@ export function GlassPanel({
   fill?: boolean
   radius?: number | 'pill'
   padding?: number
+  /**
+   * 小玻璃还是大玻璃 —— **这不是同一个效果的两种大小**（设计系统第 2 节）。
+   *
+   * | | `small` | `large` |
+   * |---|---|---|
+   * | 用于 | 按钮、标签栏、工具栏 | 侧边栏、菜单、sheet、浮层 |
+   * | 模糊 | 14px | 40px |
+   * | 明暗翻转 | 随背景翻转 | **不翻转** |
+   *
+   * 侧栏那种 200×500 的整列必须 `large`：给 `small` 的话模糊只有 1.5px（clear 材质），
+   * 等于没糊；而且它会跟着背后的内容翻转明暗，大表面翻起来是没法读的。
+   */
+  size?: 'small' | 'large'
 }) {
   const { material } = useMaterial()
   return (
@@ -82,6 +96,7 @@ export function GlassPanel({
       contentClassName={contentClassName}
       radius={radius}
       padding={padding}
+      size={size}
     >
       <GlassContent fill={fill}>{children}</GlassContent>
     </GlassLayer>
