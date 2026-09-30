@@ -1,4 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════════════
+﻿/* ══════════════════════════════════════════════════════════════════════════
    外壳样式。
 
    ## 玻璃在哪儿？
@@ -345,13 +345,12 @@ body::before {
   gap: var(--lg-space-4);
 }
 
-/* ── 卡片：**材质来自库的 `MaterialView`** ─────────────────────
-   ⚠️ 这里**不要**再写 `background` —— 那会把库的材质盖掉（`.lg-material-view`
-   的背景是 `--lg-material-regular` = 浅色 `rgb(255 255 255 / .82)` /
-   深色 `rgb(30 30 30 / .82)`，外加 `blur(30px) saturate(1.8)`）。
-   我只补库没给的部分：描边、内边距、头部排布。 */
+/* ── 卡片：**现在是玻璃面**（`GlassSurface`，用户要求「全局玻璃」）──
+   ⚠️ 这里**不要**写 `background`、也**不要**写描边 —— 玻璃自己有一条发丝边
+   （`.lg-rim`）。再叠一条 `--lg-separator` 边框就是两条边，看着发脏。
+   我只补库没给的部分：内边距、头部排布。 */
 .panel {
-  border: 1px solid var(--lg-separator);
+  /* 有意留空：材质全在库那一层 */
 }
 .panel-padded {
   padding: var(--lg-space-5);
@@ -467,7 +466,7 @@ body::before {
   text-align: start;
   font: inherit;
   color: inherit;
-  background: var(--lg-bg-secondary);
+  background: var(--lg-fill-quaternary);
   border: 1px solid var(--lg-separator);
   border-radius: var(--lg-radius-m);
   cursor: pointer;
@@ -572,7 +571,7 @@ body::before {
   padding: var(--lg-space-3) var(--lg-space-4);
   border-radius: var(--lg-radius-m);
   border-inline-start: 3px solid var(--lg-label-tertiary);
-  background: var(--lg-bg-secondary);
+  background: var(--lg-fill-quaternary);
 }
 .finding[data-level='warn'] {
   border-inline-start-color: var(--lg-orange);
@@ -625,7 +624,9 @@ body::before {
   white-space: nowrap;
 }
 .seg-item[aria-pressed='true'] {
-  background: var(--lg-bg);
+  /* 选中的那一段：**填充，不是不透明的页面底** —— 这个 `.seg` 坐在侧栏玻璃里面，
+     写 `--lg-bg` 等于在材质上凿一块洞（库的规矩：玻璃上的元素用填充和透明度）。 */
+  background: var(--lg-fill-tertiary);
   font-weight: 600;
   box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
 }
@@ -656,7 +657,7 @@ body::before {
   font: inherit;
   font-size: 14px;
   color: var(--lg-label);
-  background: var(--lg-bg-secondary);
+  background: var(--lg-fill-quaternary);
   border: 1px solid var(--lg-separator);
   border-radius: var(--lg-radius-s);
 }
@@ -711,7 +712,7 @@ body::before {
   text-align: start;
   font: inherit;
   color: inherit;
-  background: var(--lg-bg-secondary);
+  background: var(--lg-fill-quaternary);
   border: 1px solid var(--lg-separator);
   border-radius: var(--lg-radius-m);
   cursor: pointer;

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 新前端（/next/）玻璃材质的实测探针
  *
  *   node tests/manual/glass-probe.mjs [port] [theme] [material]
@@ -40,6 +40,8 @@ const SUFFIX = OVERRIDE.length
   ? '-' + OVERRIDE.map(([k, v]) => `${k.replace(/^--/, '')}${v.replace(/[^\w]/g, '')}`).join('_')
   : ''
 const BASE = `http://127.0.0.1:${PORT}`
+/** 第 6 个参数：落在哪个视图（dashboard / settings / …），用来截图核对具体页面 */
+const PAGE = process.argv[6] ?? ''
 const CDP_PORT = 9334
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
 const PROFILE = `${process.env.TEMP}\\glass-probe-profile`
@@ -200,7 +202,7 @@ try {
   })
 
   // 先落到同源的一个真实页面，再写 localStorage —— about:blank 上写的是另一个源。
-  await cdp.send('Page.navigate', { url: `${BASE}/next/` })
+  await cdp.send('Page.navigate', { url: `${BASE}/next/${PAGE ? `#/${PAGE}` : ``}` })
   await sleep(1200)
   await cdp.evalJs(`(() => {
     localStorage.setItem('qingmu.theme', ${JSON.stringify(THEME)});
@@ -224,7 +226,7 @@ try {
         if (performance.now() < 10000) requestAnimationFrame(tick);
       })();`,
   })
-  await cdp.send('Page.navigate', { url: `${BASE}/next/` })
+  await cdp.send('Page.navigate', { url: `${BASE}/next/${PAGE ? `#/${PAGE}` : ``}` })
 
   // 等应用真渲染出来（后端 /api/state 本机要几秒），别写死 sleep。
   // 两个条件都要等：玻璃面出现 + 总览页不再显示「正在读取环境状态」占位 —— 只等前者会截到半成品。

@@ -1,14 +1,13 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { AppState } from '@/lib/types'
 import { Icon, type IconName } from '@/components/Icon'
-import { GlassPanel } from '@/components/Panel'
+import { GlassPanel, Panel } from '@/components/Panel'
 import { Button } from '@/components/Button'
 import {
   BackdropToneProvider,
   GlassProvider,
   GlassSegmentedControl,
-  MaterialView,
   ScrollEdge,
   useGlassPolicy,
 } from '@ttqtt/liquid-glass-react'
@@ -241,7 +240,7 @@ export default function App() {
 
               <div className="page-body" key={active}>
                 {dead && !state ? (
-                  <MaterialView thickness="regular" radius={20}>
+                  <Panel>
                     <div className="stack">
                       <p className="finding-title">连不上本地服务</p>
                       <p className="finding-text">{dead}</p>
@@ -249,7 +248,7 @@ export default function App() {
                         重试
                       </Button>
                     </div>
-                  </MaterialView>
+                  </Panel>
                 ) : active === 'dashboard' ? (
                   <Dashboard
                     state={state}
