@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>V-Synth-Studio</title>
+<script>
+/* 主题与性能模式必须在**首次绘制前**定下来，否则会先闪一下相反的配色 / 毛玻璃。
+   所以这一段内联、同步、不依赖任何模块 —— 模块是异步加载的，来不及。
+
+   取值规则和旧前端一致（见 theme.js / perf.js 的注释）：
+   localStorage 是同步的，是**主存**；后端 config 只在本地什么都没存过时兜底。 */
+(function () {
+  var d = document.documentElement
+  try {
+    var t = localStorage.getItem('qingmu.theme')
+    // 默认**暗色**，不跟随系统。
+    // 旧前端原来是从系统偏好起手的，但那是它自己的选择；新前端的视觉基线是暗色下的
+    // 玻璃层次（背景层做了额外的环境光晕），而且毛玻璃在深底上才看得出来。
+    // 用户手动选过就听用户的，'system' 仍然有效（走下面那条分支）。
+    if (t !== 'light' && t !== 'dark' && t !== 'system') {
+      t = 'dark'
+    }
+    d.dataset.theme = t === 'system'
+      ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark')
+      : t
+    // 性能模式：开启后全局取消高斯模糊（backdrop-filter 在低端机 / 远控 / 集显上很贵）
+    d.dataset.perf = localStorage.getItem('qingmu.perf') === 'on' ? 'on' : 'off'
+  } catch (e) {
+    d.dataset.theme = 'dark'
+    d.dataset.perf = 'off'
+  }
+})()
+</script>
+  <script type="module" crossorigin src="/next/assets/index-Nfx9xFBk.js"></script>
+  <link rel="stylesheet" crossorigin href="/next/assets/index-DbPhIVNt.css">
+</head>
+<body>
+<div id="root"></div>
+</body>
+</html>

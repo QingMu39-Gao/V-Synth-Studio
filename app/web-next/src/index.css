@@ -1,0 +1,821 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   外壳样式。
+
+   ## 玻璃在哪儿？
+   **这个文件里没有一行玻璃。** 模糊、折射、发丝边、色差全部来自
+   `@ttqtt/liquid-glass-react`（`main.tsx` 里先 import 它自己的 `style.css`）。
+   这里只做三件事：
+
+     1. 把顶栏 / 侧栏 / 内容区摆成窗口布局
+     2. **内容层的卡片**（实色）—— `.panel` 一组
+     3. 几个排版辅助类
+
+   ## 颜色从哪来
+   全部用库的令牌，**没有任何写死的颜色**（这一点很重要，写死 = 亮色下瞎掉）：
+
+     文字   --lg-label / --lg-label-secondary / --lg-label-tertiary
+     底色   --lg-bg / --lg-bg-grouped / --lg-bg-secondary
+     填充   --lg-fill-quaternary
+     分隔线 --lg-separator
+     强调   --lg-accent（图形）/ --lg-accent-fill（白字压在上面的底色）
+     间距   --lg-space-1…10    圆角 --lg-radius-xs…xxl    可读宽度 --lg-readable
+
+   库的 token **全部挂在 `[data-lg-theme="light|dark"]` 下**（`:root` 上没有裸定义），
+   而写那个属性的是 `GlassProvider`。所以主题只有一个来源，别自己去写。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  --shell-max: 1360px;
+  --sidebar-w: 228px;
+
+  /* 背景图。⚠️ 必须用**绝对路径** —— 新前端挂在 `/next/` 下，
+     相对路径 `img/bg/light.jpg` 会解析成 `/next/img/...` → 404（实测过）。
+     图在 `app/web/img/bg/`，由后端从根路径伺服。 */
+  --bg-image-dark: url('/img/bg/dark.jpg');
+  --bg-image-light: url('/img/bg/light.jpg');
+}
+
+/* 主题相关的背景参数。库的 `GlassProvider` 会把解析后的主题写到
+   `<html data-lg-theme="light|dark">`（它自己的 token 也用这个属性分组），
+   所以这里跟着它走，不用再记一份。 */
+[data-lg-theme='dark'] {
+  --bg-image: var(--bg-image-dark);
+  /* 这几个值是一组，别单独动 —— 旧前端踩了两轮才调好：
+     「通透」靠**低模糊 + 低遮罩**，不是靠加大模糊。
+     高模糊 + 高遮罩 = 图被糊成一片均匀深灰，看着就是「图压根不显示」。 */
+  --bg-blur: 14px;
+  --bg-dim: 100%;
+  --bg-contrast: 118%; /* 暗色图本身有对比（黑底 + 白锐利细节 + 青绿色块），再拉一点更锐 */
+  --bg-veil: rgba(9, 11, 16, 0.3);
+}
+[data-lg-theme='light'] {
+  --bg-image: var(--bg-image-light);
+  /* ⚠️ 亮色图和暗色图的取参**方向相反**，别照抄。
+   
+     这张不是「没对比的浅灰图」——它是故障艺术（glitch art）：有文字、条码、
+     彩色色散的细节，但**整体极浅**（像素挤在 #e0–#f5）。
+   
+     所以对它压暗（brightness < 1）是错的方向：那会把本来就浅的层次压成一片灰。
+     正确做法是**提对比 + 几乎不压暗**，让那些细节在浅底上浮出来。
+   
+     曾经写的是 `brightness(82%) contrast(112%)`，实测整张图糊成纯灰 ——
+     玻璃压在上面完全没有东西可采样。 */
+  --bg-blur: 12px;
+  --bg-dim: 100%;
+  --bg-contrast: 145%;
+  /* 遮罩也要很轻。这张图本身够亮，重遮罩只会把它抹平 */
+  --bg-veil: rgba(255, 255, 255, 0.18);
+}
+
+html,
+body,
+#root {
+  min-height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--lg-bg-grouped);
+  color: var(--lg-label);
+  font-family: var(--lg-font-text);
+  -webkit-font-smoothing: antialiased;
+  min-height: 100dvh;
+}
+
+/**
+ * 背景层：图 + 遮罩。
+ *
+ * ⚠️ **图不是装饰，玻璃靠它才成立。** 库的设计文档第 5 节：
+ *
+ * > 材质由三样东西定义：折射、一条发丝边、干净的内部。
+ * > …这些会把材质变成 2008 年的光泽塑料按钮，而且**在纯色背景上最难看 ——
+ * > 那里根本没有东西可折射**。
+ *
+ * 我一度把这一层换成纯渐变，结果两种材质在这个页面上几乎看不出区别 ——
+ * 模糊一片灰和折射一片灰是一样的。
+ *
+ * 几条硬性注意（都会导致「图压根不显示」，旧前端各踩过一次）：
+ *   - **不要**用 `html::before` / `html::after` 做背景层。Chromium 对
+ *     `backdrop-filter` 采样 `position: fixed` 的伪元素有怪癖，会渲染到内容之上。
+ *     用 `body` 的伪元素。
+ *   - `inset: -10%` 是给模糊留的溢出量。不留的话模糊把边缘往内收，四周会露一圈底色。
+ *   - `filter` 写在这一层上，**不能**写在整个 `body` 上（那会把正文一起模糊）。
+ *   - 遮罩用 `linear-gradient` 叠在 `background-image` **里面**，不要用
+ *     `color-mix()` 塞进渐变 —— 那不是合法语法，会**静默丢掉整条声明**，背景直接没。
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: -10%;
+  z-index: -1;
+  pointer-events: none;
+  background-color: var(--lg-bg-grouped); /* 图没加载出来时也不至于崩成纯色 */
+  background-image: linear-gradient(var(--bg-veil), var(--bg-veil)), var(--bg-image);
+  background-size: cover;
+  background-position: center;
+  filter: blur(var(--bg-blur)) brightness(var(--bg-dim)) contrast(var(--bg-contrast));
+}
+
+/* ── 整体布局 ────────────────────────────────────────────────── */
+.app {
+  max-width: var(--shell-max);
+  margin-inline: auto;
+  padding: var(--lg-space-4) var(--lg-margin) var(--lg-space-8);
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+}
+
+/* ── 顶栏（玻璃）──────────────────────────────────────────────── */
+.app-topbar {
+  flex: none;
+}
+.app-topbar-inner {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  padding: var(--lg-space-3) var(--lg-space-4);
+  min-height: 60px;
+  /* 这里**不能**写 `height: 100%`。父级是库生成的 `.lg-content`，它的高度是
+     `auto`（由内容决定），百分比高度会解析成 0 → 内容直接塌掉。
+     曾经写过一次，是为了治「玻璃比内容高一截」，而那其实是类名挂漏导致的，
+     根因修掉后这条只剩副作用。 */
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  min-width: 0;
+}
+.brand-mark {
+  width: 24px;
+  height: 24px;
+  flex: none;
+  border-radius: var(--lg-radius-xs);
+  background: var(--lg-accent);
+}
+.brand-name {
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+.topbar-actions {
+  margin-inline-start: auto;
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+}
+.topbar-status {
+  font-size: 13px;
+  color: var(--lg-label-secondary);
+  white-space: nowrap;
+}
+.topbar-status[data-dead='true'] {
+  color: var(--lg-red);
+}
+
+/* ── 主体：侧栏 + 内容 ───────────────────────────────────────── */
+.app-body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lg-space-4);
+  flex: 1;
+  min-height: 0;
+}
+
+/* ── 侧栏（玻璃）──────────────────────────────────────────────── */
+.app-sidebar {
+  position: sticky;
+  top: calc(var(--lg-space-4) + 76px);
+  width: var(--sidebar-w);
+  flex: none;
+  max-height: calc(100dvh - 104px);
+}
+.app-sidebar-inner {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-1);
+  padding: var(--lg-space-3);
+  height: 100%;
+  max-height: calc(100dvh - 128px);
+  overflow-y: auto;
+}
+.nav-group {
+  padding: var(--lg-space-3) var(--lg-space-3) var(--lg-space-1);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--lg-label-secondary);
+}
+.nav-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  width: 100%;
+  min-height: 38px;
+  padding-inline: var(--lg-space-3);
+  border: 0;
+  border-radius: var(--lg-radius-s);
+  background: transparent;
+  color: var(--lg-label);
+  font: inherit;
+  font-size: 14.5px;
+  text-align: start;
+  cursor: pointer;
+}
+.nav-row:hover {
+  background: var(--lg-fill-quaternary);
+}
+/* 选中态用 `--lg-accent-fill`（白字压在上面的那块底色），不是 `--lg-accent`
+   —— 后者配白字只有 3.52:1，量过的。 */
+.nav-row[aria-current='page'] {
+  background: var(--lg-accent-fill);
+  color: var(--lg-accent-contrast);
+}
+.nav-row[aria-current='page'] svg {
+  color: var(--lg-accent-contrast);
+}
+.nav-row-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-row-tag {
+  font-size: 11px;
+  color: var(--lg-label-secondary);
+}
+.nav-row[aria-current='page'] .nav-row-tag {
+  color: var(--lg-accent-contrast);
+  opacity: 0.75;
+}
+/* 内容层自己撑满玻璃面。这一步必须在**内容层**上做，不能写在外层 ——
+   外层的盒高由内容决定，写 height:100% 反而是循环依赖。 */
+.glass-fill {
+  height: 100%;
+}
+.sidebar-foot {
+  margin-block-start: auto;
+  padding-block-start: var(--lg-space-3);
+}
+
+/* ── 内容区：**不是玻璃**。实色卡片，字才读得清 ──────────────── */
+.app-main {
+  flex: 1;
+  min-width: 0;
+  outline: none;
+}
+.page-head {
+  padding-block: var(--lg-space-1) var(--lg-space-4);
+}
+.page-title {
+  margin: 0;
+  font-size: 28px;
+  line-height: 34px;
+  font-weight: 700;
+  letter-spacing: -0.014em;
+}
+.page-sub {
+  margin: var(--lg-space-1) 0 0;
+  font-size: 15px;
+  color: var(--lg-label-secondary);
+}
+.page-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+}
+
+/* ── 卡片：**材质来自库的 `MaterialView`** ─────────────────────
+   ⚠️ 这里**不要**再写 `background` —— 那会把库的材质盖掉（`.lg-material-view`
+   的背景是 `--lg-material-regular` = 浅色 `rgb(255 255 255 / .82)` /
+   深色 `rgb(30 30 30 / .82)`，外加 `blur(30px) saturate(1.8)`）。
+   我只补库没给的部分：描边、内边距、头部排布。 */
+.panel {
+  border: 1px solid var(--lg-separator);
+}
+.panel-padded {
+  padding: var(--lg-space-5);
+}
+.panel-head {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lg-space-4);
+  margin-block-end: var(--lg-space-4);
+}
+.panel-head-text {
+  flex: 1;
+  min-width: 0;
+}
+.panel-title {
+  margin: 0;
+  font-size: 19px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+.panel-desc {
+  margin: var(--lg-space-2) 0 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--lg-label-secondary);
+  max-width: var(--lg-readable);
+}
+.panel-head-extra {
+  flex: none;
+}
+
+/* ── 排版辅助 ───────────────────────────────────────────────── */
+.stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+}
+.stack-lg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-5);
+}
+.muted {
+  margin: 0;
+  font-size: 14px;
+  line-height: 20px;
+  color: var(--lg-label-secondary);
+  max-width: var(--lg-readable);
+}
+.hint {
+  margin: var(--lg-space-3) 0 0;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--lg-label-secondary);
+}
+.group-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--lg-label-secondary);
+}
+.empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--lg-space-4);
+  padding: var(--lg-space-8) var(--lg-space-4);
+  text-align: center;
+}
+
+/* ── 统计 ───────────────────────────────────────────────────── */
+.stats-row {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--lg-space-8);
+  flex-wrap: wrap;
+}
+.stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.stat-label {
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+}
+.stat-value {
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.stat-sub {
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+}
+.stats-action {
+  margin-inline-start: auto;
+}
+
+/* ── 快捷入口：实色可点卡片 ─────────────────────────────────── */
+.quick-grid {
+  display: grid;
+  gap: var(--lg-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
+}
+.quick {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+  padding: var(--lg-space-4);
+  min-height: 84px;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: var(--lg-bg-secondary);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+  cursor: pointer;
+  transition:
+    transform 220ms cubic-bezier(0.2, 0.9, 0.25, 1),
+    background 140ms ease-out;
+}
+.quick:hover {
+  background: var(--lg-fill-quaternary);
+  transform: translateY(-2px);
+}
+.quick:active {
+  transform: translateY(0);
+}
+.quick-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.quick-desc {
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 工具行 ─────────────────────────────────────────────────── */
+.tool-list {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+  overflow: hidden;
+}
+.tool-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  padding: var(--lg-space-3) var(--lg-space-4);
+  min-height: 56px;
+}
+.tool-row + .tool-row {
+  border-block-start: 1px solid var(--lg-separator);
+}
+.tool-row-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.tool-name {
+  font-size: 14.5px;
+  font-weight: 500;
+}
+.tool-desc {
+  font-size: 12.5px;
+  color: var(--lg-label-secondary);
+}
+.tool-version {
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  white-space: nowrap;
+}
+.tool-version[data-ok='true'] {
+  color: var(--lg-label);
+}
+
+/* ── 标签 ───────────────────────────────────────────────────── */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px var(--lg-space-2);
+  border-radius: var(--lg-radius-xs);
+  border: 1px solid var(--lg-separator);
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  white-space: nowrap;
+}
+.chip[data-tone='ok'] {
+  color: var(--lg-label);
+  border-color: color-mix(in srgb, var(--lg-accent) 35%, transparent);
+}
+.chip[data-tone='accent'] {
+  color: var(--lg-accent-contrast);
+  background: var(--lg-accent-fill);
+  border-color: transparent;
+}
+.chip-ext {
+  font-family: var(--lg-font-mono);
+  font-size: 10.5px;
+  color: var(--lg-label-tertiary);
+}
+
+/* ── 一条「发现」───────────────────────────────────────────── */
+.finding {
+  padding: var(--lg-space-3) var(--lg-space-4);
+  border-radius: var(--lg-radius-m);
+  border-inline-start: 3px solid var(--lg-label-tertiary);
+  background: var(--lg-bg-secondary);
+}
+.finding[data-level='warn'] {
+  border-inline-start-color: var(--lg-orange);
+}
+.finding-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+.finding-text {
+  margin: 4px 0 0;
+  font-size: 13px;
+  line-height: 19px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 按钮 ───────────────────────────────────────────────────── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--lg-radius-s);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+  transition:
+    background 140ms ease-out,
+    transform 90ms ease-out;
+}
+.btn:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--lg-accent);
+  outline-offset: 2px;
+}
+.btn-md {
+  min-height: 38px;
+  padding-inline: var(--lg-space-4);
+}
+.btn-sm {
+  min-height: 32px;
+  padding-inline: var(--lg-space-3);
+  font-size: 13px;
+}
+.btn-lg {
+  min-height: 46px;
+  padding-inline: var(--lg-space-5);
+  font-size: 15px;
+}
+.btn-icon-only {
+  padding-inline: var(--lg-space-3);
+}
+.btn-default {
+  background: var(--lg-fill-quaternary);
+  border-color: var(--lg-separator);
+  color: var(--lg-label);
+}
+.btn-default:hover:not(:disabled) {
+  background: var(--lg-fill-tertiary);
+}
+/* 一屏只有一个主操作 —— 用 accent-fill + 它的对比色（量过 4.98:1），
+   不是 accent 本身（配白字只有 3.52:1）。 */
+.btn-primary {
+  background: var(--lg-accent-fill);
+  color: var(--lg-accent-contrast);
+  border-color: transparent;
+}
+.btn-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--lg-accent);
+}
+.btn-ghost:hover:not(:disabled) {
+  background: var(--lg-fill-quaternary);
+}
+.btn-danger {
+  background: var(--lg-red-fill, var(--lg-red));
+  color: #fff;
+}
+/* 玻璃按钮：**内容层不用它**。保留给将来放在栏 / 浮层里的控件。 */
+.btn-glass {
+  background: var(--lg-fill-tertiary);
+  border-color: var(--lg-separator);
+  color: var(--lg-label);
+}
+.btn-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  flex-wrap: wrap;
+}
+.btn-spinner {
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  border: 2px solid currentColor;
+  border-block-start-color: transparent;
+  animation: btn-spin 700ms linear infinite;
+}
+@keyframes btn-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .btn-spinner {
+    animation-duration: 2s;
+  }
+}
+
+/* ── 分段控件（材质 / 主题切换）───────────────────────────────── */
+.seg {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border-radius: var(--lg-radius-s);
+  background: var(--lg-fill-quaternary);
+}
+.seg-block {
+  display: flex;
+  width: 100%;
+}
+.seg-item {
+  flex: 1;
+  min-height: 28px;
+  padding-inline: var(--lg-space-3);
+  border: 0;
+  border-radius: calc(var(--lg-radius-s) - 2px);
+  background: transparent;
+  color: var(--lg-label);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.seg-item[aria-pressed='true'] {
+  background: var(--lg-bg);
+  font-weight: 600;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 10%);
+}
+.seg-item:focus-visible {
+  outline: 2px solid var(--lg-accent);
+  outline-offset: 1px;
+}
+
+/* ── 表单 ───────────────────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.field-label {
+  font-size: 13px;
+  font-weight: 500;
+}
+.field-hint {
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+}
+.input,
+.textarea {
+  width: 100%;
+  min-height: 38px;
+  padding: 8px var(--lg-space-3);
+  font: inherit;
+  font-size: 14px;
+  color: var(--lg-label);
+  background: var(--lg-bg-secondary);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-s);
+}
+.input:focus-visible,
+.textarea:focus-visible {
+  outline: 2px solid var(--lg-accent);
+  outline-offset: 1px;
+}
+.toggle-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  min-height: 40px;
+  font-size: 14px;
+  cursor: pointer;
+}
+.toggle-row input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--lg-accent);
+}
+
+/* ── 设置页：左分节 + 右内容 ─────────────────────────────────── */
+.settings {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--lg-space-4);
+}
+.settings-nav {
+  width: 142px;
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  position: sticky;
+  top: calc(var(--lg-space-4) + 76px);
+}
+.settings-body {
+  flex: 1;
+  min-width: 0;
+}
+.choice-grid {
+  display: grid;
+  gap: var(--lg-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+}
+.choice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: var(--lg-space-4);
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background: var(--lg-bg-secondary);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+  cursor: pointer;
+  transition: border-color 140ms ease-out;
+}
+.choice:hover {
+  border-color: color-mix(in srgb, var(--lg-accent) 40%, var(--lg-separator));
+}
+.choice[aria-pressed='true'] {
+  border-color: var(--lg-accent);
+  box-shadow: inset 0 0 0 1px var(--lg-accent);
+}
+.choice-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+}
+.choice-label {
+  font-size: 15px;
+  font-weight: 600;
+}
+.choice-desc {
+  font-size: 12.5px;
+  line-height: 18px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── Toast ──────────────────────────────────────────────────── */
+.toasts {
+  position: fixed;
+  right: var(--lg-space-5);
+  bottom: var(--lg-space-5);
+  z-index: 60;
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+  pointer-events: none;
+}
+.toast {
+  padding: var(--lg-space-3) var(--lg-space-4);
+  border-radius: var(--lg-radius-m);
+  background: var(--lg-bg);
+  border: 1px solid var(--lg-separator);
+  border-inline-start: 3px solid var(--lg-accent);
+  box-shadow: 0 8px 24px rgb(0 0 0 / 18%);
+  font-size: 13.5px;
+  max-width: 340px;
+}
+.toast[data-tone='err'] {
+  border-inline-start-color: var(--lg-red);
+}
+.toast[data-tone='ok'] {
+  border-inline-start-color: var(--lg-green);
+}
+.toast[data-tone='warn'] {
+  border-inline-start-color: var(--lg-orange);
+}
+
+/* ── 窄屏 ───────────────────────────────────────────────────── */
+@media (max-width: 900px) {
+  .app-sidebar,
+  .settings-nav {
+    display: none;
+  }
+  .app-body,
+  .settings {
+    flex-direction: column;
+  }
+}
