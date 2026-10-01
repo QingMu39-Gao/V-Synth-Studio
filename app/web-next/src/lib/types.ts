@@ -63,3 +63,24 @@ export interface HealthInfo {
   startedAt: number
   uptimeSec: number
 }
+
+/**
+ * 后端任务（`/api/jobs/*`）。
+ *
+ * 形状照后端 `server/convert.rs` 里建任务时那个 `json!({...})`：
+ * `{ id, type, title, status, percent, message, logs, createdAt }`，失败时多一个 `error`。
+ * **`percent` 是 0~100**（不是 0~1）—— `GlassProgress` 要 `value`/`total`，直接给 100 当 total。
+ */
+export interface Job {
+  id: string
+  type?: string
+  title?: string
+  status: 'running' | 'done' | 'error' | 'canceled'
+  percent?: number
+  message?: string
+  logs?: string[]
+  error?: string
+  createdAt?: number
+  [k: string]: unknown
+}
+

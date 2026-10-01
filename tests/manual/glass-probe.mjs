@@ -50,9 +50,15 @@ const LS = (process.argv[7] ?? '')
   .map((s) => s.trim())
   .filter(Boolean)
   .map((s) => { const i = s.indexOf('='); return [s.slice(0, i), s.slice(i + 1)] })
-const CDP_PORT = 9334
+/**
+ * CDP 端口与 profile 目录都可以用环境变量改 —— **并行跑多个探针时必需**：
+ * 端口和 profile 写死的话，两个实例会抢同一个调试端口、互相杀掉对方的 Edge。
+ *   $env:GLASS_PROBE_CDP=9401; $env:GLASS_PROBE_TAG='video'
+ */
+const CDP_PORT = Number(process.env.GLASS_PROBE_CDP ?? 0) || 9334
+const PROBE_TAG = process.env.GLASS_PROBE_TAG ?? ''
 const EDGE = 'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe'
-const PROFILE = `${process.env.TEMP}\\glass-probe-profile`
+const PROFILE = `${process.env.TEMP}\\glass-probe-profile${PROBE_TAG}`
 const OUT = join(dirname(fileURLToPath(import.meta.url)), 'out')
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
@@ -466,6 +472,6 @@ try {
   // 无头 Edge 会留下子进程占内存，按 profile 目录的进程精确清掉
   try {
     const { execSync } = await import('node:child_process')
-    execSync(`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name='msedge.exe'\\" | Where-Object { $_.CommandLine -like '*glass-probe-profile*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`, { stdio: 'ignore' })
+    execSync(`powershell -NoProfile -Command "Get-CimInstance Win32_Process -Filter \\"Name='msedge.exe'\\" | Where-Object { $_.CommandLine -like '*glass-probe-profile${PROBE_TAG}*' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }"`, { stdio: 'ignore' })
   } catch { /* 没有残留就算了 */ }
 }

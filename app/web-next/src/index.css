@@ -892,3 +892,105 @@ html[data-boot='out'] .app-main {
     flex-direction: column;
   }
 }
+
+/* ── 任务进度（长任务一律显示）──────────────────────────────────
+   进度条本身是**库的 `GlassProgress`**，这里只排标题行和日志。 */
+.job {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  margin-block-start: var(--lg-space-3);
+}
+.job-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  font-size: 13.5px;
+}
+.job-title {
+  font-weight: 600;
+}
+.job-message {
+  flex: 1;
+  min-width: 0;
+  color: var(--lg-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.job-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--lg-label-secondary);
+}
+.job-note {
+  margin: 0;
+  font-size: 13px;
+  color: var(--lg-label-secondary);
+}
+.job-log {
+  margin: 0;
+  max-height: 220px;
+  overflow: auto;
+  padding: var(--lg-space-3);
+  border-radius: var(--lg-radius-s);
+  background: var(--lg-fill-quaternary);
+  font: 12px/1.6 ui-monospace, Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+/* ── 目录选择器 ──────────────────────────────────────────────── */
+.dir-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  min-height: 320px;
+  max-height: 52dvh;
+  overflow: auto;
+}
+.dir-roots {
+  max-height: 132px;
+  overflow: auto;
+}
+.dir-note {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--lg-label-secondary);
+  word-break: break-all;
+}
+.dir-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  margin-block-start: var(--lg-space-4);
+}
+
+/* ── 输入框 + 按钮的一行 ─────────────────────────────────────── */
+.input-group {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+}
+.input-group > .input {
+  flex: 1;
+  min-width: 0;
+}
+.spacer {
+  flex: 1;
+}
+
+/* ── 表单字段（Field.tsx）────────────────────────────────────── */
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+}
+.field-label {
+  font-size: 13px;
+  font-weight: 600;
+}
+.field-hint {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+}

@@ -1,0 +1,272 @@
+# 踩坑史与取舍（`AGENTS.md` 第六节的外移部分）
+
+> 这份记的是**为什么**：当时是什么症状、怎么定位的、改了什么、还留下什么。
+> AGENTS.md 第六节只保留结论速查；要动相关代码之前，来这里看细节。
+> 玻璃材质本身的规范在 docs/GLASS-HANDOFF.md；新前端约定在 docs/NEXT-UI.md。
+
+---
+
+### CSS
+
+- **`html::after` 做背景层会渲染到内容之上**（Chromium 对 `backdrop-filter` 采样
+  `position:fixed` 伪元素的怪癖）。背景层要做成 `body` 内的普通元素。
+- **`--glass` 系列令牌（4.5% 白）是给纯色背景设计的**，一旦有背景图就全透、文字没法看。
+  有背景图时这些值要单独调。
+
+### 悬停动效：微交互和大位移要用不同的曲线
+
+**改动效前先做这一步检查 —— 未定义的 CSS 变量会让整条声明静默失效：**
+
+```powershell
+# 列出「被 var() 引用、但没有任何地方定义」的变量
+$t = [IO.File]::ReadAllText((Get-ChildItem app\web\next\assets\*.css | Select-Object -First 1).FullName, [Text.Encoding]::UTF8)
+$defined = [regex]::Matches($t, '(--[\w-]+)\s*:') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+$used = [regex]::Matches($t, 'var\((--[\w-]+)') | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
+$used | Where-Object { $defined -notcontains $_ }
+```
+
+（Tailwind 内部那几个 `--default-*` 变量属正常，可忽略。）
+
+**踩过的两个坑，都是「动效很奇怪」的真因：**
+
+1. **`var(--ease)` 以前根本没定义。** 于是 `transition: background var(--ease)`
+   **整条声明失效** → 悬停时底色是瞬变、没有过渡，看着就是生硬地闪一下。
+   浏览器不会报错，控制台一片安静。
+2. **`--spring`（y 控制点 1.56，过冲 56%）被拿去驱动 `scale(0.97)`。**
+   过冲量是按**大位移**设计的：位移越小，过冲占比越夸张。
+   0.97 只该走 0.03，却先弹过头再回来 —— 看着就是在抖。
+
+**现在的分工**（⚠️ **两套前端各有一套曲线，别互相套用**）：
+
+| 前端 | 令牌与取值 | 说明 |
+|---|---|---|
+| 旧前端 `/` | `--ease: cubic-bezier(0.32, 0.72, 0, 1)`<br>`--ease-out: cubic-bezier(0.16, 1, 0.3, 1)`<br>`--spring: cubic-bezier(0.34, 1.56, 0.64, 1)` | 定义在 `app/web/css/base.css:129-131`，**唯一一处** |
+| 新前端 `/next/` | **没有自己的缓动令牌** | 曲线来自库：`--lg-duration-spring: 520ms` + `--lg-spring`（一条 `linear()` 弹簧采样），`--lg-duration-press/release/layout` 分级。写在库的 `dist/tokens.css`，改不了也不用改 |
+
+⚠️ **本节此前那两版取值都是错的**（`(.4,0,.2,1)` / `(0.2,0.9,0.25,1)` / `--spring: 1.28`
+这些数字**在代码里一个都不存在**）：那是新前端换库之前的手写玻璃时代的令牌，
+换库时连同手写玻璃一起删了，但文档没跟着改。**看到数字先 `grep` 一遍再照抄。**
+
+**位移规矩**（用户报过「鼠标放上去动效很奇怪」）：
+
+| 元素 | 悬停 | 按压 |
+|---|---|---|
+| 控件（按钮 / 导航项 / 标签） | **只改底色**，不动 | `scale(0.97)`，80ms |
+| 大卡片（入口卡） | `translateY(-2px)`，220ms | `scale(0.995)`，100ms |
+
+**验证方法**（必须看渲染结果，不能只看源码）：
+
+```js
+// 旧前端：读令牌本身有没有被解析出来（未定义的话整条 transition 会静默失效）
+getComputedStyle(document.querySelector('.nav-item')).transitionTimingFunction
+// 新前端：微交互的曲线应当来自库（出现 1.56 这类过冲曲线基本就是用错地方了）
+getComputedStyle(document.querySelector('.quick')).transition.replace(/\s+/g, ' ')
+```
+
+### 侧栏导航：一个框 + 一个滑动的高亮块
+
+**用户的原话**：「侧边栏被分成了三大板块，不要这么做」「每个选项都被框起来了，
+我希望只有一个框」「选中某个选项时在该选项上再套一个框」「切换选项时选择框应该
+丝滑地滑动过去」。
+
+**改前的错**：每个导航项各带 `glass-chip` —— 于是 8 个选项**各自**被描边 + 底色框住，
+再加上 `.glass-sheen` 每次切换还有一道 720ms 斜光扫过。视觉上就是一堆小方块。
+
+**现在的结构**（`App.tsx` 的导航 + `index.css` 的 `.app-nav` 一组；设置页同款）：
+
+```
+GlassPanel.app-sidebar        ← **唯一**的框（一层玻璃 + 一条描边 + 一个圆角）
+  └ div.app-sidebar-inner
+      └ nav.app-nav           ← position: relative（量位置要拿它当基准）
+          ├ span.lg-selection-lens.nav-lens  ← 高亮块，**库的组件**，靠 --lg-slot-x/y 滑
+          ├ div.nav-group × 3 ← 只是小字，**不参与框选**
+          └ button.nav-row × 8 ← 完全透明，自身零描边零底色
+```
+
+⚠️ 本节曾写的 `.nav-rail` / `.nav-thumb` 等类名在仓库里零命中（换库前的手写玻璃时代遗留）。
+
+⚠️ **设置页那条小节导航是同一套东西**（`lib/useNavLens.ts` + `.app-nav` / `.nav-row` /
+`.nav-lens`，外框参数与主侧栏逐项相同）—— 改主侧栏的样式会同时改到它。
+
+**「丝滑」是靠 transform，不是给每项加背景色**：量出选中项相对 nav 的 `offsetTop`，
+写进库的 `--lg-slot-y`，那块 span 自己 `translate` 过去 —— 合成层动画，不触发布局重排。
+
+**三个必须注意的点（都会导致可见的 bug，逐条实测过）：**
+
+1. **首帧不能滑。** 第一次量位置时先把 `transition` 关掉，量完 `void lens.offsetWidth`
+   强制回流再恢复；否则打开界面会看到一个方块从左上角飞过来。
+   （`lib/useNavLens.ts` 就是这么写的，探针里 `boot.settled` 那条在验它。）
+2. **量位置用 `offsetTop`，不用 `getBoundingClientRect()`。** 侧栏是滚动的，
+   滚动后 rect 会偏；`offsetTop` 相对 offsetParent 恒定。前提是 nav 上有 `position: relative`
+   —— 而库的 `.lg-content` 本身就是 `position: relative`，所以 nav 必须是最近的那个。
+3. **高亮块是绝对定位，`.nav-row` 必须显式 `position: relative; z-index: 1`** ——
+   `z-index` 只对定位元素生效，漏了行就会被高亮块盖住。
+
+**验证方法**（这三条就是用户提的三个要求，逐条可测；`tests/manual/glass-probe.mjs` 已实现）：
+
+```js
+// ① 只有面板一个框：自带描边的导航项必须是 0
+[...document.querySelectorAll('.nav-row')].filter(r => parseFloat(getComputedStyle(r).borderTopWidth) > 0).length
+// ② 高亮块只有一个，且和选中项零偏差（实测 dx/dy/dw/dh 全 0）
+document.querySelectorAll('.app-nav .lg-selection-lens').length
+// ③ 切换时逐帧采样，不同取值要多于 3 个 —— 只有 1~2 个说明是直接跳过去的
+//    （在 rAF 循环里读 getComputedStyle(lens).transform，探针实测 30+ 种）
+```
+
+⚠️ **写验证脚本时注意**：别用 `[regex]::IsMatch` 去查类名如 `duration-[280ms]` ——
+`[280ms]` 会被当成字符类，永远匹配不到，会让你误判成「类没编译出来」。
+查产物里的类名请用 `IndexOf` 或先 `[regex]::Escape()`。
+
+### 动效（历史教训，一句话版）
+
+「像直线」的根因是用了 `cubic-bezier(0.4, 0, 0.2, 1)`（加速太平缓，短位移看不出加减速）；
+「甩过头」的根因是过冲量贪大（`--spring` 的 y 控制点 1.42 → 300px 位移冲出 42px）。
+**两套前端各自的分工见上面那张表**，别互相套用。旧前端唯一一处定义在
+`app/web/css/base.css:129-131`。
+
+### 侧栏滑动高亮块：**为什么现在不需要分两层了**
+
+用户当时要「切换时选择框丝滑地滑动过去」+「滑动时缩放」。
+
+**上一版分两层是被迫的**（`.nav-thumb-track` 做位移 + `.nav-thumb-squash` 做挤压）：
+`animation` 在层叠里**优先于 `transition`**，同一元素上一边过渡位移、一边动画缩放，
+动画会把 `transform` 整个接管，过渡完全不生效 —— 实测表现是**瞬移过去**。
+当时试过两种时序技巧（错开一帧、错开 50ms）都不行，只能拆两层。
+
+**现在不用拆了**，因为挤压不再用 `animation`，而是改**一个喂进 `transform` 的变量**：
+
+```css
+.app-nav[data-moving='true'] .lg-selection-lens { --lg-lens-swell-y: 0.86; --lg-lens-swell-x: 1.02; }
+```
+
+位移和挤压落在**同一条** `transform` 上（库自己就是这么合成的），
+所以没有第二个东西去抢它 —— 两层是为绕开冲突而付的复杂度，冲突没了就不该留着。
+
+**还踩过一个（结论仍然有效）**：挤压最初写的是 `scale: 1 0.86`（独立的 `scale` 属性）。
+Chromium 里 `scale` 和 `transform` 是**两个独立属性**，动 `scale` 时 `transform` 矩阵不变，
+而过渡挂在 `transform` 上 —— 实测 `scale` 全程恒为 1，**完全没有形变**。
+必须走 `transform`（或像现在这样喂进库的合成链）。
+
+**验证方法**（逐帧采样，别只看声明）：
+
+```js
+// 不同取值要 >3 种（不然是跳变）；探针实测切换时有 30+ 种
+// 在 rAF 循环里读 getComputedStyle(lens).transform
+```
+
+### 苹果式圆角：用 `corner-shape: squircle`，别用 SVG
+
+用户反馈「圆角不够美观，能参考苹果的 r 角吗」。
+
+普通 `border-radius` 画的是**圆弧** —— 直线到圆弧的曲率变化是**突变**的，
+放大能看出「直边突然接上一段圆」，这就是它显得生硬的原因。
+苹果用的是 **squircle**（超椭圆、连续曲率）：曲率从直线平滑过渡到圆角。
+
+**CSS 现在能直接表达，不用 SVG、不用 clip-path**（`app/web-next/src/index.css` 里已加回）：
+
+```css
+@supports (corner-shape: squircle) {
+  :where(.panel, .quick, .choice, .tool-list, .finding, .toast,
+         .btn, .input, .textarea, .chip, .seg, .seg-item, .nav-row, .nav-lens) {
+    corner-shape: squircle;
+  }
+}
+```
+
+本机实测 `CSS.supports('corner-shape','squircle') === true`（Chromium 151）。
+**必须配 `@supports` 兜底**（不支持的会忽略整条声明、保持圆弧，是安全降级）。
+
+⚠️ **别把它用在玻璃面上。** 库的折射位移贴图是受限的圆角矩形 / 胶囊几何
+（它自己的 `known-limitations.md` 写着），画成 squircle 就对不上、边缘会错位。
+所以只给内容层和控件用 —— 这些没有 SVG 滤镜跟着。
+实测确认：`.btn` / `.lg-material-view` 的计算值是 `squircle`，
+玻璃面（`.app-sidebar`）保持 `round`，这是**有意**的。
+
+⚠️ **半径刻度归库管，不归 Tailwind 管**（这一节原先写的是 Tailwind 的 `--radius-*`
+工具类，那套已经不用了）：库的刻度是 `--lg-radius-xs/s/m/l/xl/xxl` = 6 / 10 / 14 / 20 / 26 / 34。
+本机前端里**只有一个地方写死了半径**：`.nav-row` 与 `.nav-lens` 的 `14px`
+（= 面板 26 − 内边距 12，同心），其余一律走 `var(--lg-radius-*)`。
+
+**验证方法**（光看 CSS 看不出来，必须看**渲染结果**）：
+
+```js
+// 探针里已实现：玻璃面应当仍是 round，控件/面板才是 squircle
+getComputedStyle(document.querySelector('.btn')).getPropertyValue('corner-shape')       // "squircle"
+getComputedStyle(document.querySelector('.app-sidebar')).getPropertyValue('corner-shape') // "round"
+```
+
+### 液态玻璃接入的坑（rdev 库 —— **已被弃用**）
+
+⚠️ 这一节原本记的是 `rdev/liquid-glass-react` 的 `blurAmount` 公式、`overLight`、
+`--panel-scrim` 等。**那个库已经不用了**，参数全部过时，照它改会改错。
+
+现在的库、新的坑、以及两个当前缺陷，见 **`docs/GLASS-HANDOFF.md`**。
+
+---
+
+### ⚠️ 自定义 CSS 必须放进 `@layer components`
+
+> **条件性条目 —— 只有在用 Tailwind 工具类时才成立。** 新前端现在的 `index.css`
+> 是**纯手写 CSS**（一个工具类都没有），所以没有分层问题。哪天开始写 `bg-accent` 这类
+> 工具类了，这条立刻生效 —— 否则你的裸 CSS 会静默盖掉工具类。
+
+**未分层的 CSS 优先级高于 Tailwind 的 utilities 层。**
+踩过：`.glass-chip { background: var(--glass) }` 写在裸 CSS 里，
+把同一元素上的 `bg-accent` 工具类**盖掉了** —— 主按钮写了 `bg-accent` 但背景仍是灰的。
+
+所有自定义组件类（`.glass` / `.glass-chip` / `.glass-sheen` / `.lift` / `.nav-*` …）
+都要包在 `@layer components { … }` 里。
+
+### 亮色主题的文字对比
+
+亮色的次要文字色**不能太浅**。原来 `--text-3: #98a0b0` 压在浅背景上对比度只有约 2.6:1，
+侧栏的「素材获取」「待迁」这类小字几乎看不见。当前值（都在 4.5:1 以上）：
+
+```
+--text-0: #14181f   --text-1: #333b4a   --text-2: #525c6e   --text-3: #6b7488
+```
+
+主按钮同理：`bg-accent/85` + `text-bg-0` 在亮色下对比崩掉，
+改成 `bg-accent`（不透明）+ `text-[#04231f]`（深墨绿）。
+
+### 背景图参数（调过头会导致「图压根不显示」）
+
+**症状**：用户报「背景图压根不显示」，界面是一片纯色。图本身没问题。
+
+**触发过两次，两个前端各一次** —— 改其中一个时记得另一个也要改：
+
+| 前端 | 背景在哪 | 状态 |
+|---|---|---|
+| 旧前端 `/` | `app/web/css/base.css` 的 `&lt;html&gt;::before`（`--bg-image` / `--bg-blur` / `--bg-veil`） | 已修 |
+| 新前端 `/next/` | `app/web-next/src/index.css` 的 `.bg-layer::before`（同名令牌） | 已修 |
+
+⚠️ 新前端第一版**只铺了纯 CSS 渐变、根本没放图**，于是 `backdrop-filter` 明明生效却
+看不出毛玻璃（纯色底上模糊与不模糊一模一样）。修旧前端时漏了新前端，用户又报了一次。
+
+### 玻璃通透度（旧前端的令牌；新前端归库管，不用手调）
+
+旧前端 `/` 一组互相抵消的令牌（`--glass` / `--blur-chrome` / `--blur-panel` /
+`--bg-veil` / `--bg-blur`）换来两条通用规律：**「通透」靠低不透明度 + 低模糊，不是靠加大模糊**；
+**背景看不见时先看玻璃自身的不透明度**，别只调背景。新前端材质由库的 `material` + `size` 决定。
+
+### 亮色背景图与取参（⚠️ 这一节说的是**旧前端** `/`，新前端的值不一样）
+
+`light.jpg` 是浅灰故障艺术图（像素挤在 #d0–#f5），`dark.jpg` 是高对比作品 ——
+所以两个主题的取参**方向相反**，旧前端总结出的三条规律仍然成立：
+
+1. **「通透」靠低不透明度 + 低模糊**，不是靠加大模糊。
+2. **遮罩（`--bg-veil`）和压暗只能选一个**，两个一起上就彻底没影（实测过三轮）。
+3. **背景自身的模糊要小** —— 旧前端当年把 `--bg-blur` 调到 10~14px，
+   结果整页糊成奶白、玻璃再糊一次等于没糊（新前端因此定在 3~4px，见 `GLASS-HANDOFF` §2.2）。
+   要真正解决观感得换图，参数层面已经到头。
+
+**新前端**（`app/web-next/src/index.css`）现在是：暗色 `blur 4px` / 100% / 118% / veil 30%；
+亮色 `blur 5px` / **86%** / 112% / **veil 全撤**。两条硬规矩：
+
+1. **背景自身的模糊必须小（3~5px）** —— 糊过头玻璃就没东西可糊（见上面的三条教训）。
+2. **溢出量要跟模糊走**：`body::before { inset: calc(var(--bg-blur) * -2) }`。
+   原来是写死的 `-10%`，那是隐藏的放大镜 —— 层比视口大 20%，`cover` 就得再放大一档去填满，
+   模糊一小就显形（用户报「比例被裁切不成样子」）。
+
+⚠️ 遗留：`light.jpg` 是 1600×1200（4:3），窗口通常 16:10/16:9，`cover` 必然上下裁 15~25%。
+**这是素材问题** —— 要整张可见只能换一张横向的浅色底图。

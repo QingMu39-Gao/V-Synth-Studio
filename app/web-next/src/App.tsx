@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 import type { AppState } from '@/lib/types'
 import { Icon, type IconName } from '@/components/Icon'
@@ -17,6 +17,12 @@ import { materialOptions } from '@/components/Glass'
 import { Dashboard } from '@/pages/Dashboard'
 import { Settings } from '@/pages/Settings'
 import { Placeholder } from '@/pages/Placeholder'
+import { Resources } from '@/pages/Resources'
+import { Convert } from '@/pages/Convert'
+import { Video } from '@/pages/Video'
+import { Audio } from '@/pages/Audio'
+import { Lyrics } from '@/pages/Lyrics'
+import { Pv } from '@/pages/Pv'
 
 /**
  * 外壳：顶栏 + 侧栏 + 内容区。
@@ -140,6 +146,23 @@ export default function App() {
   }, [])
 
   const current = PAGES.find((p) => p.id === active)!
+
+  /**
+   * 页面表。**每个页面都从 App 拿同一份 state**（见 `pages/types.ts` 的注释：
+   * 页面自己再拉一次就会出现两页数字对不上的画面）。
+   * ⚠️ 用固定顺序写，别用对象字面量的插入顺序去依赖什么 —— 这里只是查表。
+   */
+  const pageProps = { state, onNavigate: navigate, onRefreshState: refreshState, onToast: toast }
+  const pageViews: Record<string, ReactNode> = {
+    dashboard: <Dashboard {...pageProps} refreshing={refreshing} />,
+    settings: <Settings {...pageProps} theme={theme} onThemeChange={changeTheme} />,
+    resources: <Resources {...pageProps} />,
+    convert: <Convert {...pageProps} />,
+    video: <Video {...pageProps} />,
+    audio: <Audio {...pageProps} />,
+    lyrics: <Lyrics {...pageProps} />,
+    pv: <Pv {...pageProps} />,
+  }
   const { level } = useGlassLevel()
   const material = levelMaterial(level)
   const navRef = useRef<HTMLElement>(null)
@@ -249,25 +272,9 @@ export default function App() {
                       </Button>
                     </div>
                   </Panel>
-                ) : active === 'dashboard' ? (
-                  <Dashboard
-                    state={state}
-                    refreshing={refreshing}
-                    onNavigate={navigate}
-                    onRefreshState={refreshState}
-                    onToast={toast}
-                  />
-                ) : active === 'settings' ? (
-                  <Settings
-                    state={state}
-                    theme={theme}
-                    onThemeChange={changeTheme}
-                    onRefreshState={refreshState}
-                    onNavigate={navigate}
-                    onToast={toast}
-                  />
                 ) : (
-                  <Placeholder title={current.title} />
+                  /* 页面表：加一页 = 在 PAGES 里加一行 + 这里加一行。三元链到 8 页已经读不动了。 */
+                  (pageViews[active] ?? <Placeholder title={current.title} />)
                 )}
               </div>
             </main>
