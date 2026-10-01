@@ -49,15 +49,16 @@ import './Video.css'
  * 3. **参数化深链没搬**：旧路由的 `params.url` / `autoParse`（从别的页面带链接跳过来）
  *    在新前端的 hash 路由里没有对应物，`App.tsx` 也不传 params。
  *
- * ## 为什么这里自己声明了一份解析结果类型
+ * ## 这里为什么有一份本地的解析结果类型
  *
- * `lib/api.ts` 的 `VideoParse` 和后端实际回的东西对不上：`currentPage` 那边写的是 number，
- * 后端回的是 `{ page, title, durationSec, cid, cover }` 对象；`streams` 可能是 `null`，
- * 而 yt-dlp 那条路**根本没有** `streams`；`info.episodes[].id` 实际叫 `epId`，
- * 还有 `season.episodes` / `acceptQuality` / `durl` 的 `streams` 这些字段都没写。
- * 只动 `Video.tsx` 这个前提下不去改公共库（照 `Lyrics.tsx` 的先例：按后端真实形状声明，
- * 在调用点断言），所以下面这份 `Parsed` 是**按 `server/media.rs` + `bili.rs` 和
- * `tests/contract/fixtures/video-parse-bili.json` 写的**，不是照着界面上猜的。
+ * 搬这一页的时候 `lib/api.ts` 的 `VideoParse` 是错的（`currentPage` 写成 number、
+ * `streams` 写死非空、缺 `videoAvc`/`videoHevc`/`acceptQuality`），而那次任务不允许改公共库，
+ * 于是按 `server/media.rs` + `bili.rs` + 夹具 `video-parse-bili.json` 在页面里声明了一份，
+ * 调用点用 `as unknown as` 断言。
+ *
+ * ⚠️ **`api.ts` 后来已经改成正确形状了**（`VideoParse` / `VideoInfo` / `VideoStreams` …），
+ * 本地这份属于重复定义。下次动这一页时可以直接用 `api.ts` 的类型、删掉断言；
+ * **但不要照着这两份中的任何一份去改后端** —— 后端才是权威（夹具是它的快照）。
  */
 
 /* ══════════════════════════════════════════════════════════ 后端形状 ══ */

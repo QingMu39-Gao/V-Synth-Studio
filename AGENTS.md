@@ -348,6 +348,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 | 症状 / 场景 | 结论 |
 |---|---|
+| `/api/fs/open` 收两种参数 | `path`（本地路径，**要求存在**）或 `url`（http/https/ftp/mailto，走系统默认程序、不做存在性检查）。**2026-10-02 之前它只读 `path`**，于是所有传 `{url}` 的调用必然 400 —— 两个前端的「在浏览器打开」都是坏的，已修（`platform::open_url` + `looks_like_url`，带单测） |
 | 接口「发了没反应 / 永远空列表」 | **先对后端源码与夹具**，别信旧前端的调用姿势：`collect` 要 `{dirs:[…]}`（旧前端发 `{dir}` → 永远 0 个文件）、`preview` 要 `{inputs,toFormat}`、`fs/list` 空 `path` **必须整个省略**（发 `path=` → 400）、`fs/roots` 字段是 `name` 不是 `label`。四处都是搬页面时实测翻出来的，见 `docs/NEXT-UI.md` 第 5 节 |
 | 「改了界面但用户看不到变化」 | **先怀疑缓存**：静态文件必须发 Cache-Control: no-store（simple.rs 已加）。测试每次开全新浏览器，永远命中不了缓存，只有用户常驻的 WebView2 拿着旧文件 |
 | 端口不能随机 | 固定 17878；**localStorage 按 origin 隔离**，端口一变 = 全新存储（JIZURA 标记、界面设置、PV 工程自动保存全丢） |
@@ -434,16 +435,28 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
   tools/            ← ffmpeg 302 MB + LibreSVIP 70 MB + yt-dlp 17 MB
 ```
 
-而 Tauri 的 `bundle.resources` 会把资源**平铺**到 `<安装目录>/resources/` 下，
-结构与上面这套对不上，`find_app_root()` 就找不到 `app/web/index.html`。
-所以 `tauri.conf.json` 里的 `resources` 现在是空的。
+而 Tauri 的 `bundle.resources` 会把资源**平铺**到 `<安装目录>/resources/` 下。
+
+> ⚠️ **本节此前写着「所以 `resources` 现在是空的」—— 那句已经过时了（2026-10-02 核实）。**
+> `tauri.conf.json` 现在有 4 条映射，而且键名与 `resolve_paths()` 的期望**正好对齐**：
+>
+> ```jsonc
+> "../../app/web"                 → "app/web"
+> "../../app/data/resources.json" → "app/data/resources.json"
+> "../../app/data/pinyin.json"    → "app/data/pinyin.json"
+> "../../tools"                   → "tools"
+> ```
+>
+> 也就是说 `resource_dir()`（第 1 步）**可能已经能定位到** `<安装目录>/resources/app/web`，
+> 只是**没打过包、没人实测过**。第一次打 MSI 时先验这一条，再决定还要不要改
+> `find_app_root()`。
 
 **这个问题不止影响 MSI。** 同一个「往上找」的假定在别的地方也不成立：
 
 - Windows **安装版** → 找不到（就是上面这个）
 - **macOS `.app` bundle** → `Contents/Resources/` 布局，同样找不到
-- 而 `resolve_paths()` 第一步**本来就写了**「问 Tauri 的 `resource_dir()`」，
-  只是因为 `resources` 是空的，这一步实际从没生效，一直在走兜底
+- 而 `resolve_paths()` 第一步**本来就写了**「问 Tauri 的 `resource_dir()`」——
+  既然 `resources` 现在有映射（见上面那条），这一步可能已经能生效，**但没人验过**
 
 **所以正确的修法是换掉「往上找」、真正改用 `resource_dir()`。**
 一次修好 MSI + macOS bundle 两件事，还能省掉构建脚本里「把 exe 复制到根目录」那个动作

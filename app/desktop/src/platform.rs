@@ -1,4 +1,4 @@
-//! 平台相关：Windows 特有的是注册表、explorer、回收站；其余走标准库。
+﻿//! 平台相关：Windows 特有的是注册表、explorer、回收站；其余走标准库。
 //!
 //! 这一层是**唯一**放平台代码的地方 —— 移植 macOS 时只需要在这里加一个 cfg 分支，
 //! 上层业务代码一行都不用改。（对照 docs/PLATFORM-PORT.md）
@@ -242,6 +242,59 @@ pub fn open_path(target: &str) -> std::io::Result<()> {
     }
 }
 
+/**
+ * 用**系统默认浏览器**打开一个 URL。
+ *
+ * 为什么单独一个函数：`open_path` 走的是 `explorer <目标>`，喂 URL 时行为依赖
+ * explorer 的 shell 委托，不可靠；这里用 Windows 官方的 URL 协议处理器。
+ * 三端各自的写法与 `open_path` 平行。
+ */
+pub fn open_url(target: &str) -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        // rundll32 url.dll,FileProtocolHandler 是 shell 打开 URL 的标准做法，
+        // **不会弹黑框**（`cmd /c start` 会，见 open_path 的注释）。
+        Command::new("rundll32.exe")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(target)
+            .spawn()?;
+        Ok(())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        Command::new("open").arg(target).spawn()?;
+        Ok(())
+    }
+    #[cfg(all(unix, not(target_os = "macos")))]
+    {
+        Command::new("xdg-open").arg(target).spawn()?;
+        Ok(())
+    }
+}
+
+/// 看着像 URL 吗（这几个前缀交给系统默认程序，**不做文件存在性检查**）
+pub fn looks_like_url(s: &str) -> bool {
+    let t = s.trim().to_ascii_lowercase();
+    ["http://", "https://", "ftp://", "mailto:"].iter().any(|p| t.starts_with(p))
+}
+#[cfg(test)]
+mod url_tests {
+    use super::looks_like_url;
+
+    /// 这个判定决定 `fs_open` 走「开浏览器」还是「开文件」，判错就会把
+    /// 一个 URL 当成文件去 `explorer`（或者反过来），所以单独立一条测试。
+    #[test]
+    fn detects_urls_case_insensitively() {
+        assert!(looks_like_url("https://example.com/a"));
+        assert!(looks_like_url("HTTPS://EXAMPLE.COM"));
+        assert!(looks_like_url("  http://127.0.0.1:17878/next/  "));
+        assert!(looks_like_url("mailto:someone@example.com"));
+        assert!(!looks_like_url(""));
+        assert!(!looks_like_url("C:\\Music\\a.wav"));
+        assert!(!looks_like_url("https:/missing-slash"));
+        assert!(!looks_like_url("file:///C:/tmp")); // file:// 有意不认，交给路径分支
+    }
+}
 /// 在文件管理器里定位到该文件（选中它）
 pub fn reveal_in_explorer(target: &str, select: bool) -> std::io::Result<()> {
     #[cfg(windows)]

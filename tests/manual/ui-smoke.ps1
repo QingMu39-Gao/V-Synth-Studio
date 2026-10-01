@@ -21,7 +21,7 @@ $ErrorActionPreference = 'Continue'
 
 # 自动发现端口：找 qingmu 进程监听的那个口
 if (-not $BaseUrl) {
-  $proc = Get-Process -Name 'qingmu-workstation', '清沐的虚拟歌姬工作站' -ErrorAction SilentlyContinue |
+  $proc = Get-Process -Name 'v-synth-studio', 'V-Synth-Studio' -ErrorAction SilentlyContinue |
           Select-Object -First 1
   if ($proc) {
     $conn = Get-NetTCPConnection -OwningProcess $proc.Id -State Listen -ErrorAction SilentlyContinue |
@@ -32,7 +32,7 @@ if (-not $BaseUrl) {
     Write-Host '找不到正在运行的工作站。' -ForegroundColor Yellow
     Write-Host '请先启动它（双击 启动工作站.bat），或用 -BaseUrl 指定地址。' -ForegroundColor Yellow
     Write-Host '测试用的独立服务：' -ForegroundColor DarkGray
-    Write-Host '  app\desktop\target\debug\qingmu-workstation.exe --serve --port=8891' -ForegroundColor DarkGray
+    Write-Host '  app\desktop\target\debug\v-synth-studio.exe --serve --port=8891' -ForegroundColor DarkGray
     Write-Host '  ...ui-smoke.ps1 -BaseUrl http://127.0.0.1:8891' -ForegroundColor DarkGray
     exit 2
   }

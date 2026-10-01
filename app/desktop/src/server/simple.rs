@@ -32,7 +32,7 @@ pub const AUTHOR_TAG: &str = "QingMu39";
 
 pub async fn health(State(st): State<Arc<AppState>>) -> Json<Value> {
     Json(ok(json!({
-        "name": "清沐的虚拟歌姬工作站",
+        "name": "V-Synth-Studio",
         "version": APP_VERSION,
         // 这个键历史上叫 node（前端读的就是它），现在装的是「运行环境」——
         // 显示在「关于」里，让人一眼看出跑在哪套系统上。
@@ -87,6 +87,9 @@ pub fn default_config(root: &Path) -> Value {
         "voiceDirs": [],
         "quality": 0,
         "audioQuality": 0,
+        // 性能模式：关掉全部高斯模糊（backdrop-filter 很贵，低端机 / 远控 / 集显上会掉帧）。
+        // 开关在「设置 → 外观」；前端主存 localStorage，这里只做备份。
+        "perfMode": false,
         // 只是为了让 root 参与签名，避免未使用参数告警
         "_root": root.to_string_lossy(),
     })
@@ -434,9 +437,28 @@ pub async fn fs_delete(Json(body): Json<Value>) -> Result<Json<Value>, ApiError>
     Ok(Json(ok(json!({ "path": target }))))
 }
 
+/**
+ * 打开一个本地路径**或一个 URL**。
+ *
+ * ⚠️ 这里以前只读 `path` 且要求路径存在，于是前端传 `{url}` 的调用**必然 400**
+ * （`body["path"]` 是空串 → 「路径不存在：」）—— 界面上「在浏览器打开」这类按钮
+ * 一直是坏的，而且**旧前端也在传 `{url}`**（`views/resources.js`、`views/settings.js`、
+ * `views/video.js`、`views/audio.js` 都有），属于两个前端共有的老 bug。
+ *
+ * 现在两种都收：`path`（要求存在）与 `url`（交给系统默认程序，不做存在性检查）。
+ */
 pub async fn fs_open(Json(body): Json<Value>) -> Result<Json<Value>, ApiError> {
-    let target = body.get("path").and_then(|v| v.as_str()).unwrap_or("");
-    if target.is_empty() || !Path::new(target).exists() {
+    let path = body.get("path").and_then(|v| v.as_str()).unwrap_or("");
+    let url = body.get("url").and_then(|v| v.as_str()).unwrap_or("");
+    let target = if !path.is_empty() { path } else { url };
+    if target.is_empty() {
+        return Err(ApiError::bad_request("缺少 path 或 url"));
+    }
+    if crate::platform::looks_like_url(target) {
+        crate::platform::open_url(target).map_err(ApiError::from)?;
+        return Ok(Json(ok(json!({ "url": target }))));
+    }
+    if !Path::new(target).exists() {
         return Err(ApiError::bad_request(format!("路径不存在：{target}")));
     }
     crate::platform::open_path(target).map_err(ApiError::from)?;
@@ -911,7 +933,16 @@ pub async fn static_files(State(st): State<Arc<AppState>>, req: axum::extract::R
     let rel = req.uri().path().trim_start_matches('/');
     let rel = if rel.is_empty() { "index.html" } else { rel };
     let web = st.web_dir();
-    let target = web.join(rel);
+    let mut target = web.join(rel);
+
+    // 目录要回退到它下面的 index.html。
+    //
+    // 原来只处理了「空路径 → index.html（根）」这一种情况，因为旧前端只有一个入口。
+    // 新前端挂在 /next/ 子目录下，请求 `/next/` 时 rel 是 "next/"，直接 fs::read 一个
+    // 目录会失败 —— 表现就是 404。这里补上目录回退，顺带对 `/next`（无斜杠）也成立。
+    if target.is_dir() {
+        target = target.join("index.html");
+    }
 
     // 目录穿越防护：规范化后必须仍在 web 目录内
     let ok_path = match fs::canonicalize(&target) {

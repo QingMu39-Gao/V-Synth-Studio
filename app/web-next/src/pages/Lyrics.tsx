@@ -54,11 +54,14 @@ const MODES = [
 /**
  * 后端真实的响应形状（`server/lyrics.rs` + `lyrics.rs`）。
  *
- * ⚠️ 和 `lib/api.ts` 里声明的 `LyricsHit` / `LyricsDoc` **对不上**：那边写的是
- * `{ items: [{title, artist}] }`，后端回的是 `{ songs: [{name, artists}] }`；
- * 取词/导入回的是 `{ song: {...}, lyric, trans }`，不是平铺的 title/artist。
- * 只动 `Lyrics.tsx` 这个前提下去改 `api.ts` 的类型不在范围里，
- * 所以在这里按后端实际形状声明并在调用点断言，注释写清原因。
+ * 形状：搜索回 `{ songs: [{id, name, artists, album, cover, durationSec}] }`，
+ * 取词 / 导入回 `{ song: {...}, lyric, trans }`（歌曲信息嵌在 `song` 里，不是平铺）。
+ *
+ * ⚠️ 这里为什么还留着一份本地声明：搬的时候 `lib/api.ts` 的类型是错的（写的是
+ * `{items:[{title,artist}]}`），页面只能在调用点 `as unknown as` 断言。
+ * **后来 `api.ts` 已经按后端改成正确形状**（`LyricsHit` / `LyricsDoc`），
+ * 本地这份就成了重复定义 —— 下次动这一页时可以直接用 `api.ts` 的类型，
+ * 把那几处 `as unknown as` 删掉。**别照着这两份中的任何一份去改后端。**
  */
 interface LyricSong {
   /** 只在搜索结果里有；取词响应里的 `song` 不带 id */
