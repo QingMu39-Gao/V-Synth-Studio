@@ -134,7 +134,8 @@ docs/                  THIRD-PARTY-NOTICES.md
 **判断依据是「能不能写」，不是「装没装」。** 曾经因为 `resource_dir()` 在绿色版
 也返回 exe 目录，导致绿色版被误判成安装版、配置写到 `%APPDATA%` 去了。
 
-> ⚠️ **`resolve_paths()` 这套「往上找」的逻辑已经出问题了**，见第八节。
+> ⚠️ **「往上找」这套逻辑对 macOS bundle 已经出问题了**（Windows 安装版/绿色版都已核实无碍
+> —— `resource_dir()` 在 Windows 上就是 exe 目录），见第八节。
 
 ---
 
@@ -506,7 +507,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 | 事项 | 状态 |
 |---|---|
-| **打包 MSI** | **能打出来了（2026-10-02）**，但**装完能不能跑还没验过** —— 见下 |
+| **打包 MSI** | **能打出来了（2026-10-02）**，安装布局也已用 MSI 表核实与 `resolve_paths()` 对齐；**只差真机装一遍** —— 见下 |
 | UTAU Shift-JIS | 纯 Rust 侧不生成 Shift-JIS，默认写 UTF-8 |
 | YouTube | 境内不可达，相关功能要走代理（设置页可配） |
 | `mime_of` | 已补齐（2026-10-02）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
@@ -515,11 +516,13 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
 | **工程转换** | 选项键已改用 LibreSVIP **官方选项名**，VSQX 参数曲线崩溃已**自动降级**（16 个真样本 15 通过，剩下 1 个是源工程自身音符重叠）。⚠️ `音高信息输入模式` 默认档是官方 `plain`（≈ 只带"已编辑"部分），要完整保留手画音高就在选项面板选「完整」。选项表与实现见 `docs/FEATURES.md` §3.1 |
 
-### 打包：能打了，但「装完能不能跑」还没验过
+### 打包：MSI 已经出得来，布局也已核实；只剩「真机装一遍」
 
-**2026-10-02 更新**：`build.ps1 -Release -Bundle` 与 CI 工作流都写好了，打包链路本身是通的
-（`bundle.resources` 的四条映射与 `resolve_paths()` 的期望对齐，见下面的引文）。
-**但打出来的 MSI 一台机器都没装过** —— 剩下的就是实测。
+**2026-10-02 更新**：`build.ps1 -Release -Bundle` 与 CI 工作流都通了 ——
+`.github/workflows/build-msi.yml` 打版本 tag（`v[0-9]*`）就自动出 MSI 并传 Release，
+本地也有成品：`V-Synth-Studio_1.2.0_x64_zh-CN.msi`（182.84 MB，在 Release `v1.2.0` 上）。
+**安装后的目录布局已经用 MSI 表核实过，与 `resolve_paths()` 对得上**（见下面那条）；
+**但这台机器上仍然一次都没真装过** —— 剩下的是实机验证那五条。
 
 程序靠 `main.rs::resolve_paths()` **往上找 `app/web/index.html`** 定位根目录，
 它假定的是「绿色版」布局：
@@ -531,42 +534,69 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
   tools/            ← ffmpeg 201 MB + LibreSVIP 70 MB + yt-dlp 17 MB
 ```
 
-而 Tauri 的 `bundle.resources` 会把资源**平铺**到 `<安装目录>/resources/` 下。
+`tauri.conf.json` 现在有 4 条映射，**映射键写什么就落在哪（相对 INSTALLDIR）**：
 
-> ⚠️ **本节此前写着「所以 `resources` 现在是空的」—— 那句已经过时了（2026-10-02 核实）。**
-> `tauri.conf.json` 现在有 4 条映射，而且键名与 `resolve_paths()` 的期望**正好对齐**：
+```jsonc
+"../../app/web"                 → "app/web"
+"../../app/data/resources.json" → "app/data/resources.json"
+"../../app/data/pinyin.json"    → "app/data/pinyin.json"
+"../../tools"                   → "tools"
+```
+
+> ✅ **2026-10-02 用 MSI 表核实过了：装出来的就是上面那个布局，`resolve_paths()` 天然适配。**
+> 把 Release `v1.2.0` 那个 `V-Synth-Studio_1.2.0_x64_zh-CN.msi` 的
+> `Directory` / `Component` / `File` 三张表读出来（Windows Installer COM，**不用真安装**）：
 >
-> ```jsonc
-> "../../app/web"                 → "app/web"
-> "../../app/data/resources.json" → "app/data/resources.json"
-> "../../app/data/pinyin.json"    → "app/data/pinyin.json"
-> "../../tools"                   → "tools"
+> ```
+> C:\Program Files\V-Synth-Studio\        ← INSTALLDIR；直属子目录只有 app\ 和 tools\
+>   v-synth-studio.exe                    （component `Path`，目录就是 INSTALLDIR）
+>   app\web\index.html                    ← 界面入口，resolve_paths 找的就是它
+>   app\data\resources.json   app\data\pinyin.json
+>   tools\ffmpeg\bin\ffmpeg.exe  tools\ffmpeg\bin\ffprobe.exe  tools\yt-dlp.exe
+>   tools\libresvip\libresvip-cli\libresvip-cli.exe
 > ```
 >
-> 也就是说 `resource_dir()`（第 1 步）**可能已经能定位到** `<安装目录>/resources/app/web`，
-> 只是**没打过包、没人实测过**。第一次打 MSI 时先验这一条，再决定还要不要改
-> `resolve_paths()`。
+> 两条关键事实：
+>
+> 1. **Tauri v2 不再加 `resources\` 前缀** —— 映射键写什么就落在哪。
+>    （本节此前写「会**平铺**到 `<安装目录>/resources/` 下」是 **Tauri v1 的行为，错的**。）
+> 2. **`resource_dir()` 在 Windows 上就是 exe 所在目录**
+>    （`tauri-2.12.0/src/path/desktop.rs` 的文档注释：「**Windows:** Resolves to the directory
+>    that contains the main executable.」，实现是 `current_exe()?.parent()`）。
+>    所以 `resolve_paths()` 第 1 步 `has_web(<resource_dir>/app/web/index.html)` 直接命中，
+>    `is_writable` 在 Program Files 下为假 → 正确判成**安装版**，可写目录落到
+>    `%APPDATA%\com.qingmu.vocalworkstation`。
+>
+> ⚠️ 剩下唯一的设计取舍：**以管理员身份装完又用管理员运行**时，
+> `is_writable(安装目录\app\data)` 会真返回 true → 被当成绿色版，配置写进安装目录。
+>
+> 读 MSI 表的姿势（踩过的坑都在这儿）：SQL 里列名要**反引号**；`LIKE '%x%'` 一律报
+> `OpenView,Sql`，要过滤就整表取回再用 PowerShell `-match`（三张表分别 476 / 3733 / 3729 行）；
+> `InvokeMember` 的返回值**每个都要 `$null =` 接住**，否则混进函数输出把 `@(...)`
+> 撑成假的 1-2 个元素（`Directory=1` 这种假数量就是这么来的）。
 
-**这个问题不止影响 MSI。** 同一个「往上找」的假定在别的地方也不成立：
+**剩下的问题只在别的形态上：**
 
-- Windows **安装版** → 找不到（就是上面这个）
-- **macOS `.app` bundle** → `Contents/Resources/` 布局，同样找不到
-- 而 `resolve_paths()` 第一步**本来就写了**「问 Tauri 的 `resource_dir()`」——
-  既然 `resources` 现在有映射（见上面那条），这一步可能已经能生效，**但没人验过**
+- Windows **安装版** → ✅ 已核实可用（`resource_dir()` = exe 目录，映射键落在 INSTALLDIR 下）
+- Windows **绿色版** → `resource_dir()` 同样返回 exe 目录，也命中；靠 `is_writable` 区分两者
+- **macOS `.app` bundle** → `Contents/Resources/` 布局，**这条仍然没修**
+- `--serve` 等传 `None` 的调用点 → 靠「往上找」，开发机与 CI 都成立
 
-**所以正确的修法是换掉「往上找」、真正改用 `resource_dir()`。**
-一次修好 MSI + macOS bundle 两件事，还能省掉构建脚本里「把 exe 复制到根目录」那个动作
-（Windows 绿色版特有的形态，macOS 上产物是 `.app`，没有这回事）。
+**所以「换掉往上找」不再是 Windows 的待办**，它现在只为 macOS bundle 而做，
+以及省掉构建脚本里「把 exe 复制到根目录」那一步（Windows 绿色版特有的形态，
+macOS 上产物是 `.app`，没有这回事）。
 
 `tools/` 约 288 MB（+ JIZURA 字体 54 MB），远超一般安装包的舒适区。原则已定：**随包分发**
 （不让用户自己下），已按此接进 `bundle.resources`。剩下的只是「直接塞进 MSI」还是「首次运行释放」。
 
 ### 还没实测过
 
-打包链路写好了但**没在真机装过**。第一次装的时候重点验证：
+打包链路写好了，**安装布局也已经用 MSI 表核实过**（见上），但**没在真机装过**。
+第一次装的时候重点验证（前两条已经静态核实过，这里是**实机复验**）：
 
-1. 装完之后界面能打开（路径定位对不对 —— 也就是 `resource_dir()` 那一步到底有没有生效）
-2. 改一个设置、重启，设置还在（可写目录对不对 —— 这条最容易挂）
+1. 装完之后界面能打开（路径定位对不对 —— `resource_dir()` 那一步**静态核实已通过**，
+   实机只需确认没有别的意外）
+2. 改一个设置、重启，设置还在（可写目录对不对 —— 静态推理是 `%APPDATA%`，**这条最容易挂**）
 3. 转换能跑（`tools/libresvip/` 找得到）
 4. ffmpeg 能用（`tools/ffmpeg/` 找得到）
 5. 打开文字 PV（`app/web/vendor/jizura/` 找得到）
@@ -687,8 +717,9 @@ git log --all -- app/data/resources.json
 
 ### 待办，按优先级
 
-1. **`resolve_paths()` 改用 `resource_dir()`** —— 修掉 MSI、修掉 macOS bundle，
-   省掉构建脚本里复制 exe 那步。跟前端选型无关。
+1. **`resolve_paths()` 改用 `resource_dir()`** —— ⚠️ **优先级已下调**：Windows 安装版与绿色版
+   都已核实没问题（见第八节），现在这条只为 **macOS bundle**（`Contents/Resources/` 布局）
+   和「省掉构建脚本复制 exe 那步」而做。跟前端选型无关。
 2. **把剩下几处手写控件换成库的**：`Button`（已是 `GlassButton`）和 `List`/`Dialog`/`Slider`/
    `Progress`/`Badge`/`Switch` 都在用了，但 `Field.tsx` 的输入框、页面里的 `.seg` / `.input`
    还是手写的（只有材质走库）。库有对应的 `TextField`（`multiline`）/ `Picker` / `RadioGroup` /
