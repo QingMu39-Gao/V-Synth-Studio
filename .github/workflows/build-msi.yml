@@ -152,6 +152,45 @@ jobs:
             app/desktop/target
           key: cargo-${{ runner.os }}-${{ hashFiles('app/desktop/Cargo.lock') }}
 
+      # ⚠️ 必须先装 tauri-cli：build.ps1 走的是 `cargo tauri build`，
+      #    而 GitHub 的 runner 只装 rustc/cargo，**没有 tauri 子命令**。实测报：
+      #      error: no such command: `tauri`
+      #      help: a command with a similar name exists: `miri`
+      #      → 编译失败（退出码 101）
+      #    版本跟本机对齐（本机 `cargo tauri --version` = 2.12.0）。
+      # 顺序很关键：**先 restore 再判断**。反过来的话判断完才 restore，等于每次都不命中。
+      - name: 取缓存（tauri-cli）
+        id: tauri-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.cargo/bin/tauri.exe
+          key: tauri-cli-2.12-${{ runner.os }}
+
+      - name: 装 tauri-cli
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $cli = Join-Path $env:CARGO_HOME 'bin\tauri.exe'
+          if (Test-Path $cli) {
+            Write-Host "tauri-cli 命中缓存：$cli"
+          } else {
+            Write-Host "没有缓存，现装 tauri-cli 2.12.*（第一次要十几分钟：cargo install 是源码编译）"
+            cargo install tauri-cli --version '^2.12' --locked
+            if ($LASTEXITCODE -ne 0) { throw "cargo install tauri-cli 失败（退出码 $LASTEXITCODE）" }
+          }
+          # 报明白话，别让下一步的 `no such command` 再当一次谜题
+          $c = Get-Command tauri -ErrorAction SilentlyContinue
+          if (-not $c) { throw "装完了但 PATH 里没有 tauri —— 检查 $env:CARGO_HOME\bin 是否在 PATH 上" }
+          Write-Host "tauri 就绪：$($c.Source)"
+
+      # 没命中才存（命中时不必再存一遍，省几十秒）
+      - name: 存缓存（tauri-cli）
+        if: steps.tauri-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          path: ~/.cargo/bin/tauri.exe
+          key: tauri-cli-2.12-${{ runner.os }}
+
       # 解存档 → tools\ 与 app\web\vendor\jizura\，并逐项核对（缺什么这里就说，
       # 不让它变成「装出来的程序点按钮没反应」）。-Local 让它只用缓存里的 zip，不联网。
       - name: 补齐工具与字体
