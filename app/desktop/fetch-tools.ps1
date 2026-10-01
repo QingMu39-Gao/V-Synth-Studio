@@ -50,15 +50,35 @@ if (-not $Zip) { $Zip = Join-Path $root 'data\.cache' }
 
 # ── 两个存档的位置 ────────────────────────────────────────────────────────────
 #
-# 默认指向本仓库 Release 上的两个附件（tag `assets-v1`）。**换成别的静态托管只改这两行。**
+# 默认指向本仓库 Release 上的两个附件（tag `assets-v1`）。托管地址**自动从 git 远端推**，
+# 换仓库 / 换托管只改下面这两行 URL（或直接设环境变量）。
 # 想一次性覆盖（比如临时挂到国内镜像）不必改文件，设环境变量即可：
 #     $env:VSYNTH_TOOLS_URL  /  $env:VSYNTH_JIZURA_URL
 #
 # ⚠️ 这两个附件必须由你自己传一次（本机跑一遍 tools\zip-assets.ps1 就有现成的 zip 了）：
 #     https://github.com/<你>/<仓库>/releases/tag/assets-v1
-# 现在仓库还没有远端，所以这一步还没做 —— 没做之前，本脚本在**干净机器**上会失败，
-# 在开发机上则因为文件已存在而直接跳过（所以本机不受影响）。
-$repo = 'QingMu39/V-Synth-Studio'          # ← 建完仓库后改成实际地址
+# 没传之前，本脚本在**干净机器**上会失败，在开发机上则因为文件已存在而直接跳过
+# （所以本机不受影响）。jizura.zip 没有上游兜底，没传就一定失败。
+# 仓库地址取自 `git remote get-url origin`（HTTPS 与 SSH 两种写法都认）；
+# 没有远端时用下面这个备选值，**那时你要把它改成实际地址**。
+$repo = 'QingMu39/V-Synth-Studio'
+do {
+    # ⚠️ 必须走 `cmd /c … 2>nul`，不能写 `git … 2>$null`：PowerShell 5.1 里对**原生命令**
+    # 的 `2>$null` 不生效，git 的 "fatal: not a git repository" 会变成一条
+    # NativeCommandError 终止错误，脚本直接死在这里（实测：临时仓库没远端时 exit 1，
+    # 而这一步本来就该安静地退回备选值）。用户机器上跑的是 PS 5.1，所以按 5.1 写。
+    # 另外必须带 `-C $root`：脚本可能从任何目录被调起，问「当前目录」的远端会问错仓库。
+    $u = (cmd /c "git -C `"$root`" remote get-url origin 2>nul" | Select-Object -First 1)
+    if (-not $u) { break }
+    $u = $u.Trim()
+    # 远端指向本地目录（`git remote add origin H:\...`）时推不出 GitHub 地址，直接用备选值：
+    # 强推的话 `H:/工作站` 会被剥成 `工作站` 当仓库名，虽然无害但很难排查。
+    if ($u -match '^[A-Za-z]:' -or $u.StartsWith('\\') -or $u.StartsWith('file:')) { break }
+    $u = $u -replace '^git\+', '' -replace '^https?://', '' -replace '^ssh://', '' -replace '^git@', ''
+    $u = $u -replace '^[^/]+[:@]', '' -replace '\.git$', '' -replace '/+$', ''
+    $p = @($u -split '/' | Where-Object { $_ })
+    if ($p.Count -ge 2) { $repo = ($p[-2..-1] -join '/') }
+} while ($false)
 $UrlTools  = if ($env:VSYNTH_TOOLS_URL)  { $env:VSYNTH_TOOLS_URL }  else { "https://github.com/$repo/releases/download/assets-v1/tools.zip" }
 $UrlJizura = if ($env:VSYNTH_JIZURA_URL) { $env:VSYNTH_JIZURA_URL } else { "https://github.com/$repo/releases/download/assets-v1/jizura.zip" }
 

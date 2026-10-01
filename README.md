@@ -58,7 +58,8 @@ JIZURA 与它的 2335 个字体（约 54 MB）同理，在 `app/web/vendor/jizur
 > ```
 >
 > 它们从本仓库 Release 的 `assets-v1` 附件解出来（`tools.zip` + `jizura.zip`），
-> 也可以加 `-Local <目录>` 用本机存着的 zip。见 `AGENTS.md` 的「打包与 CI」。
+> 也可以加 `-Local <目录>` 用本机存着的 zip。仓库地址是从 `git remote origin` 推出来的，
+> 所以 fork 出去也能直接用。见 `AGENTS.md` 的「打包与 CI」。
 
 ### Node.js 到底在哪一步出现
 

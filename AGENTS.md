@@ -171,8 +171,10 @@ powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1 -Local 'D:\
 
 来源是本仓库 Release 的附件（tag **`assets-v1`**）—— `tools.zip`（129 MB）与
 `jizura.zip`（51 MB），由 `tools\zip-assets.ps1` 打出来（那个脚本**只打包、不上传**）。
-两处 URL 都是硬编码的：`fetch-tools.ps1` 顶部的 `$UrlTools`/`$UrlJizura`
-与工作流里的 `ASSETS_TAG`，**换托管时两处都要改**。
+两处 URL：`fetch-tools.ps1` 的仓库地址是**自动从 `git remote get-url origin` 推**的
+（HTTPS / SSH 两种写法都认，fork 出去不用改；没有远端时退回文件里那个备选值），
+附件名（`tools.zip` / `jizura.zip`）与工作流里的 `ASSETS_TAG` 才是硬编码的 ——
+**换 tag 或换托管时改这两处**；想临时换地址用 `$env:VSYNTH_TOOLS_URL` / `$env:VSYNTH_JIZURA_URL`。
 `fetch-tools.ps1` 拿不到存档时会退到三个上游官方地址现下（gyan.dev / yt-dlp release /
 LibreSVIP release）—— 慢，但不用人去别处找。
 
