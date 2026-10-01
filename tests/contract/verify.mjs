@@ -153,6 +153,20 @@ const INTENDED = [
     why: '同上 —— 多识别出的编辑器让计数 +1',
   },
   {
+    // video-parse-bili 是**唯一一个打第三方实时接口**的用例（POST /api/video/parse 去问
+    // api.bilibili.com）。夹具是 2026-08 抓的，那时匿名请求还能拿到真数据；现在 B 站反爬
+    // 对匿名/机房 IP 直接回 **HTTP 412**，后端如实报
+    // {"code":null,"error":"HTTP 412：https://api.bilibili.com/x/web-interface/view?...","ok":false}。
+    //
+    // 所以它天生不是**确定性契约**：能不能过取决于 B 站的脸色，CI runner 与开发机都躲不过。
+    // 判「有意」的条件收得很紧 —— **只有当后端把 412 原样报出来**才算（error 里必须出现 412）。
+    // 要是哪天 B 站放行、数据回来了，这条 diff 就不再出现，用例会**照常逐字段比**；
+    // 反过来若解析器自己坏了（字段改名、取值错），报的不会是 412，于是照样红 —— 没被捂掉。
+    match: /^video-parse-bili\./,
+    why: 'B 站对匿名请求回 HTTP 412（反爬），实时接口拿不到数据；夹具是能取到数据时抓的冻结基准',
+    onlyWhenLine: /HTTP 412/,
+  },
+  {
     // 我的注册表读取比 Node 版的 PowerShell 脚本多够到 3 条登记
     // （BD79E492NWWK3DDF / BL8CEAM5N4XN3LFK / BP8CDDH5M7XN2PED）。
     // 后果只是这 3 条条目的 source 标签显示成「注册表」而不是「目录扫描」。
@@ -276,8 +290,15 @@ const INTENDED = [
   },
 ]
 
-function isIntended(diffLine) {
-  return INTENDED.find((r) => r.match.test(diffLine))
+/**
+ * 判断一条差异是不是「有意的」。
+ *
+ * `liveLine` 是**整段原始响应序列化后的一行**（只给需要它当证据的规则用）——
+ * 差异行本身只有「路径: 说明」，看不到实际值，所以想「只在对方返回某个特定错误时才算有意」
+ * 就必须把原始响应也传进来（video-parse-bili 那条就是这么判的：error 里必须出现 HTTP 412）。
+ */
+function isIntended(diffLine, liveLine = '') {
+  return INTENDED.find((r) => r.match.test(diffLine) && (!r.onlyWhenLine || r.onlyWhenLine.test(liveLine)))
 }
 
 /* ── 主流程 ──────────────────────────────────────────────────── */
@@ -364,8 +385,10 @@ async function main() {
 
     const rawDiffs = diff(expected, actual, name)
     // 分离「有意的差异」和「真问题」
-    const intended = rawDiffs.filter((d) => isIntended(d))
-    const diffs = rawDiffs.filter((d) => !isIntended(d))
+    // liveLine 只服务于 onlyWhenLine 那类规则：它要看的是**实际响应里的内容**（比如错误原文）
+    const liveLine = JSON.stringify(actual ?? null)
+    const intended = rawDiffs.filter((d) => isIntended(d, liveLine))
+    const diffs = rawDiffs.filter((d) => !isIntended(d, liveLine))
 
     if (diffs.length === 0) {
       const note = intended.length ? `（另有 ${intended.length} 处有意差异）` : ''
