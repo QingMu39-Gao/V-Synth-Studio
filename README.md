@@ -26,7 +26,11 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 |---|---|
 | `build.ps1` | debug 版（默认，编得快，带控制台窗口方便看日志） |
 | `build.ps1 -Release` | release 版（体积小、跑得快，无控制台窗口） |
-| `build.ps1 -Bundle` | 出安装包 —— **见 `AGENTS.md`，现在还不能直接打** |
+| `build.ps1 -Bundle` | 出 Windows 安装包（MSI），要 `-Release` 一起用 |
+| `build.ps1 -FetchTools` | 先把 `tools/` 与 JIZURA 字体补齐（干净机器 / CI 上用） |
+
+打 tag 推上去（`git tag v1.1.0 && git push origin v1.1.0`）会由
+`.github/workflows/build-msi.yml` 在 GitHub Actions 上自动编译、打包、传 Release。
 
 ---
 
@@ -41,8 +45,18 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 | Python | **不需要** | LibreSVIP 自带运行时 |
 | WebView2 | **需要** | 唯一的硬依赖 |
 
-外部工具（ffmpeg / LibreSVIP / yt-dlp，共约 390 MB）**随包分发**在 `tools/` 里，
+外部工具（ffmpeg / LibreSVIP / yt-dlp，共约 288 MB）**随包分发**在 `tools/` 里，
 不需要联网下载 —— 主要在国内用，让用户自己去 GitHub 下 ffmpeg 基本下不动。
+JIZURA 与它的 2335 个字体（约 54 MB）同理，在 `app/web/vendor/jizura/`。
+
+> **这两块大件不在仓库里**（仓库只放源码，约 7 MB）。编译前补一次即可：
+>
+> ```
+> powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1
+> ```
+>
+> 它们从本仓库 Release 的 `assets-v1` 附件解出来（`tools.zip` + `jizura.zip`），
+> 也可以加 `-Local <目录>` 用本机存着的 zip。见 `AGENTS.md` 的「打包与 CI」。
 
 ### Node.js 到底在哪一步出现
 
@@ -138,9 +152,12 @@ JIZURA 本地部署，歌词一键带入，导出 MP4 / PNG 序列。字体已�
 
 | 路径 | 说明 |
 |---|---|
-| `app/desktop/` | Tauri 外壳 + 内嵌 Rust 后端 |
-| `app/web/` | 前端构建产物（React + Vite：`index.html` + `assets/` + `vendor/` + `img/`） |
+| `app/desktop/` | Tauri 外壳 + 内嵌 Rust 后端（构建脚本 `build.ps1` / `fetch-tools.ps1` 也在这里） |
+| `app/web/` | 前端构建产物（React + Vite：`index.html` + `assets/`）；`vendor/`（JIZURA）与 `img/` 是不入仓库的随包资源 |
 | `app/data/` | 配置、资源库、拼音词典 |
-| `tools/` | 随包分发的 ffmpeg / LibreSVIP / yt-dlp |
+| `app/web-next/` | 前端源码（React + Vite + Tailwind） |
+| `tools/` | 随包分发的 ffmpeg / LibreSVIP / yt-dlp；`zip-assets.ps1` 打 Release 用的存档 |
 | `tests/` | 契约测试、冒烟测试、样本 |
+| `.github/workflows/` | CI：编译 + 打 MSI + 冒烟 |
+| `资料归档/` | 上传 Release 用的两个大存档（**不入库**） |
 | `AGENTS.md` | **给开发者/智能体的技术文档** |

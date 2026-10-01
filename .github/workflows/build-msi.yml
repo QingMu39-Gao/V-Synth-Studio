@@ -1,0 +1,204 @@
+# 编译 + 打包 Windows 安装包（MSI）
+#
+# 手动跑：Actions → 打包 Windows (MSI) → Run workflow
+#   勾上 release 就顺手把 MSI 传到 Release 上（只有 tag 触发才需要勾，平时留空即可）
+# 打 tag 跑：`git tag v1.1.0 && git push origin v1.1.0` —— 自动编译并把 MSI 传上 Release
+#
+# ── 这个仓库里没有任何二进制 ────────────────────────────────────────────────
+#
+# 源码不到 7MB。两块「随程序分发但不属于源码」的大件不入库，由编译前的步骤补进工作区：
+#
+#   tools\                      ffmpeg 201MB + LibreSVIP 70MB + yt-dlp 17MB ≈ 288MB
+#   app\web\vendor\jizura\      JIZURA 文字 PV：index.html + 2335 个 woff2 ≈ 54MB
+#
+# 补齐源是本仓库 Release 上的两个附件（tag `assets-v1`），由 tools\zip-assets.ps1 打出：
+#   tools.zip（129MB）  jizura.zip（51MB）
+# 下面第一个 job 把它们从 Release 取下来并**存进 Actions 缓存** ——
+# 之后每次跑都走缓存，只有附件版本变了才重新下（180MB 从 GitHub 下大约一分钟）。
+#
+# ⚠️ 前提：assets-v1 这个 Release 必须先建好、两个 zip 必须传上去。没传的话
+#    job `assets` 会在「取存档」那一步直接失败（不会白跑十几分钟才失败）。
+#
+# ⚠️ 这个工作流还没在真 CI 上跑过（本机没有 gh、仓库也还没有远端）。第一次 push 上去跑时，
+#    最可能出问题的是**第三方 action 的版本号**：如果 GitHub 报 "Unable to resolve action"，
+#    把 @ 后面那串换成当时的最新大版本即可。编译/打包那几行是照 app\desktop\build.ps1
+#    本机实测的命令抄的，风险低。
+
+name: 打包 Windows (MSI)
+
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: '编译成功后把 MSI 上传到 Release（打 tag 时必勾）'
+        type: boolean
+        default: false
+      verbose:
+        description: '打开 tauri 的详细日志（打包失败时用来定位）'
+        type: boolean
+        default: false
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write          # tag 触发时要把 MSI 传上 Release，需要写权限
+
+env:
+  # 想换成别的托管（自建、国内镜像）时改这两行，并同步改 app\desktop\fetch-tools.ps1
+  # 里对应那两行的默认值 —— 两处都指同一个附件，别只改一边。
+  ASSETS_TAG: assets-v1
+
+jobs:
+  # ── 第一个 job：把两个存档准备好并缓存起来 ────────────────────────────────
+  #
+  # 为什么单独拆一个 job：这 180MB 跟「MSI 有没有变」无关，而 Actions 的缓存
+  # **跨 run 复用、跨 job 也能命中**，所以后面 msi job 直接 restore 就行，
+  # 每次跑省下一分钟加上 GitHub Release 的带宽。
+  assets:
+    name: 准备存档（工具与字体）
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: 取缓存
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            data/.cache/tools.zip
+            data/.cache/jizura.zip
+          key: assets-${{ env.ASSETS_TAG }}-${{ runner.os }}
+
+      # 缓存没命中才下。附件不在（tag 写错、Release 没建、附件没传）时这里就失败 ——
+      # 这是**故意的**：宁可在第 1 分钟失败，也不要等编译完 20 分钟才发现工具是空的。
+      - name: 从 Release 取存档
+        if: steps.cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force -Path 'data/.cache' | Out-Null
+          $base = "https://github.com/${{ github.repository }}/releases/download/${{ env.ASSETS_TAG }}"
+          foreach ($n in 'tools', 'jizura') {
+            $url = "$base/$n.zip"
+            Write-Host "下载 $url"
+            curl.exe -L --fail --connect-timeout 30 --speed-limit 2048 --speed-time 60 -o "data/.cache/$n.zip" $url
+            if ($LASTEXITCODE -ne 0) { throw "下载 $n.zip 失败（附件传了吗？tag ${{ env.ASSETS_TAG }}）" }
+          }
+          Get-ChildItem 'data/.cache/*.zip' | Format-Table Name, Length
+
+      # cache-hit 时上面的步骤被跳过，这时探针是唯一能证明「缓存真的还在」的东西。
+      # 少了它，缓存半途坏掉会表现成后面解压出一堆残缺文件。
+      - name: 校验存档完整
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($n in 'tools', 'jizura') {
+            $f = "data/.cache/$n.zip"
+            if (-not (Test-Path $f)) { throw "缺少 $f" }
+            $mb = (Get-Item $f).Length / 1MB
+            Write-Host ("{0}.zip  {1:N1} MB" -f $n, $mb)
+            # tools.zip 实测 129MB、jizura.zip 51MB。阈值取得很松，只拦「下了一半」这种。
+            if ($mb -lt 20) { throw "$n.zip 只有 $mb MB，明显不完整" }
+          }
+
+  # ── 第二个 job：编译 + 打包 + 冒烟 ────────────────────────────────────────
+  msi:
+    name: 编译并打包 MSI
+    needs: assets
+    # windows-latest 上预装了：MSVC + Windows SDK（链接需要）、Node.js、Edge。
+    # 本机那几个 H 盘自装路径由 build.ps1 自己探测，这里不用管。
+    runs-on: windows-latest
+    timeout-minutes: 120   # release 编译 + 含 ~340MB 资源的 MSI 打包（主要是压缩慢）
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: 取存档（与 assets job 同一份缓存）
+        uses: actions/cache/restore@v4
+        with:
+          path: |
+            data/.cache/tools.zip
+            data/.cache/jizura.zip
+          key: assets-${{ env.ASSETS_TAG }}-${{ runner.os }}
+          fail-on-cache-miss: true   # 空的 tools\ 会打出一个缺工具的安装包，不能放过去
+
+      # Node 只在这一步需要：前端是 Vite 构建的（见 AGENTS.md「Node 只在构建期出现」）。
+      # 版本照本机实测的 v24 写；Vite 8 要求 Node 20.19+ / 22.12+，24 稳。
+      - name: 装 Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: app/web-next/package-lock.json
+
+      - name: 装 Rust（stable + MSVC）
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      # 缓存 cargo。含 ~340MB 资源的 MSI 每次都要重新打包，但增量编译能省下大头
+      # （第一次跑会慢，之后就快了）。
+      - name: 缓存 cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            app/desktop/target
+          key: cargo-${{ runner.os }}-${{ hashFiles('app/desktop/Cargo.lock') }}
+
+      # 解存档 → tools\ 与 app\web\vendor\jizura\，并逐项核对（缺什么这里就说，
+      # 不让它变成「装出来的程序点按钮没反应」）。-Local 让它只用缓存里的 zip，不联网。
+      - name: 补齐工具与字体
+        shell: pwsh
+        run: ./app/desktop/fetch-tools.ps1 -Local 'data/.cache'
+
+      - name: 编译并打包
+        shell: pwsh
+        env:
+          # tauri 的详细日志。打包失败时最有用的是它的 Wix 那几行输出。
+          TAURI_LOG: ${{ inputs.verbose && 'debug' || '' }}
+        # -Release：release 版（体积小、跑得快），-Bundle 才会打 MSI
+        # -NoCopy：CI 不需要把 exe 复制到仓库根目录（那是给本机启动器用的）
+        run: ./app/desktop/build.ps1 -Release -Bundle -NoCopy
+
+      # 让「编出来的东西真的能跑」有个证据，而不是只看编译退出码。
+      # 契约用例是 Node 后端时代冻结的真实响应基准（永久基准），8 页冒烟走的是真无头 Edge。
+      - name: 冒烟（契约 + 8 页）
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $exe = 'app/desktop/target/release/v-synth-studio.exe'
+          if (-not (Test-Path $exe)) { throw "找不到 $exe" }
+          $p = Start-Process -FilePath $exe -ArgumentList '--serve', '--port=8891' -PassThru -WindowStyle Hidden
+          try {
+            # 服务是异步起的（main.rs 最多等 30 秒），轮询到能应答为止
+            $ok = $false
+            foreach ($i in 1..30) {
+              Start-Sleep -Seconds 1
+              try { Invoke-WebRequest 'http://127.0.0.1:8891/api/health' -UseBasicParsing -TimeoutSec 3 | Out-Null; $ok = $true; break } catch { }
+            }
+            if (-not $ok) { throw "服务没能起来（8891 无应答）—— 看 target/release 旁边或 %APPDATA% 下的日志" }
+            node tests/contract/verify.mjs 8891
+            if ($LASTEXITCODE -ne 0) { throw "契约用例不一致（退出码 $LASTEXITCODE）" }
+            node tests/manual/next-smoke.mjs 8891
+            if ($LASTEXITCODE -ne 0) { throw "8 页冒烟失败（退出码 $LASTEXITCODE）" }
+          } finally {
+            # ⚠️ 按**精确 PID** 停：不要按进程名或命令行子串杀，那会连别的东西一起带走。
+            Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue
+          }
+
+      # 先把产物传成 build artifact：不管有没有传 Release，跑完都能在 Actions 页面下载
+      - name: 传 MSI（build artifact）
+        uses: actions/upload-artifact@v4
+        with:
+          name: v-synth-studio-msi
+          # target 目录被 .gitignore 忽略，但 artifact 是文件系统层面的，照传不误
+          path: app/desktop/target/release/bundle/msi/*.msi
+          if-no-files-found: error      # 没打出 MSI 却"成功"，比失败更糟
+
+      - name: 传 MSI 到 Release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: app/desktop/target/release/bundle/msi/*.msi
+          generate_release_notes: true

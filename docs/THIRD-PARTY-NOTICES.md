@@ -154,6 +154,16 @@ QQ 侧用 `search_for_qq_cp`（搜索）与 `fcg_query_lyric_new.fcg`（歌词�
 把运行时惰性插 `<link>` 的那一句也指向 `fonts.css`）。升级时整份替换该目录即可，
 替换后需要重新执行 `tools/fetch-jizura-fonts.ps1` 并重做这三处替换。
 
+⚠️ 这个目录（约 54MB：index.html + 2335 个 woff2 + fonts.css）**不入库**，两个脚本分工不同：
+
+- `app/desktop/fetch-tools.ps1` —— 常规路径。把存档 `jizura.zip` 解到
+  `app\web\vendor\jizura\`，**不解析、不改动**里面任何东西，所以它既快又不会跑偏。
+  开发机、CI 都走这条。
+- `tools/fetch-jizura-fonts.ps1` —— **只在真的要升级 JIZURA 时**用：它按上面那三处改动
+  从上游重新生成 `index.html` + `fonts.css` + 字体，改完要往 `jizura.zip` 里重打一份存档。
+  它抓 Google Fonts，所以依赖能访问 Google（脚本里写死了本机代理 127.0.0.1:7890）——
+  正因如此它不适合放进 CI。
+
 ### 随它分发的字体
 
 `app/web/vendor/jizura/fonts/` 与 `fonts.css` 由 `tools/fetch-jizura-fonts.ps1` 从

@@ -22,38 +22,77 @@
 #    （GBK）解码，中文注释变乱码，乱码里的引号会吞掉换行 → 语法错。
 #    改完跑一次：node tests\manual\fix-ps1-bom.mjs --write
 #
-# 工具链位置（都装在 H 盘，避免占用 C 盘）：
+# 工具链位置（开发机都装在 H 盘，避免占用 C 盘）：
 #   Rust   : H:\DevTools\cargo  +  H:\DevTools\rustup
 #   MSVC   : H:\VSBuildTools
 #   Win SDK: C:\Program Files (x86)\Windows Kits\10   （系统固定位置）
 #   Node   : 系统 PATH 里（只有开发机需要，用户那边不用装）
+#
+# ⚠️ 2026-10-05：上面这些路径**不再是硬性要求**。为了能在 GitHub Actions 上跑，
+#    本脚本会按「先找自装路径、找不到就用系统默认」的顺序自己探测（见下面「工具链探测」）。
+#    改动的原因很直接：CI runner 上 H 盘不存在，原来那句 `if (-not (Test-Path $vcvars)) { throw }`
+#    会让工作流在第一步就死掉，而且死因看起来像「没装 VS」——极难往回查。
 
 param(
     [switch]$Release,     # 编译 release 版（慢，但体积小、跑得快）。默认 debug，适合开发时反复改
     [switch]$Bundle,      # 打出安装包（MSI / NSIS），需要先装 tauri-cli
     [switch]$Clean,       # 先 cargo clean
-    [switch]$SkipWeb      # 跳过前端构建（只改 Rust、想省那几秒时用）
+    [switch]$SkipWeb,     # 跳过前端构建（只改 Rust、想省那几秒时用）
+    [switch]$FetchTools,  # 先补齐 tools\ 与 JIZURA 字体（干净机器 / CI 上用，要联网）
+    [switch]$NoCopy       # 不把 exe 复制到程序根目录（CI 用，省得去动仓库根）
 )
 
 $ErrorActionPreference = 'Stop'
+
+# 跨平台说明放在最前面，因为这台是 Windows、以后要适配 mac 和 android，
+# 而 `-Bundle` 在最容易踩的方式下失败：tauri 只管「当前平台怎么打」，
+# 在 macOS 上跑 -Bundle 会去找不存在的东西，然后报一堆看着像代码错的构建错误。
+if ($Bundle -and $env:OS -ne 'Windows_NT') {
+    throw ("-Bundle 目前只实现了 Windows 的 MSI（tauri.conf.json 的 bundle.targets 是 [""msi""]）。" +
+           "`n这个脚本探测的也是 MSVC + Windows SDK，在别处必然失败。" +
+           "`n要在 macOS / Linux 上出包，请另写一个 scripts/build-<平台>.sh（前端那步完全一样：" +
+           "`n  cd app/web-next && npm ci && npm run build   ，产物同样是 ../web/），" +
+           "`n后端只差 tauri.conf.json 的 bundle.targets 与图标（icons/ 里已有 icon.icns 等 mac 用的现成物）。")
+}
 
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # 程序根目录：app\desktop → app → 工作站（就是含 app\web\index.html 的那一层）
 $root = Split-Path -Parent (Split-Path -Parent $here)
 
-# ── 工具链路径 ──────────────────────────────────────────────
-$cargoHome = 'H:\DevTools\cargo'
+# ── 工具链探测（开发机自装路径优先，找不到就用系统默认）──────────────────
+#
+# 开发机把 Rust/MSVC 装在 H 盘（不占 C 盘）；GitHub Actions 的 runner 上它们在
+# 默认位置。两种都支持，所以这里全部改成「探测」而不是「写死 + 检查存在」。
+$cargoHome  = 'H:\DevTools\cargo'
 $rustupHome = 'H:\DevTools\rustup'
-$vsRoot = 'H:\VSBuildTools'
-$vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
+$vsRoot     = 'H:\VSBuildTools'
+if (-not (Test-Path (Join-Path $cargoHome 'bin\cargo.exe'))) { $cargoHome = '' }    # 空 = 用默认 %USERPROFILE%\.cargo
+if (-not (Test-Path (Join-Path $rustupHome 'toolchains')))   { $rustupHome = '' }
 
+# vcvars64.bat：先看自装路径，再问 vswhere（VS 安装器自带，位置固定）
+$vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
 if (-not (Test-Path $vcvars)) {
-    throw "找不到 vcvars64.bat：$vcvars`n请先运行 H:\DevTools\安装VC工具链.bat（右键以管理员身份运行）"
+    $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
+    if (Test-Path $vswhere) {
+        $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
+                             -property installationPath 2>$null | Select-Object -First 1
+        if ($vsPath) { $vcvars = Join-Path $vsPath.Trim() 'VC\Auxiliary\Build\vcvars64.bat' }
+    }
+}
+if (-not (Test-Path $vcvars)) {
+    throw "找不到 vcvars64.bat（MSVC 的 C++ 生成工具）。开发机请先运行 H:\DevTools\安装VC工具链.bat；`nCI 上请用 microsoft/setup-msbuild 或 preinstalled 的 VS。`n找过的地方：$vsRoot、vswhere 报告的 VS 安装目录。"
 }
 
-$cargo = Join-Path $cargoHome 'bin\cargo.exe'
-if (-not (Test-Path $cargo)) { throw "找不到 cargo：$cargo" }
+# cargo：优先自装，否则从 PATH 找（rustup 装的话在 %USERPROFILE%\.cargo\bin）
+$cargo = if ($cargoHome) { Join-Path $cargoHome 'bin\cargo.exe' } else { $null }
+if (-not $cargo -or -not (Test-Path $cargo)) {
+    $cargo = (Get-Command cargo.exe -CommandType Application -EA SilentlyContinue |
+              Select-Object -First 1).Source
+}
+if (-not $cargo -or -not (Test-Path $cargo)) {
+    throw "找不到 cargo。装 Rust（rustup）后重试；CI 上用 dtolnay/rust-toolchain。"
+}
 
 # Windows SDK 是 MSVC 链接必需的前置，先确认它在
 $sdkOk = Get-ChildItem 'C:\Program Files (x86)\Windows Kits\10\Lib' -Directory -EA SilentlyContinue |
@@ -63,10 +102,28 @@ if (-not $sdkOk) {
     throw "找不到 Windows SDK 的 kernel32.lib`n（应该在 C:\Program Files (x86)\Windows Kits\10\Lib\10.*\um\x64\）"
 }
 
-Write-Host "Rust    : $cargoHome"
-Write-Host "MSVC    : $vsRoot"
+Write-Host "cargo   : $cargo"
+Write-Host "vcvars  : $vcvars"
 Write-Host "Win SDK : $($sdkOk.FullName)"
 Write-Host ""
+
+# ── 第零步（可选）：补齐 tools\ 与 JIZURA 字体 ─────────────────────────────────
+#
+# 两块「不属于源码、但随安装包分发」的大二进制，合计约 340 MB，都**不入库**：
+#   ① tools\                     ffmpeg + yt-dlp + LibreSVIP CLI ≈ 288MB（.gitignore 锚定 /tools/）
+#   ② app\web\vendor\jizura\     JIZURA PV 的 index.html + 2335 个 woff2 ≈ 54MB
+# 所以在一台干净机器上（新电脑、CI）这一步必须有人做，否则编译照样成功、装了也能启动，
+# 只有用户点「工程转换」或打开文字 PV 时才报缺东西。
+if ($FetchTools) {
+    $fetch = Join-Path $here 'fetch-tools.ps1'
+    Write-Host "补齐外部工具与字体（fetch-tools.ps1）"
+    Write-Host ("─" * 60)
+    # ⚠️ 用 & 调用而不是 dot-source：fetch-tools.ps1 里有 `exit 1`，
+    #    dot-source（`. $fetch`）会把**本脚本**一起结束掉，后面什么都不跑还看不出原因。
+    & $fetch
+    if ($LASTEXITCODE -ne 0) { throw "外部工具/字体不齐（fetch-tools.ps1 退出码 $LASTEXITCODE）" }
+    Write-Host ""
+}
 
 Push-Location $here
 try {
@@ -146,17 +203,39 @@ try {
         Write-Host ""
     }
 
+    # 打包前把「随包分发的东西齐不齐」核死。
+    #
+    # ⚠️ 为什么必须在**这里**拦：tauri 的 bundle.resources 映射的是
+    #    `"../../app/web": "app/web"` 和 `"../../tools": "tools"` —— 源目录缺文件时
+    #    **构建不报错**，打出来的 MSI 里就是少的。那种包要在用户点「工程转换」（缺 LibreSVIP）
+    #    或打开文字 PV（缺 JIZURA）时才现形，而那时已经发出去了。
+    if ($Bundle) {
+        $need = @(
+            'tools\ffmpeg\bin\ffmpeg.exe',
+            'tools\yt-dlp.exe',
+            'tools\libresvip\libresvip-cli\libresvip-cli.exe',
+            'app\web\vendor\jizura\index.html',
+            'app\web\index.html'
+        )
+        $missing = @($need | Where-Object { -not (Test-Path (Join-Path $root $_)) })
+        if ($missing.Count) {
+            throw ("打包缺文件（装出来的程序会缺功能）：`n  - " + ($missing -join "`n  - ") +
+                   "`n先跑：powershell -ExecutionPolicy Bypass -File app\desktop\build.ps1 -FetchTools -Bundle")
+        }
+    }
+
     $cargoArgs = if ($Bundle) { @('tauri', 'build') } elseif ($Release) { @('build', '--release') } else { @('build') }
     if ($Clean) { $cargoArgs = @('clean') + $cargoArgs }
 
-    # 在 cmd 里 call vcvars 设置好 MSVC 环境，再跑 cargo
-    $inner = @(
-        "call `"$vcvars`" >nul"
-        "set `"CARGO_HOME=$cargoHome`""
-        "set `"RUSTUP_HOME=$rustupHome`""
-        "set `"PATH=$cargoHome\bin;%PATH%`""
-        "`"$cargo`" $($cargoArgs -join ' ')"
-    ) -join ' && '
+    # 在 cmd 里 call vcvars 设置好 MSVC 环境，再跑 cargo。
+    # CARGO_HOME / RUSTUP_HOME 只在探测到自装路径时才覆盖 —— 留空就等于让 rustup 用默认位置
+    # （CI 上就是默认的 %USERPROFILE%\.cargo 与 %USERPROFILE%\.rustup）。
+    $inner = @("call `"$vcvars`" >nul")
+    if ($cargoHome)  { $inner += "set `"CARGO_HOME=$cargoHome`"" }
+    if ($rustupHome) { $inner += "set `"RUSTUP_HOME=$rustupHome`"" }
+    $inner += "set `"PATH=$(Split-Path -Parent $cargo);%PATH%`""
+    $inner += "`"$cargo`" $($cargoArgs -join ' ')"
+    $inner = $inner -join ' && '
 
     Write-Host "执行: cargo $($cargoArgs -join ' ')"
     Write-Host ("─" * 60)
@@ -176,19 +255,25 @@ try {
 
     if (-not (Test-Path $exe)) { throw "编译报成功但找不到产物：$exe" }
 
-    $dest = Join-Path $root 'v-synth-studio.exe'
-    # 根目录那个可能正被占用（程序开着），先提示而不是抛一堆红字
-    try {
-        Copy-Item $exe $dest -Force
-    } catch {
-        throw "复制到根目录失败（程序可能还开着）：$($_.Exception.Message)`n请先关掉正在运行的工作站，再重新运行本脚本。"
-    }
+    if ($NoCopy) {
+        Write-Host ""
+        Write-Host ("编译成功：{0}  ({1:N1} MB)（-NoCopy，没往根目录复制）" -f (Split-Path -Leaf $exe), ((Get-Item $exe).Length / 1MB))
+        Write-Host ""
+    } else {
+        $dest = Join-Path $root 'v-synth-studio.exe'
+        # 根目录那个可能正被占用（程序开着），先提示而不是抛一堆红字
+        try {
+            Copy-Item $exe $dest -Force
+        } catch {
+            throw "复制到根目录失败（程序可能还开着）：$($_.Exception.Message)`n请先关掉正在运行的工作站，再重新运行本脚本。"
+        }
 
-    $item = Get-Item $dest
-    Write-Host ""
-    Write-Host ("编译成功：{0}  ({1:N1} MB)" -f $item.Name, ($item.Length / 1MB))
-    Write-Host "已复制到根目录，现在双击「启动工作站.bat」跑的就是这一版。"
-    Write-Host ""
+        $item = Get-Item $dest
+        Write-Host ""
+        Write-Host ("编译成功：{0}  ({1:N1} MB)" -f $item.Name, ($item.Length / 1MB))
+        Write-Host "已复制到根目录，现在双击「启动工作站.bat」跑的就是这一版。"
+        Write-Host ""
+    }
 
     if ($Bundle) {
         $bundleDir = Join-Path $target 'bundle'

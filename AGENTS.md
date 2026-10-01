@@ -109,7 +109,7 @@ app/
     img/logo.png      顶栏图标（源 app/desktop/icons/128x128.png，拷进来才伺服得到）
   data/                只读数据：resources.json / pinyin.json（schema 见第七节）
                       绿色版的可写 config.json 也落在这里（安装版在 %APPDATA%）
-tools/                 随包分发：ffmpeg / yt-dlp / LibreSVIP（约 390 MB）
+tools/                 随包分发：ffmpeg / yt-dlp / LibreSVIP（约 288 MB）—— **不入库**，见第三节
 tests/
   contract/            接口契约（对冻结的夹具）
   manual/              浏览器 / 接口探针
@@ -146,8 +146,43 @@ docs/                  THIRD-PARTY-NOTICES.md
 | | 直接 `cargo build` **不会**把 exe 复制到根目录，你跑的还是旧的，会以为改动没生效 |
 | `-Release` / `-Bundle` | 可选参数；`-Bundle` 打 MSI（见第八节） |
 | `-SkipWeb` | 只编后端（改 Rust 时省几秒，但 `app/web/` 里会是旧产物） |
+| `-FetchTools` | 先补齐 `tools/` 与 JIZURA 字体（干净机器 / CI 上用；要联网） |
 | 工具链 | Rust 在 `H:\DevTools\cargo`、MSVC 在 `H:\VSBuildTools`（build.ps1 会加载 vcvars） |
 | | **前端还要 Node + npm**（见下）—— 这是新前端引入的**构建期**依赖 |
+| 打包 | CI 在 `.github/workflows/build-msi.yml`（打 tag `v*` 自动出 MSI 并传 Release） |
+| 跨平台 | `-Bundle` 只在 Windows 可用（脚本会主动报错），macOS / Android 要另写壳，见第九节 |
+
+### 仓库只放源码，两大块大件编译前补齐
+
+**约 7 MB 的仓库**是有意为之。下面两块不属于源码，但程序要能离线用就必须在打包前到位：
+
+| 大件 | 体积 | 补齐后落在 | 谁在用 |
+|---|---|---|---|
+| ffmpeg + yt-dlp + LibreSVIP CLI | 约 288 MB | `tools/` | `audio.rs` / `tools.rs` / `libresvip.rs` |
+| JIZURA 与 2335 个 woff2 字体 | 约 54 MB | `app/web/vendor/jizura/` | 文字 PV 页的 iframe（**离线可用靠它**） |
+
+一条命令补齐（幂等，齐了就跳过）：
+
+```
+powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1
+powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1 -Local 'D:\存着两个zip的目录'   # 不联网
+```
+
+来源是本仓库 Release 的附件（tag **`assets-v1`**）—— `tools.zip`（129 MB）与
+`jizura.zip`（51 MB），由 `tools\zip-assets.ps1` 打出来（那个脚本**只打包、不上传**）。
+两处 URL 都是硬编码的：`fetch-tools.ps1` 顶部的 `$UrlTools`/`$UrlJizura`
+与工作流里的 `ASSETS_TAG`，**换托管时两处都要改**。
+`fetch-tools.ps1` 拿不到存档时会退到三个上游官方地址现下（gyan.dev / yt-dlp release /
+LibreSVIP release）—— 慢，但不用人去别处找。
+
+> ⚠️ 三条实测教训，别再踩：
+> ① **判「齐不齐」必须核对解压后的具体文件**，不能只看目录在不在 —— 半途失败的解压
+>    会留下看似完整的空壳，而那要到用户点「工程转换」才现形。
+> ② 下载用 `curl.exe` + **自己写的重试循环**。`Invoke-WebRequest` 读 GitHub release
+>    的大文件实测会 `Received an unexpected EOF or 0 bytes`；Windows 自带的旧 curl
+>    不认 `--retry-all-errors`（报 unknown option）。
+> ③ `-Bundle` 现在会**在编译前**核对 `tools\`、`vendor\jizura\`、`app\web\index.html`
+>    在不在 —— `bundle.resources` 是「源目录缺文件就静默少打包」，缺了要到用户手里才现形。
 
 ### Node 只在构建期出现（别和"去 Node"搞混）
 
@@ -258,8 +293,8 @@ npm run watch   # 开发时推荐：改完自动重建，浏览器刷新即可
 
 | | 版本 | 说明 |
 |---|---|---|
-| Node | v24.18.0 | **只有开发机需要**，用户那边不用装 |
-| npm | 11.16.0 | |
+| Node | v24.20.0 | **只有开发机需要**，用户那边不用装（CI 用 `actions/setup-node` 装 24） |
+| npm | 11.19.0 | |
 | React / react-dom | 19.3 | |
 | Vite | 8.3 | |
 | TypeScript | **7.0** | ⚠️ TS 7 移除了 `baseUrl`，`paths` 改成相对 tsconfig 解析 |
@@ -355,6 +390,8 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | 网络 | GitHub / Google 要走代理（curl -x http://127.0.0.1:7890）；网易云、QQ 音乐直连；**测试短信接口绝不用真实手机号** |
 | 磁盘 | C 盘很紧，临时大文件放 H:\工作站\tmp-* 并即时删 |
 | 图标 | `components/Icon.tsx` 是一张手写 SVG path 表。**没有图标库**（要离线），加图标往表里加 |
+| 大文件不能进 git | `tools/`（288MB）与 `app/web/vendor/jizura/`（54MB）都已从 git 移出（`git rm --cached`），靠 `fetch-tools.ps1` 补齐。**别因为「本地看得见」就以为它们在库里** —— 别人 clone 下来是没有的 |
+| Rust 注释里别写 `/*` | 块注释会**嵌套**：文档注释里写 `` `app/web/js/views/*.js` `` 会让整个注释永不闭合，吞掉后面几十行，rustc 报出**29 条假错**（`prefix 'wav' is unknown`、`unterminated double quote string`）。看到成片的这类错先找「注释没闭合」，别逐个去改字符串 |
 
 ---
 
@@ -407,7 +444,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 | 事项 | 状态 |
 |---|---|
-| **打包 MSI** | **打出来跑不起来** —— 见下 |
+| **打包 MSI** | **能打出来了（2026-10-05）**，但**装完能不能跑还没验过** —— 见下 |
 | UTAU Shift-JIS | 纯 Rust 侧不生成 Shift-JIS，默认写 UTF-8 |
 | YouTube | 境内不可达，相关功能要走代理（设置页可配） |
 | `mime_of` | 已补齐（2026-10-05）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
@@ -416,7 +453,11 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
 | **工程转换** | 选项键已改用 LibreSVIP **官方选项名**，VSQX 参数曲线崩溃已**自动降级**（16 个真样本 15 通过，剩下 1 个是源工程自身音符重叠）。⚠️ `音高信息输入模式` 默认档是官方 `plain`（≈ 只带"已编辑"部分），要完整保留手画音高就在选项面板选「完整」。选项表与实现见 `docs/FEATURES.md` §3.1 |
 
-### 打包卡在哪（这是本次的核心遗留问题）
+### 打包：能打了，但「装完能不能跑」还没验过
+
+**2026-10-05 更新**：`build.ps1 -Release -Bundle` 与 CI 工作流都写好了，打包链路本身是通的
+（`bundle.resources` 的四条映射与 `resolve_paths()` 的期望对齐，见下面的引文）。
+**但打出来的 MSI 一台机器都没装过** —— 剩下的就是实测。
 
 程序靠 `main.rs::resolve_paths()` **往上找 `app/web/index.html`** 定位根目录，
 它假定的是「绿色版」布局：
@@ -425,7 +466,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 <根目录>/
   app/web/          ← 界面（Rust 内嵌服务从磁盘读，不是打包进 exe 的）
   app/data/         ← 配置、资源库、拼音词典
-  tools/            ← ffmpeg 302 MB + LibreSVIP 70 MB + yt-dlp 17 MB
+  tools/            ← ffmpeg 201 MB + LibreSVIP 70 MB + yt-dlp 17 MB
 ```
 
 而 Tauri 的 `bundle.resources` 会把资源**平铺**到 `<安装目录>/resources/` 下。
@@ -455,17 +496,22 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 一次修好 MSI + macOS bundle 两件事，还能省掉构建脚本里「把 exe 复制到根目录」那个动作
 （Windows 绿色版特有的形态，macOS 上产物是 `.app`，没有这回事）。
 
-`tools/` 约 390 MB，远超一般安装包的舒适区。原则已定：**随包分发**
-（不让用户自己下）。剩下的只是「直接塞进 MSI」还是「首次运行释放」。
+`tools/` 约 288 MB（+ JIZURA 字体 54 MB），远超一般安装包的舒适区。原则已定：**随包分发**
+（不让用户自己下），已按此接进 `bundle.resources`。剩下的只是「直接塞进 MSI」还是「首次运行释放」。
 
 ### 还没实测过
 
-这台机器没装 `tauri-cli`，也没跑过 `build.ps1 -Bundle`。第一次打包时重点验证：
+打包链路写好了但**没在真机装过**。第一次装的时候重点验证：
 
-1. 装完之后界面能打开（路径定位对不对）
+1. 装完之后界面能打开（路径定位对不对 —— 也就是 `resource_dir()` 那一步到底有没有生效）
 2. 改一个设置、重启，设置还在（可写目录对不对 —— 这条最容易挂）
 3. 转换能跑（`tools/libresvip/` 找得到）
 4. ffmpeg 能用（`tools/ffmpeg/` 找得到）
+5. 打开文字 PV（`app/web/vendor/jizura/` 找得到）
+
+> ⚠️ 第 1 条如果挂了，看 `%APPDATA%\com.qingmu.vocalworkstation\desktop-error.log`
+> （安装版的可写目录在那儿，不在 `<安装目录>\data\`；`main.rs::error_log_hint()` 会把
+> 真实路径打在错误提示里）。
 
 ---
 
@@ -592,8 +638,8 @@ git log --all -- app/data/resources.json
 4. **侧栏形态要不要换成库的 `TabBar`？** 它自带透镜、拖拽换页、窄屏自动变底部胶囊栏，
    但它的侧栏形态是 `position: fixed` 的整列贴窗口左边，而且**没有分组标题**
    （现在的「工作台 / 素材获取 / 系统」是手写的）。两条路都成立，**属于要用户拍板的结构选择**。
-5. **CI**：`.github/workflows/build.yml`，matrix `windows-latest` + `macos-latest`。
-   注意 Ubuntu 编不出 Windows/macOS 的 GUI 包（见第九节），且 `tools/` 不在 git 里。
+5. **CI**：已经落地 —— `.github/workflows/build-msi.yml`（Windows 单平台出 MSI + 冒烟）。
+   以后再谈 matrix：macOS 那一格要等第九节说的构建壳，Linux 编不出 Windows / macOS 的 GUI 包。
 
 ### 关于 Android（已核实，不用再查）
 
@@ -607,12 +653,13 @@ git log --all -- app/data/resources.json
 所以媒体层最终要桌面走 `Command`、移动走 JNI。**现在不用做** —— 调用链的 `tools_dir`
 形参已经一路穿好了，将来是机械替换而非重写。
 
-**上 Vite 时注意**（已想清楚的部分）：
+**上 Vite 时的四条硬约束**（当时想清楚、2026-10-05 全部已落地）：
 
 - Vite 的 `outDir` 指向 `app/web/`、`base: '/'`，**服务端一行不用改** ——
   因为窗口加载的是 `http://127.0.0.1:<port>`，静态文件是每请求从磁盘读的。
+- `emptyOutDir` **必须是 `false`**（`app/web/` 里躺着 `vendor/` 与 `img/` 两类非产物），
+  设成 `true` 会把它们一起清掉而构建照样报成功 —— `build.ps1` 为此加了防线。
 - ⚠️ **前端里所有 API 调用必须用绝对路径 `/api/...`**。相对路径 `./api/state` 在子路径下
-  （比如将来挪到 `/app/`）会变成 `/app/api/state` → 404。见 `lib/api.ts` 的注释。
-- `build.ps1` 是**加一行 `vite build`**，不是废除。它仍是唯一构建入口。
-- 代价两条：① 编译机多一个 Node.js 依赖（**用户那边仍然不用装**）；
-  ② 开发时不再「改完刷新就生效」，要跑 `npm run watch` 或 `vite dev`。
+  会变成 `/app/api/state` → 404。见 `lib/api.ts` 的注释。
+- `build.ps1` 仍是唯一构建入口（它第一步就是 `npm run build`），
+  代价是**编译机必须有 Node**（用户那边仍然不用装）；开发时改前端要 `npm run watch`。

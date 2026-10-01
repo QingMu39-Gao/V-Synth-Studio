@@ -1,6 +1,15 @@
 # ═══════════════════════════════════════════════════════════
-#  清沐的虚拟歌姬工作站 —— 忽略规则
+#  V-Synth-Studio —— 忽略规则
+#
+#  原则：**仓库只放源码**（约 7 MB）。凡是不属于源码、但编译/打包时
+#  需要的大二进制，都由 app\desktop\fetch-tools.ps1 在编译前补齐，
+#  一律不入库。下面每一条大件忽略规则都写清了补齐方式。
 # ═══════════════════════════════════════════════════════════
+
+# ── 上传 Release 用的大存档（本地产物，不入库）──────────────
+# 由 tools\zip-assets.ps1 打出来，内容是 tools\ 与 app\web\vendor\jizura\。
+# 传上 GitHub Release 后，fetch-tools.ps1 就能在干净机器上把两块补齐。
+/资料归档/
 
 # ── 运行时数据 ──────────────────────────────────────────────
 # 注意前面的斜杠：data/ 会匹配任意层级的 data 目录，那样会连
@@ -9,9 +18,10 @@
 /data/
 /downloads/
 
-# ── 外部工具（体积大，各自单独下载，不进仓库）───────────────
-# tools/ 里是 ffmpeg（约 200MB）、yt-dlp、LibreSVIP CLI（约 70MB）。
-# 获取方式见 README 的「依赖」一节。
+# ── 外部工具（体积大，编译前补齐，不进仓库）─────────────────
+# tools/ 里是 ffmpeg（约 200MB）、yt-dlp、LibreSVIP CLI（约 70MB），合计约 288MB。
+# 补齐方式：powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1
+# 仓库只放源码 —— 这几样是官方二进制，放进 git 只会让每次 clone 都拖几百 MB。
 /tools/
 
 # ── 本机配置 ────────────────────────────────────────────────
@@ -56,6 +66,15 @@ app/web-next/node_modules/
 # 被引用的文件，且「旧版本」会在历史里越堆越多 —— 只保留 index.html 这一个
 # 入口（它同时也是 resolve_paths() 判定程序根目录的哨兵）。
 app/web/assets/
+
+# ── JIZURA 字体（同上：大二进制，编译前补齐）────────────────
+# app/web/vendor/jizura/ 是 JIZURA 文字 PV 的构建产物（index.html 2.3MB）+ 2335 个
+# woff2 字体（49.4MB）+ fonts.css（2.5MB），合计约 54MB。PV 页的 iframe 指向
+# /vendor/jizura/index.html，离线可用靠的就是它，所以**不能只留在网盘上**：
+# 同样由 fetch-tools.ps1 在编译前补进 app\web\vendor\jizura\。
+# ⚠️ 只忽略 jizura 这一层，别写成 app/web/vendor/ —— 以后要往里加别的东西时
+# 不会被这条规则连坐。目录本身不在库里，fetch-tools.ps1 会自己建。
+app/web/vendor/jizura/
 
 # ── 探针输出（tests/manual/*.mjs 写的截图与 JSON）────────────
 # 只是给人看的中间产物，不是夹具，不入库。
