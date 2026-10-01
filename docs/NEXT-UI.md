@@ -1,4 +1,4 @@
-# 新前端（`app/web-next`）—— 结构、约定与迁移手册
+﻿# 新前端（`app/web-next`）—— 结构、约定与迁移手册
 
 > 这份文档是**动 `app/web-next` 之前先读的那一份**。
 > 玻璃材质本身的规矩在 `docs/GLASS-HANDOFF.md`；交接优先级只在 `AGENTS.md`。
@@ -156,21 +156,42 @@ export function Resources({
 
 ---
 
-## 5. 迁移进度
+## 5. 迁移进度：**8 页全部搬完**（2026-10-02）
 
-| 页面 | 旧文件 | 新文件 | 状态 |
+| 页面 | 旧文件 | 新文件 | 行数 | 状态 |
+|---|---|---|---|---|
+| 总览 | `views/dashboard.js` | `pages/Dashboard.tsx` | 262 | ✅ |
+| 设置 | `views/settings.js` | `pages/Settings.tsx` | 444 | ✅ |
+| 资源库 | `views/resources.js` | `pages/Resources.tsx` | 661 | ✅ |
+| 工程转换 | `views/convert.js` | `pages/Convert.tsx` | 741 | ✅ |
+| 歌词 | `views/lyrics.js` | `pages/Lyrics.tsx` | 937 | ✅ |
+| 视频解析 | `views/video.js` | `pages/Video.tsx` | 1462 | ✅ |
+| 音频工具 | `views/audio.js` | `pages/Audio.tsx` | 2064 | ✅ |
+| 文字 PV | `views/pv.js` | `pages/Pv.tsx` | 600 | ✅ |
+
+每页自带 `<Name>.css`；`next-smoke.mjs` 逐页断言已全绿。
+**exe 默认界面仍未切换**（`main.rs` 的 `ui_path`）—— 那是验收动作，等用户拍板。
+
+### 迁移时修掉的真问题（都在旧前端里，值得记一笔）
+
+搬的过程等于把每条接口重新对了一遍后端，于是翻出四处**旧 `api.js` 与 Rust 后端不符**的包装：
+
+| 接口 | 旧前端发的 | 后端要的 | 后果 |
 |---|---|---|---|
-| 总览 | `views/dashboard.js` | `pages/Dashboard.tsx` | ✅ |
-| 设置 | `views/settings.js` | `pages/Settings.tsx` | ✅ |
-| 资源库 | `views/resources.js` | `pages/Resources.tsx` | ⏳ |
-| 工程转换 | `views/convert.js` | `pages/Convert.tsx` | ⏳ |
-| 歌词 | `views/lyrics.js` | `pages/Lyrics.tsx` | ⏳ |
-| 视频解析 | `views/video.js` | `pages/Video.tsx` | ⏳ |
-| 音频工具 | `views/audio.js` | `pages/Audio.tsx` | ⏳ |
-| 文字 PV | `views/pv.js` | `pages/Pv.tsx` | ⏳ |
+| `convert/collect` | `{ dir, recursive }` | `{ dirs: [...] }` | **旧界面「从目录收集」永远 0 个文件**（实测 `{dir}`→0、`{dirs}`→命中） |
+| `convert/preview` | `{ toFormat, inputPath }` | `{ inputs: [...], toFormat }` | 预检直接 400 |
+| `convert/inspect` | `{ path }` | `{ inputPath }`（或 `path`） | 能跑，但类型/字段对不上 |
+| `fs/list` | 回包读 `entries` | 回 `{ dirs, files }`；空 `path` **必须省略**（发 `path=` → 400） | 目录选择器永远空列表 / 「此电脑」点进去白屏 |
 
-搬完 8 页并验收后：改 `main.rs` 的 `ui_path` 默认值 → exe 默认新前端 →
-旧前端整节从 `AGENTS.md` 删掉，`app/web/js/` 可以留着当参考或整体删除。
+`fs/roots` 的字段是 **`name`**（不是 `label`）。新前端已全部按后端契约写；
+旧前端的 `collect` 也顺手修了（`app/web/js/api.js`）。
+
+### 还没做的（按优先级）
+
+1. **`ui-smoke.ps1` 覆盖新前端** → 已由 `tests/manual/next-smoke.mjs` 接上（逐页断言），
+   但它测的是「渲染 + 文案」，**点击穿透（真实操作链路）还没有自动化**。
+2. **exe 默认界面切换**：改 `main.rs` 的 `ui_path` 默认值（**等用户确认**）。
+3. 切完之后旧前端整体退役：`app/web/js/`、`app/web/css/`、`docs/LEGACY-UI.md` 可一起删。
 
 ---
 

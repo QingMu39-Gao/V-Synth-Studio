@@ -66,7 +66,7 @@ app/
         tools.rs      工具检测
     tauri.conf.json   窗口、打包、resources
     build.ps1         唯一的构建入口（见下文）
-  web-next/           前端**源码**（React + Vite + TS + Tailwind）—— 正在迁移中
+  web-next/           前端**源码**（React + Vite + TS + Tailwind）—— 8 页已全部搬完
     vite.config.ts    base '/next/'，outDir '../web/next'
                       ⚠️ 含 restoreStandardBackdropFilter 插件（lightningcss 会删标准
                       backdrop-filter），别删，见 docs/GLASS-HANDOFF.md §3.1
@@ -77,12 +77,21 @@ app/
       components/
         Glass.tsx     玻璃材质（库的 GlassSurface 包装）+ materialOptions()
         Panel.tsx     Panel(库的 MaterialView) / GlassPanel(玻璃面) / Chip / Finding / Stat
-        Button.tsx  Field.tsx  Icon.tsx
+        Button.tsx    库的 GlassButton / GlassIconButton
+        Field.tsx     Field / TextInput / TextArea
+        Icon.tsx      手写 SVG path 表（**没有图标库**，要离线）
+        Job.tsx       任务进度（库的 GlassProgress + 取消 + 日志）
+        DirPicker.tsx 目录选择（库的 GlassDialog + PathBar + List）/ DirectoryInput
       lib/
-        api.ts        后端调用（注意 API 在根路径 /api/*，不是 /next/api/*）
-        useGlass.ts   材质 store（毛玻璃 / 液态玻璃，键 qingmu.glass）
-        types.ts
-      pages/          Dashboard.tsx  Settings.tsx  Placeholder.tsx
+        api.ts        后端调用（39 条路由；API 在根路径 /api/*，不是 /next/api/*）
+        types.ts      后端数据结构（照 tests/contract/fixtures 定义）
+        format.ts     formatBytes / Duration / Speed / Number / Time / timeAgo
+        useJob.ts     任务订阅：SSE + 轮询兜底（旧 watchJob 的 React 版）
+        useGlass.ts   玻璃等级 1~4（材质 / 透明度 / 面板要不要玻璃全由它派生）
+        useNavLens.ts 侧栏与小节导航的滑动高亮块
+        boot.ts       揭开启动加载画面
+      pages/          8 页：Dashboard / Convert / Video / Audio / Lyrics / Pv / Resources / Settings
+                      （每页自带一个同名 .css；页面约定与库组件清单见 docs/NEXT-UI.md）
 ```
 
 > **启动加载画面**：`index.html` 的 `#boot`（样式内联、12 秒兜底）+ `lib/boot.ts` 揭开，规范见 `GLASS-HANDOFF` §4。
@@ -179,6 +188,8 @@ docs/                  THIRD-PARTY-NOTICES.md
 **启动器默认新前端、exe 默认旧前端** —— 这是故意的：命令行/快捷方式直接跑 exe 的人
 （和打包后的正常用户）拿到功能完整的旧界面，而开发时双击启动器就进新界面。
 
+> **新前端 8 页已全部搬完（2026-10-02）**，但 **exe 的默认界面还没切** —— 见下面那条。
+>
 > **`启动工作站.bat` = 更新预览入口。** 换界面不用重新编译（前端每请求从磁盘读），
 > 所以新前端改完只要 `npm run build`（或 `npm run watch`）+ 刷新，双击这个 bat 就能看。
 > **exe 自身的默认界面在用户确认验收之前不动** —— 那是「切换」这个动作，
@@ -337,6 +348,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 | 症状 / 场景 | 结论 |
 |---|---|
+| 接口「发了没反应 / 永远空列表」 | **先对后端源码与夹具**，别信旧前端的调用姿势：`collect` 要 `{dirs:[…]}`（旧前端发 `{dir}` → 永远 0 个文件）、`preview` 要 `{inputs,toFormat}`、`fs/list` 空 `path` **必须整个省略**（发 `path=` → 400）、`fs/roots` 字段是 `name` 不是 `label`。四处都是搬页面时实测翻出来的，见 `docs/NEXT-UI.md` 第 5 节 |
 | 「改了界面但用户看不到变化」 | **先怀疑缓存**：静态文件必须发 Cache-Control: no-store（simple.rs 已加）。测试每次开全新浏览器，永远命中不了缓存，只有用户常驻的 WebView2 拿着旧文件 |
 | 端口不能随机 | 固定 17878；**localStorage 按 origin 隔离**，端口一变 = 全新存储（JIZURA 标记、界面设置、PV 工程自动保存全丢） |
 | 悬停/过渡「生硬地闪一下」 | 多半是 `var(--x)` **没定义** → 整条 `transition` 静默失效。先跑 `LESSONS.md` 里那段查未定义变量的脚本 |
@@ -556,22 +568,25 @@ git log --all -- app/data/resources.json
 | **启动加载画面 + 交接**（2026-10-02） | `index.html` 的 `#boot` + `lib/boot.ts`；遮罩淡出与界面入场**交叉**（时长必须拉开，见 `GLASS-HANDOFF` §4.1） |
 | **玻璃等级 1~4 滑块** | 材质 / 透明度 / 面板要不要玻璃全由这一档派生（`lib/useGlass.ts`），键 `qingmu.glassLevel` |
 | **设置页小节导航复用主侧栏那套** | `lib/useNavLens.ts` + `.app-nav` / `.nav-row` / `.nav-lens`，两处外框参数逐项相同 |
+| **8 页全部搬到 React**（2026-10-02） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 39 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/NEXT-UI.md` 第 5 节） |
+| **`next-smoke.mjs`** | 新前端逐页冒烟（旧 `ui-smoke.ps1` 只管 `/`）：控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8 全绿 |
 
 ### 待办，按优先级
 
 1. **`resolve_paths()` 改用 `resource_dir()`** —— 修掉 MSI、修掉 macOS bundle，
    省掉构建脚本里复制 exe 那步。跟前端选型无关。
-2. **控件层换成库的组件**：`Button`/`Field`/`.seg`/`.input` 现在还是手写的（材质走库）。
-   库自带 `GlassSegmentedControl`（胶囊、可拖、拖动中实时更新选择）、`GlassButton`、
-   `TextField`、`List`…。顶栏的材质切换和侧栏底部的主题切换最该先换 —— 它们本来就是分段控件。
-   **换完再判断 shadcn 还需不需要**：库已经提供 66 个控件，原「接 shadcn/ui」这条待办
-   可能整条作废（而且 shadcn 初始化要联网，与离线目标相冲）。
-3. **把剩下 6 页搬完**（进行中）：`resources` / `convert` / `video` / `audio` / `lyrics` / `pv`。
-   每页的步骤与验收方式见 `docs/NEXT-UI.md` 第 3.4 节；每搬完一页跑一次
-   `contract/verify.mjs` 与 `ui-smoke.ps1`（**旧前端不能红**）。
-   搬完并验收后才是「切换 exe 默认界面」——**这一步等用户明确点头**。
-4. **`ui-smoke.ps1` 覆盖新前端** —— 目前只测旧前端的 8 页，`/next/` 没有自动化冒烟
-   （只有 `glass-probe.mjs` 探玻璃）。
+2. **把剩下几处手写控件换成库的**：`Button`（已是 `GlassButton`）和 `List`/`Dialog`/`Slider`/
+   `Progress`/`Badge`/`Switch` 都在用了，但 `Field.tsx` 的输入框、页面里的 `.seg` / `.input`
+   还是手写的（只有材质走库）。库有对应的 `TextField`（`multiline`）/ `Picker` / `RadioGroup` /
+   `GlassSegmentedControl`（胶囊、可拖、拖动中实时更新选择）。**换的时候注意**：
+   库的分段控件是 `<label class="lg-segment"><input type=radio>`，`aria-label` 挂在内层
+   `.lg-segmented-track` 上 —— 写自动化测试时别在外层 `.lg-segmented` 上取 `aria-label`（会拿到 null）。
+3. **切换 exe 默认界面**（8 页已搬完，就等这一步）：改 `main.rs` 里 `ui_path` 的默认值，
+   `default` 从 `""`（旧前端）改成 `"next"`。**这是验收动作，必须等用户明确点头** ——
+   改了等于把还没验收的界面推给所有直接跑 exe 的人。切换后再考虑退役旧前端
+   （`app/web/js/`、`docs/LEGACY-UI.md`）。
+4. **给新前端补点击穿透测试** —— `next-smoke.mjs` 只验「渲染 + 文案 + 控制台」，
+   真实操作链路（选文件 → 预检 → 提交任务）还没有自动化，目前靠人工 + 探针截图。
 5. **侧栏形态要不要换成库的 `TabBar`？** 它自带透镜、拖拽换页、窄屏自动变底部胶囊栏，
    但它的侧栏形态是 `position: fixed` 的整列贴窗口左边，而且**没有分组标题**
    （现在的「工作台 / 素材获取 / 系统」是手写的）。两条路都成立，**属于要用户拍板的结构选择**。
