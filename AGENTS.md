@@ -445,6 +445,10 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | 亮色主题 | 次要文字色不能太浅（对比度 4.5:1 以上）；背景图参数与新前端的取值见 LESSONS.md |
 | 背景图「压根不显示」 | 触发过两次（旧前端一次、新前端一次）。图在 `app/web/img/bg/`，被 `index.css` 以 `url()` 引用 —— 别让构建把它当成产物清掉（`emptyOutDir` 必须是 `false`） |
 | 网络 | GitHub / Google 要走代理（curl -x http://127.0.0.1:7890）；网易云、QQ 音乐直连；**测试短信接口绝不用真实手机号** |
+| CI 上 `link.exe` 报 `/usr/bin/link: extra operand` | **Git for Windows 的 `C:\Program Files\Git\usr\bin` 在 runner 的系统 PATH 里，那个 `link.exe` 是 coreutils 的 `ln` 别名**，rustc 调裸名 `link.exe` 就撞上它。后面那句「build tools may need to be repaired」是**纯误导**。修法在 `build.ps1`：把 `\Git\{usr,mingw64,cmd}` 从 PATH 剔掉、再把 MSVC 的 `bin\Hostx64\x64`（用 `VCToolsInstallDir` 问出来）顶到最前，开跑前用 `where link.exe` 第一行验身份。**本地没有 Git 那套 `usr\bin`，永远复现不了** —— 要复现就自己造个假 `link.exe` 放进 `H:\tmp\faker\Git\usr\bin` 并 prepend 到 PATH |
+| 批处理里 `%PATH%` 死活不生效 | **别把命令拼成 `cmd /c "a && b && c"` 长链**：cmd 把整条链**先解析、把 `%VAR%` 全展开**再逐条执行，所以链里 `set "PATH=...;%PATH%"` 拿到的是**启动 cmd 时的原始 PATH**，前面 `set`/`vcvars` 改的全白费（实测：剔掉 Git 段的 PATH 又被原样放回，rustc 还是拿到 Git 的 link）。**改成写临时 `.cmd` 逐行执行**（批处理逐行解析，`%PATH%` 才在运行时展开）。另：`set "RUSTFLAGS=-C linker="C:\...\link.exe""` 的引号会原样传给 rustc，报 `os error 123`，**别用这条路**，把链接器目录顶到 PATH 最前就够了 |
+| `npm install` 在 CI 报 `Could not read package.json` | **`npm install` 只在当前目录找 `package.json`**（不像 vite/tsc 往上找）。`build.ps1` 开头 `Push-Location $here`（= `app\desktop`）后直接 install 就会去找 `app\desktop\package.json`；同块的 `npm run build` 有 `Push-Location $webSrc` 所以没事。**开发机永远暴露不了**（`node_modules` 早装好了，这句不跑）—— 改构建脚本后要按「干净 clone」的心智过一遍 |
+| `cargo install tauri-cli` 装完却找不到 `tauri` | cargo 子命令的可执行文件叫 **`cargo-tauri.exe`**（带 `cargo-` 前缀），缓存 path 与存在性判断都按这个写；验证别猜文件名，直接 `cargo tauri --version` 真调一次 |
 | 磁盘 | C 盘很紧，临时大文件放 H:\工作站\tmp-* 并即时删 |
 | 图标 | `components/Icon.tsx` 是一张手写 SVG path 表。**没有图标库**（要离线），加图标往表里加 |
 | 大文件不能进 git | `tools/`（288MB）与 `app/web/vendor/jizura/`（54MB）都已从 git 移出（`git rm --cached`），靠 `fetch-tools.ps1` 补齐。**别因为「本地看得见」就以为它们在库里** —— 别人 clone 下来是没有的 |
