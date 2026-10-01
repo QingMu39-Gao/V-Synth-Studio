@@ -449,6 +449,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | 批处理里 `%PATH%` 死活不生效 | **别把命令拼成 `cmd /c "a && b && c"` 长链**：cmd 把整条链**先解析、把 `%VAR%` 全展开**再逐条执行，所以链里 `set "PATH=...;%PATH%"` 拿到的是**启动 cmd 时的原始 PATH**，前面 `set`/`vcvars` 改的全白费（实测：剔掉 Git 段的 PATH 又被原样放回，rustc 还是拿到 Git 的 link）。**改成写临时 `.cmd` 逐行执行**（批处理逐行解析，`%PATH%` 才在运行时展开）。另：`set "RUSTFLAGS=-C linker="C:\...\link.exe""` 的引号会原样传给 rustc，报 `os error 123`，**别用这条路**，把链接器目录顶到 PATH 最前就够了 |
 | `npm install` 在 CI 报 `Could not read package.json` | **`npm install` 只在当前目录找 `package.json`**（不像 vite/tsc 往上找）。`build.ps1` 开头 `Push-Location $here`（= `app\desktop`）后直接 install 就会去找 `app\desktop\package.json`；同块的 `npm run build` 有 `Push-Location $webSrc` 所以没事。**开发机永远暴露不了**（`node_modules` 早装好了，这句不跑）—— 改构建脚本后要按「干净 clone」的心智过一遍 |
 | `cargo install tauri-cli` 装完却找不到 `tauri` | cargo 子命令的可执行文件叫 **`cargo-tauri.exe`**（带 `cargo-` 前缀），缓存 path 与存在性判断都按这个写；验证别猜文件名，直接 `cargo tauri --version` 真调一次 |
+| 契约用例在 CI 上红，本地却全绿 | 夹具是**开发机上抓的冻结基准**，凡是记录「**这台机器上有什么**」而不是「**接口返回什么形状**」的用例，换台机器必然对不上。已登记两条：`video-parse-bili`（B 站对匿名/机房 IP 回 HTTP 412）、`fs-list-c`（`C:\` 根目录开发机 13 个、GitHub runner 37 个）。⚠️ 判「有意」的条件要**收得紧** —— 用 `onlyWhenLine` 把原始响应当证据（例如必须真出现 `HTTP 412`），否则这个清单会变成掩盖问题的垃圾桶 |
 | 磁盘 | C 盘很紧，临时大文件放 H:\工作站\tmp-* 并即时删 |
 | 图标 | `components/Icon.tsx` 是一张手写 SVG path 表。**没有图标库**（要离线），加图标往表里加 |
 | 大文件不能进 git | `tools/`（288MB）与 `app/web/vendor/jizura/`（54MB）都已从 git 移出（`git rm --cached`），靠 `fetch-tools.ps1` 补齐。**别因为「本地看得见」就以为它们在库里** —— 别人 clone 下来是没有的 |

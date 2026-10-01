@@ -271,13 +271,32 @@ const INTENDED = [
      *
      * 夹具记的是 2026-08 那台机器上根目录有哪 7 个目录。**这不是接口契约**，
      * 契约是「dirs 是 {name, path} 数组、还有 ok/exists/parent」。所以这里登记成
-     * 有意差异，`fs-list-c`（列 C 盘，套的是夹具里那份稳定快照）继续逐项比。
+     * 有意差异，`fs-list-c` 同理（见下一条）。
      *
      * 也别反过来「把夹具更新成现在这样」：`资料归档` 与 `.github` 在新 clone 上
      * 一个有一个没有，夹具只有在**两台机器目录一模一样**时才可能一致。
      */
     match: /^fs-list-tools\.dirs/,
     why: '这条用例列的是本项目根目录，会随项目长出目录而变；契约只保证 dirs 的形状',
+  },
+  {
+    /*
+     * `fs-list-c` 列的是 `C:\` 根目录 —— 和 `fs-list-tools` 同一类问题，只是更彻底：
+     * 根目录下有哪些文件夹**完全取决于这台机器装了什么**，跟后端实现毫无关系。
+     *
+     *   开发机（夹具抓的那台）13 个：AMD、Boot、common_attachment、Config.Msi、…
+     *   GitHub windows-2025 runner 37 个：actionarchivecache、actions-runner、Android、
+     *                                    azureCli、azureDevOpsCli、cobertura-2.1.1、ghcup、…
+     *
+     * 夹具记的是 2026-08 开发机的 C 盘快照。**这不是接口契约** —— 契约是
+     * 「dirs 是 {name, path} 数组、还有 ok/exists/parent」，那三样照旧逐字段比。
+     * 2026-10-02 第一次真跑 CI 时这条红了 14 处（1 处长度 + 13 处 dirs[i].name），
+     * 每一处都只是「这台机器的 C 盘长什么样」，所以整段 dirs 登记成有意差异。
+     *
+     * 别反过来去更新夹具来迁就 CI：没有任何一台机器的 C 盘能代表另一台。
+     */
+    match: /^fs-list-c\.dirs/,
+    why: 'C 盘根目录里有哪些文件夹取决于这台机器装了什么，不是接口契约；契约只保证 dirs 的形状',
   },
   {
     /*
