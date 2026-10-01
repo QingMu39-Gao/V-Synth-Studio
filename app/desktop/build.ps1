@@ -185,8 +185,25 @@ try {
 
         if (-not (Test-Path (Join-Path $webSrc 'node_modules'))) {
             Write-Host "首次构建前端，正在安装依赖（几分钟）…" -ForegroundColor Yellow
-            & $npmExe install --no-fund --no-audit
-            if ($LASTEXITCODE -ne 0) { throw "npm install 失败（退出码 $LASTEXITCODE）" }
+            # ⚠️ 必须切到前端源码目录再装：`npm install` 是**在当前目录**找 package.json 的
+            #    （它不像 vite/tsc 那样往上找），而本脚本开头 Push-Location 到了 $here
+            #    （app\desktop），那里没有 package.json。CI 上实测报：
+            #      npm error code ENOENT … open 'D:\a\…\app\desktop\package.json'
+            #      npm error enoent This is related to npm not being able to find a file.
+            #    开发机上从没暴露过，因为 node_modules 早就装好了，这句根本不跑。
+            #    `npm run build` 那步本来就有 Push-Location，所以一直是好的 —— 两处必须一致。
+            Push-Location $webSrc
+            try {
+                & $npmExe install --no-fund --no-audit
+                $installCode = $LASTEXITCODE
+            } finally {
+                Pop-Location
+            }
+            if ($installCode -ne 0) { throw "npm install 失败（退出码 $installCode）" }
+            # 报成功了但没产物，也要拦：后面 npm run build 会以更难看的方式炸
+            if (-not (Test-Path (Join-Path $webSrc 'node_modules'))) {
+                throw "npm install 报成功但 app\web-next\node_modules 不存在，前端构建没法进行。"
+            }
         }
 
         Write-Host "执行: npm run build   （app\web-next）"
