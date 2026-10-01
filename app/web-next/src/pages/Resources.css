@@ -87,6 +87,7 @@
   gap: 1px;
   min-width: 0;
   flex: 1;
+  white-space: normal;
 }
 .res-head-name {
   font-size: 15px;
@@ -138,6 +139,8 @@
   gap: var(--lg-space-3);
   grid-template-columns: repeat(auto-fill, minmax(min(310px, 100%), 1fr));
   align-items: start;
+  /* 卡片高度不一致时，行间距要比列间距大一点，否则同组里两张卡的底边会看着「粘」在一起 */
+  row-gap: var(--lg-space-4);
 }
 
 /* ── 条目卡 ─────────────────────────────────────────────────────

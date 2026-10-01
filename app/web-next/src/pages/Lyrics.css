@@ -235,6 +235,17 @@
   color: var(--lg-label-secondary);
   overflow-wrap: anywhere;
 }
+/* 路径 + 「打开所在目录」按钮一行（按钮是库的控件，别用 `.field` 那套 label 包它） */
+.lyrics-saved:has(button) {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+}
+.lyrics-saved > span {
+  flex: 1;
+  min-width: 0;
+}
 
 /* 保存 / 取词的失败也别只留在 toast 里 */
 .lyrics-error {

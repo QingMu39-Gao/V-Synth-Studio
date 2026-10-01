@@ -1,0 +1,62 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   文字 PV 页（`pages/Pv.tsx`）自己的样式。
+
+   这一页的全部内容是**一个 iframe**（JIZURA 编辑器，它的界面一个字都不改），
+   父页面只有顶上一条工具条。规矩和其它页面一样（见 `docs/NEXT-UI.md` §3.3）：
+
+     - **一行玻璃都没有**：材质来自库（工具条就是 `components/Panel.tsx`），这里只管排布；
+     - 颜色全部走库的 `--lg-*` 令牌，**不写死颜色**（写死 = 亮色下瞎掉）；
+     - 控件是库的（`components/Button.tsx`），这里不重造。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 整页高度：编辑器是主角，空间都给它 ────────────────────────────────
+   高度 = 视口 − (`.app` 的上内边距 16px + 页头 74px)。
+   页头那 74px 是实测的（标题 34 + 副标题 4+20 + 下间距 16，两行都是单行，各页一样）。
+   和旧前端 `.pv-view` 的 `calc(100vh - var(--header-h))` 是同一个做法：
+   靠视口高度而不是父容器 —— 内容区（`.app-main`）本身没有确定高度，
+   `height: 100%` 这条链在 `.app-body { align-items: flex-start }` 那里就断了。
+   实测：`.page-body` 的上沿就在 90px，减完正好贴着视口底，编辑器拿满余下的空间。 */
+.pv-page {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  height: calc(100dvh - 90px);
+  min-height: 420px;
+}
+
+/* 工具条：状态在左、按钮在右。**固定一行**（多了会挤掉编辑器的高度）。
+   内边距挂在这里：上面的 `Panel` 是 `padded={false}` —— 面板默认那 20px 内边距
+   会让这一条变成 68px 高，对「一行状态」来说太厚。 */
+.pv-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  padding: var(--lg-space-3) var(--lg-space-4);
+}
+.pv-status {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+}
+
+/* ── iframe ────────────────────────────────────────────────────────────
+   圆角 + 一条分隔边，和这一页外面的面板同形；`overflow: hidden` 是为了让
+   圆角真的裁到 iframe（不然四个角还是方的）。
+   底色只是**载入期**的兜底：它自己那份界面自带暗色底，加载完就盖住了。 */
+.pv-frame-wrap {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+  background: var(--lg-bg-secondary);
+}
+.pv-frame {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border: 0;
+}

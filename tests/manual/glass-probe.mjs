@@ -343,17 +343,21 @@ try {
   if (PAGE) await cdp.evalJs(`(() => { location.hash = '#/${PAGE}'; return true })()`)
 
   // 等应用真渲染出来（后端 /api/state 本机要几秒），别写死 sleep。
-  // 两个条件都要等：玻璃面出现 + 总览页不再显示「正在读取环境状态」占位 —— 只等前者会截到半成品。
+  // 三个条件都要等：玻璃面出现 + 总览页不再显示「正在读取环境状态」占位 + **启动遮罩已经揭开**——
+  // 只等前两个会截到「本地服务没有响应」那块兜底遮罩（`#boot` 是 position:fixed 的整屏层，
+  // 盖住整页；页面其实早画好了）。`/api/state` 在本机被别的进程占着时会跑到 30 秒以上，
+  // 60×500ms 的预算不够，所以这里放到 240 次。
   let ready = false
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < 240; i++) {
     const state = await cdp.evalJs(`({
       glass: document.querySelectorAll('[data-material]').length,
       loading: document.body.innerText.includes('正在读取环境状态'),
+      boot: !!document.getElementById('boot'),
     })`)
-    if (state.glass > 0 && !state.loading) { ready = true; break }
+    if (state.glass > 0 && !state.loading && !state.boot) { ready = true; break }
     await sleep(500)
   }
-  if (!ready) throw new Error('页面没渲染完（没有玻璃面，或状态一直停在加载中）')
+  if (!ready) throw new Error('页面没渲染完（没有玻璃面，或状态一直停在加载中，或启动遮罩没揭开）')
   /**
    * **交接那一帧**：等 `data-boot="out"` 出现（遮罩开始淡出），立刻读双方的不透明度 ——
    * 遮罩应当在淡出中（<1），侧栏/内容区应当在入场中（<1）。

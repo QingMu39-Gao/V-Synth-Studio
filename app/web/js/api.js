@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 后端 API 封装 + 任务进度订阅
  */
 
@@ -62,7 +62,18 @@ export const api = {
   fsReveal: (path, select = true) => request('/api/fs/reveal', { method: 'POST', body: { path, select } }),
   fsOpen: (payload) => request('/api/fs/open', { method: 'POST', body: payload }),
 
-  collect: (dir, recursive = true) => request('/api/convert/collect', { method: 'POST', body: { dir, recursive } }),
+  /**
+   * 扫描目录，收集可转换的工程文件。
+   *
+   * ⚠️ 后端只认 **`dirs`（数组）**（`server/convert.rs:23` 起，没有 `dir` 兜底），
+   * 而这里原先发的是 `{ dir, recursive }` —— 后端读不到 `dirs` 就返回空列表，
+   * 于是「扫描目录」永远是 0 个文件。**收字符串或数组都行**，统一转成数组发。
+   */
+  collect: (dirs, recursive = true) =>
+    request('/api/convert/collect', {
+      method: 'POST',
+      body: { dirs: Array.isArray(dirs) ? dirs : [dirs], recursive },
+    }),
   inspect: (payload) => request('/api/convert/inspect', { method: 'POST', body: payload }),
   preview: (payload) => request('/api/convert/preview', { method: 'POST', body: payload }),
   convert: (payload) => request('/api/convert/run', { method: 'POST', body: payload }),

@@ -908,8 +908,9 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
             </div>
 
             {saved && (
-              <p className="lyrics-saved">
-                已写入：{saved}{' '}
+              /* 路径文字放 span 里：库的按钮带 `.lg-*` 类，直接塞进 <p> 会把整行染成次要色 */
+              <div className="lyrics-saved">
+                <span>已写入：{saved}</span>
                 <Button
                   size="sm"
                   variant="ghost"
@@ -920,7 +921,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                 >
                   打开所在目录
                 </Button>
-              </p>
+              </div>
             )}
 
             <p className="lyrics-saved">想直接出视频（动态歌词 MP4 / PNG 序列）：把这段歌词带去「文字 PV」。</p>

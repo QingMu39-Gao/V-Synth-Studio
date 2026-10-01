@@ -1,0 +1,360 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   音频工具页（`pages/Audio.tsx`）自己的样式。
+
+   规矩和别的页面一样（`docs/NEXT-UI.md` §3.3）：
+     - **一行玻璃都没有**：材质来自库，页面只管排布；
+     - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**
+       （写死 = 亮色主题下瞎掉）；
+     - 控件是库的（`GlassButton` / `GlassSegmentedControl` / `GlassStepper` /
+       `Picker` / `DirectoryInput`），这里不重造。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 两栏：左（素材 + 操作 + 输出）/ 右（进度 + 结果 + 人声分离）────── */
+.audio-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: var(--lg-space-4);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .audio-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.audio-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+  min-width: 0;
+}
+
+/* ── 素材：探测结果 ───────────────────────────────────────────────────
+   旧页面是一排 `.chip`。这里用同一套 `Chip`，只是排成可换行的网格，
+   标签与值之间不留空（`Chip` 自己带 gap）。 */
+.audio-probe-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+}
+.audio-probe-name {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 320px;
+}
+.audio-probe-name .audio-dim {
+  font-weight: 400;
+  color: var(--lg-label-secondary);
+  margin-inline-end: 5px;
+}
+
+/* ── 处理操作：六个卡片 ───────────────────────────────────────────────
+   一个操作一张卡（图标 + 名字 + 一句说明）。选中态用强调色描边，
+   和工程转换页的格式方块同一套写法（那边也是 `data-selected`）。 */
+.audio-ops {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(min(146px, 100%), 1fr));
+}
+.audio-op {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+  min-height: 74px;
+  padding: var(--lg-space-3);
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  /* 玻璃面上的元素用填充，不画不透明的页面底（库的规矩：实色 = 在材质上凿洞） */
+  background: var(--lg-fill-quaternary);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-s);
+  transition: border-color var(--lg-duration-layout) var(--lg-ease-out);
+}
+.audio-op:hover {
+  border-color: color-mix(in srgb, var(--lg-accent) 40%, var(--lg-separator));
+}
+.audio-op[data-selected='true'] {
+  border-color: var(--lg-accent);
+  box-shadow: inset 0 0 0 1px var(--lg-accent);
+}
+.audio-op-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.audio-op-desc {
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 输出格式：一格一个 ───────────────────────────────────────────────
+   名字 + 「无损 / 有损」标记 + 扩展名与一句取舍说明。 */
+.audio-formats {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(min(178px, 100%), 1fr));
+}
+.audio-format {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 56px;
+  padding: var(--lg-space-2) var(--lg-space-3);
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  background: var(--lg-fill-quaternary);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-s);
+  transition: border-color var(--lg-duration-layout) var(--lg-ease-out);
+}
+.audio-format:hover {
+  border-color: color-mix(in srgb, var(--lg-accent) 40%, var(--lg-separator));
+}
+.audio-format[data-selected='true'] {
+  border-color: var(--lg-accent);
+  box-shadow: inset 0 0 0 1px var(--lg-accent);
+}
+.audio-format-name {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.audio-format-meta {
+  font-family: var(--lg-font-mono);
+  font-size: 11px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 变调 / 变速：一行「步进器 + 一句换算」+ 一排预设 ───────────────── */
+.audio-num-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  flex-wrap: wrap;
+}
+.audio-num-note {
+  font-size: 12.5px;
+  color: var(--lg-label-secondary);
+}
+.audio-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+/* ── 波形编辑器 ───────────────────────────────────────────────────────
+   画布是**内容层**（不是控件），所以不套玻璃，只要一个底和圆角。
+   颜色由 `Audio.tsx` 从令牌里取出来喂给 canvas（canvas 认不了 CSS 变量）。 */
+.wave-editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+}
+.wave-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.wave-canvas {
+  display: block;
+  width: 100%;
+  /* 高度由 JS 按 120 逻辑像素 × dpr 写进元素属性，这里只保证它不塌 */
+  min-height: 120px;
+  border-radius: var(--lg-radius-m);
+  background: var(--lg-fill-quaternary);
+  outline: none;
+  touch-action: none;
+  cursor: default;
+}
+.wave-canvas:focus-visible {
+  outline: 2px solid var(--lg-accent);
+  outline-offset: 1px;
+}
+/* 剪刀模式：光标提示「点一下就在这儿切开」 */
+.wave-canvas[data-scissors='true'] {
+  cursor: crosshair;
+}
+.wave-canvas[data-handle='true'] {
+  cursor: ew-resize;
+}
+.wave-audio {
+  width: 100%;
+  height: 32px;
+}
+.wave-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+  word-break: break-all;
+}
+.wave-note[data-tone='warn'] {
+  color: var(--lg-orange);
+}
+
+/* 时间码两格 + 整段 / 撤销 */
+.wave-times {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+}
+.wave-time-input {
+  width: 108px;
+  font-family: var(--lg-font-mono);
+}
+
+/* 分段列表 */
+.wave-segments {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wave-seg-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+}
+.wave-seg-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  min-height: 42px;
+  padding: 4px var(--lg-space-2);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-s);
+  background: var(--lg-fill-quaternary);
+  cursor: pointer;
+}
+.wave-seg-row[data-selected='true'] {
+  border-color: var(--lg-accent);
+  box-shadow: inset 0 0 0 1px var(--lg-accent);
+}
+.wave-seg-index {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 999px;
+  background: var(--lg-fill-tertiary);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.wave-seg-time {
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.wave-seg-dur {
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  white-space: nowrap;
+}
+
+/* ── 输出 ─────────────────────────────────────────────────────────────
+   「将写入：…」那一行。和输入文件重名时整行变橙 + 挂一个 chip。 */
+.audio-out-path {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+  word-break: break-all;
+}
+.audio-out-path-label {
+  color: var(--lg-label-secondary);
+}
+.audio-out-same {
+  color: var(--lg-orange);
+}
+
+/* ── 运行 + 结果 ────────────────────────────────────────────────────── */
+.audio-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+}
+.audio-run-note {
+  margin: 0;
+  text-align: center;
+}
+.audio-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  margin-block-start: var(--lg-space-4);
+  padding-block-start: var(--lg-space-4);
+  border-block-start: 1px solid var(--lg-separator);
+}
+.audio-result-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+}
+.audio-result-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.audio-result-path {
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  word-break: break-all;
+}
+
+/* ── 人声分离 ─────────────────────────────────────────────────────────
+   MVSEP（在线，要上传）与 UVR（离线）两条路，中间一条分隔线。 */
+.audio-sep-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+}
+.audio-sep-title {
+  font-size: 13px;
+  font-weight: 600;
+}
+.audio-sep-path {
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+.audio-divider {
+  height: 1px;
+  background: var(--lg-separator);
+}
+.audio-url {
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  word-break: break-all;
+}
+
+/* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
+   必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
+@supports (corner-shape: squircle) {
+  :where(.audio-op, .audio-format, .wave-seg-row, .wave-canvas) {
+    corner-shape: squircle;
+  }
+}

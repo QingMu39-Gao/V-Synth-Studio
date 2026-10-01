@@ -30,7 +30,7 @@ export function DirPicker({
 }) {
   const [cwd, setCwd] = useState('')
   const [entries, setEntries] = useState<FsEntry[]>([])
-  const [roots, setRoots] = useState<{ label: string; path: string }[]>([])
+  const [roots, setRoots] = useState<{ name: string; path: string }[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -94,7 +94,7 @@ export function DirPicker({
         {roots.length > 0 && (
           <List className="dir-roots">
             {roots.map((r) => (
-              <ListRow key={r.path} label={r.label} secondaryLabel={r.path} onSelect={() => void load(r.path)} />
+              <ListRow key={r.path} label={r.name} secondaryLabel={r.path} onSelect={() => void load(r.path)} />
             ))}
           </List>
         )}

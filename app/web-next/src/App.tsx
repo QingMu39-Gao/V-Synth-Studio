@@ -57,12 +57,12 @@ const PAGES: {
   ported?: boolean
 }[] = [
   { id: 'dashboard', title: '总览', sub: '环境检测与常用入口', icon: 'home', group: '工作台', ported: true },
-  { id: 'convert', title: '工程转换', sub: '离线把工程转到另一个编辑器', icon: 'swap', group: '工作台' },
-  { id: 'video', title: '视频解析', sub: 'B 站 / YouTube 等平台的 MV 下载', icon: 'video', group: '素材获取' },
-  { id: 'audio', title: '音频工具', sub: '人声分离 / 格式转换 / 变调变速', icon: 'wave', group: '素材获取' },
-  { id: 'lyrics', title: '歌词', sub: '网易云 / QQ 音乐搜词，导出 LRC · SRT', icon: 'music', group: '素材获取' },
-  { id: 'pv', title: '文字 PV', sub: '把歌词做成动态歌词视频（JIZURA）', icon: 'video', group: '素材获取' },
-  { id: 'resources', title: '资源库', sub: '立绘、声库、插件、音源站（仅链接）', icon: 'library', group: '素材获取' },
+  { id: 'convert', title: '工程转换', sub: '离线把工程转到另一个编辑器', icon: 'swap', group: '工作台' , ported: true },
+  { id: 'video', title: '视频解析', sub: 'B 站 / YouTube 等平台的 MV 下载', icon: 'video', group: '素材获取' , ported: true },
+  { id: 'audio', title: '音频工具', sub: '人声分离 / 格式转换 / 变调变速', icon: 'wave', group: '素材获取' , ported: true },
+  { id: 'lyrics', title: '歌词', sub: '网易云 / QQ 音乐搜词，导出 LRC · SRT', icon: 'music', group: '素材获取' , ported: true },
+  { id: 'pv', title: '文字 PV', sub: '把歌词做成动态歌词视频（JIZURA）', icon: 'video', group: '素材获取' , ported: true },
+  { id: 'resources', title: '资源库', sub: '立绘、声库、插件、音源站（仅链接）', icon: 'library', group: '素材获取' , ported: true },
   { id: 'settings', title: '设置', sub: '外观、路径、外部工具', icon: 'gear', group: '系统', ported: true },
 ]
 

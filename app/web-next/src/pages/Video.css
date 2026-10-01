@@ -1,0 +1,236 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   视频解析页（`pages/Video.tsx`）自己的样式。
+
+   规矩和别的页面一样（`docs/NEXT-UI.md` §3.3）：
+     - **一行玻璃都没有**：材质来自库，页面只管排布；
+     - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**（写死 = 亮色下瞎掉）；
+     - 控件是库的（`List` / `GlassCheckbox` / `GlassSegmentedControl` / `GlassSwitch` /
+       `Picker`），加上 `components/` 里那几个包装，这里不重造。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 结果：左（封面 + 数字 + 简介）/ 右（标题 + 分P + 画质）────────────
+   左栏固定上限、右栏吃掉剩下的宽度；窄屏落成一栏。 */
+.video-result {
+  display: grid;
+  grid-template-columns: minmax(0, 260px) minmax(0, 1fr);
+  gap: var(--lg-space-5);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .video-result {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.video-side,
+.video-main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  min-width: 0;
+}
+.video-main {
+  gap: var(--lg-space-4);
+}
+
+/* 封面：16:9 的框，图没来 / 加载失败时是同一个框里的说明文字（不再换元素尺寸） */
+.video-cover {
+  display: block;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: var(--lg-radius-m);
+  border: 1px solid var(--lg-separator);
+  background: var(--lg-fill-quaternary);
+}
+.video-cover-empty {
+  display: grid;
+  place-items: center;
+}
+
+/* 四个数字：面板里再排 2×2，字号收一档 —— index.css 的 `.stat-value` 是 26px，
+   那是给总览页顶部那一排大数字用的。 */
+.video-stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: var(--lg-space-3);
+}
+.video-stats .stat-value {
+  font-size: 17px;
+  line-height: 22px;
+}
+
+/* 简介：折叠起来，展开后自己滚（旧页面同款） */
+.video-desc-block > summary {
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--lg-label-tertiary);
+}
+.video-desc {
+  margin-block-start: 8px;
+  max-height: 150px;
+  overflow-y: auto;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--lg-label-secondary);
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+/* ── 标题与标签 ─────────────────────────────────────────────────────── */
+.video-title-block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+}
+.video-title {
+  margin: 0;
+  font-size: 18px;
+  line-height: 24px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+.video-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ── 一小节（分P / 视频流 / 音频流 / 可选格式）───────────────────────── */
+.video-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+}
+.video-section-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+}
+
+/* 未登录那一段：说明 + 一行动作 */
+.video-cookie {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+}
+
+/* ── 开关行（`SwitchRow`）───────────────────────────────────────────── */
+.video-switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+}
+.video-switch-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.video-switch-label {
+  font-size: 13.5px;
+}
+.video-switch-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 动作区 ─────────────────────────────────────────────────────────── */
+.video-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+}
+.video-center {
+  text-align: center;
+}
+
+/* 一行小字说明（旧的 `.tiny.dim`）。**不带外边距** —— 间距归容器的 gap 管。 */
+.video-note {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 下载队列 ─────────────────────────────────────────────────────────
+   一项一段：标题行（图标 / 名字 / 状态 / 取消重试）、一行消息，完成后跟一份文件清单。 */
+.video-queue {
+  display: flex;
+  flex-direction: column;
+  margin-block-start: var(--lg-space-4);
+}
+.video-q-row {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-block: var(--lg-space-3);
+}
+.video-q-row + .video-q-row {
+  border-block-start: 1px solid var(--lg-separator);
+}
+.video-q-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+}
+.video-q-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.video-q-msg {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+  word-break: break-word;
+}
+.video-q-err {
+  color: var(--lg-red);
+}
+
+.video-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.video-file-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+}
+.video-file-head .video-note {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.video-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.video-file-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+}
+
+/* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
+   必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
+@supports (corner-shape: squircle) {
+  :where(.video-cover, .video-cover-empty) {
+    corner-shape: squircle;
+  }
+}

@@ -586,7 +586,7 @@ function FilePicker({
 }) {
   const [cwd, setCwd] = useState('')
   const [entries, setEntries] = useState<FsEntry[]>([])
-  const [roots, setRoots] = useState<{ label: string; path: string }[]>([])
+  const [roots, setRoots] = useState<{ name: string; path: string }[]>([])
   const [err, setErr] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
 
@@ -655,7 +655,7 @@ function FilePicker({
             {roots.map((r) => (
               <ListRow
                 key={r.path}
-                label={r.label}
+                label={r.name}
                 secondaryLabel={r.path}
                 onSelect={() => void load(r.path)}
               />
@@ -725,7 +725,9 @@ const PREVIEW_LIMIT = 12
 const baseName = (p: string) => p.split(/[\\/]/).pop() || p
 
 const extOf = (p: string) => {
-  const m = /\.[^.\\/]+$/.exec(p)
+  /* ⚠️ 捕获组不能漏：`m[1]` 在没写括号时是 undefined，`.toLowerCase()` 直接抛 —— 
+     React 会把整棵树卸掉（表现是整个页面空白），而控制台只有一行 TypeError。 */
+  const m = /\.([^.\\/]+)$/.exec(p)
   return m ? m[1].toLowerCase() : ''
 }
 
