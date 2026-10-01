@@ -54,7 +54,7 @@ WebView2 窗口（Tauri 2）
 | 玻璃 | 库 `@ttqtt/liquid-glass-react`；等级在 `lib/useGlass.ts`（键 `qingmu.glassLevel`） |
 
 > 旧的手写前端（`app/web/js` + `css` + 手写 `index.html`）、`--ui=next|old` 与启动器的
-> `--old` 已于 2026-10-05 一起删除。exe 与启动器现在都加载根路径 `/`。
+> `--old` 已于 2026-10-02 一起删除。exe 与启动器现在都加载根路径 `/`。
 
 **页面偏好放哪**（都不进 `config.json`，除 Cookie / 路径 / 工具路径）：
 
@@ -146,7 +146,7 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 **关键约束 / 坑**：
 
-- `collect` 要 `{dirs}`（**旧前端**发 `{dir}` → 永远 0 个文件，那套前端 2026-10-05 已删；坑的来历见 `docs/FRONTEND.md` §5）；`preview` 要 `{inputs,toFormat}`；`inspect` 用 `inputPath`。
+- `collect` 要 `{dirs}`（**旧前端**发 `{dir}` → 永远 0 个文件，那套前端 2026-10-02 已删；坑的来历见 `docs/FRONTEND.md` §5）；`preview` 要 `{inputs,toFormat}`；`inspect` 用 `inputPath`。
 - LibreSVIP CLI 位置由 `libresvip::cli_path` 四个候选决定（`tools/libresvip/libresvip-cli/…exe` 等），找不到就报「没有找到 LibreSVIP CLI」。
 - 任务日志行首时间戳用 `convert.rs::clock()`，实现是 `秒 % 86400` ——**实际是 UTC**，与它注释里写的「本地时间」不符（已核实）。
 - 任务 id 不是随机的：`format!("{:06x}", seq * 0x9e3779b9 % 0xffffff)`（`convert.rs::new_job`）。
@@ -548,16 +548,16 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 写这份文档时按任务要求**没有启动任何实例、没有发任何网络请求、没有跑构建与测试**。以下条目是「读代码得出的判断」，或「我不确定的」：
 
 1. **运行时行为全部未实测** —— 所有请求链、回包形状、错误码都来自源码与 17 个契约夹具的阅读。
-2. ~~⚠️ **`/api/fs/open` 不接受 `{url}`**~~ **已修（2026-10-05 复核）**：`simple.rs::fs_open` 现在 `path` 与 `url` 都收（`url` 走 `platform::looks_like_url` → 系统默认程序，不做存在性检查，带单测）。前端三处按 `{url}` 调用 —— `Resources.tsx:293`、`Video.tsx:775`、`Audio.tsx:1917` —— 现在是对的。
+2. ~~⚠️ **`/api/fs/open` 不接受 `{url}`**~~ **已修（2026-10-02 复核）**：`simple.rs::fs_open` 现在 `path` 与 `url` 都收（`url` 走 `platform::looks_like_url` → 系统默认程序，不做存在性检查，带单测）。前端三处按 `{url}` 调用 —— `Resources.tsx:293`、`Video.tsx:775`、`Audio.tsx:1917` —— 现在是对的。
 3. **`/api/tools/detect?force=1` 的参数被忽略**（handler 无 Query 提取器）；前端仍会传，判定为无副作用 —— 未运行验证。
 4. **`convert.rs::clock()` 的注释与实现不符**：注释写「本地时间」，实现是 `secs % 86400`（UTC）。日志时间戳会与本地时间差时区（未实测差值）。
 5. **两处页面注释已过期**：`Lyrics.tsx` 头注释说 `api.ts` 的歌词类型是 `{items:[{title,artist}]}`、`Video.tsx` 头注释说 `api.ts` 把 `currentPage` 写成数字 —— 现在 `api.ts` 已经是 `songs:[{name,artists}]` 与 `currentPage` 对象（已逐行核实）。
-6. ~~**`/api/convert/preview-upload` 与 `/api/convert/run-upload` 没有任何前端调用者**~~ **已复核（2026-10-05）**：它们在 `lib/api.ts` 里没有包装，但页面**裸 fetch** 在用 —— `Convert.tsx:195`、`Convert.tsx:321`（拖入的文件没有磁盘路径时走上传版）。同一类「不在 api.ts 里但活着」的还有 `/api/fs/raw`（`Audio.tsx:1195` 的波形与试听）与 `/api/pv/save`（`Pv.tsx:277` 分块写 MP4）。**只查 `api.ts` 会把它们误判成死路由。**
+6. ~~**`/api/convert/preview-upload` 与 `/api/convert/run-upload` 没有任何前端调用者**~~ **已复核（2026-10-02）**：它们在 `lib/api.ts` 里没有包装，但页面**裸 fetch** 在用 —— `Convert.tsx:195`、`Convert.tsx:321`（拖入的文件没有磁盘路径时走上传版）。同一类「不在 api.ts 里但活着」的还有 `/api/fs/raw`（`Audio.tsx:1195` 的波形与试听）与 `/api/pv/save`（`Pv.tsx:277` 分块写 MP4）。**只查 `api.ts` 会把它们误判成死路由。**
 7. **`/api/resources/check` 的真实实现不存在**（固定返回 `{results:[],pending:true}`）；`lib/api.ts::checkLinks` 却声明回 `{jobId}` —— 哪一边会先改未核实；`Resources.tsx` 里的「等后端接上」分支是按现状写的。
 8. **`AGENTS.md` 第八节与 `tauri.conf.json` 互相矛盾**：前者写 `bundle.resources` 是空的、`resource_dir()` 那一步从没生效；后者**有 4 条映射**（`app/web`、两个 data JSON、`tools`）。我按文件本身写（§3.8），但**不知道哪一边是当前意图**，也没有打包实测。
 9. **资源库 `verdict` 的前端兜底推断**（`Resources.tsx::verdictOf`）已逐行核实并写进 §3.6，但它与 `AGENTS.md` 第七节的三态定义是否处处等价（例如「其它 5xx」），未做逐条比对。
-10. ~~**死配置键**~~ **已于 2026-10-05 处理**：`lastSourceFormat`、`voiceDirs`、`perfMode`、`customPrograms` 四个只写不读的键从 `server/simple.rs::default_config()` 里删掉了（连带 `/api/tools/launch` 的 `{id}` 分支与夹具同步更新）。只留 `defaultTargetFormat` —— 它**没有写入方**是事实，但 `Convert.tsx:57` 在读（目标格式的初值），所以不是死键，改默认值只能改那一行。
+10. ~~**死配置键**~~ **已于 2026-10-02 处理**：`lastSourceFormat`、`voiceDirs`、`perfMode`、`customPrograms` 四个只写不读的键从 `server/simple.rs::default_config()` 里删掉了（连带 `/api/tools/launch` 的 `{id}` 分支与夹具同步更新）。只留 `defaultTargetFormat` —— 它**没有写入方**是事实，但 `Convert.tsx:57` 在读（目标格式的初值），所以不是死键，改默认值只能改那一行。
 11. **`docs/GLASS-HANDOFF.md` 我只读了 `AGENTS.md` 对它的引用**，本文里的小节号（§2.2 / §3.1 / §4.1）按那份引用标注，**没有逐节核对正文**。
 12. **平台相关分支只有 Windows 走过**：macOS 的 `open -R` / `$HOME/Downloads`、非 Windows 的 GBK 分支（`gbk_to_string` 直接返回 `None`）都只读了代码。
 13. **外部站点的线上行为未验证**：B 站 WBI / 番剧 / durl、网易云明文接口、QQ 音乐手机 UA 搜索、yt-dlp 各站点 —— 写文档期间没有发任何请求。
-14. **并发改动的风险**：写这份文档期间仓库里还有别的改动（`main.rs` / `server/simple.rs` / `tests/manual/*` 都有未提交修改）。本文按**我读到的那一版工作区**写；如果这些文件随后又变了，请以代码为准。（其中 `docs/NEXT-UI.md` 已于 2026-10-05 改名为 `docs/FRONTEND.md`。）
+14. **并发改动的风险**：写这份文档期间仓库里还有别的改动（`main.rs` / `server/simple.rs` / `tests/manual/*` 都有未提交修改）。本文按**我读到的那一版工作区**写；如果这些文件随后又变了，请以代码为准。（其中 `docs/NEXT-UI.md` 已于 2026-10-02 改名为 `docs/FRONTEND.md`。）

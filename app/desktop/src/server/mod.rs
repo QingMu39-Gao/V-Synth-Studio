@@ -4,7 +4,7 @@
 //! `tests/contract/fixtures/` 里的真实抓包为准。
 //!
 //! 前端是 `app/web-next/` 的 Vite 产物（伺服自 `app/web/`），已不是 Node 后端
-//! 时代的 `app/web/js`（那套已于 2026-10-05 删除）。
+//! 时代的 `app/web/js`（那套已于 2026-10-02 删除）。
 //!
 //! 模块划分：
 //!   mod.rs      路由表 + 共享状态

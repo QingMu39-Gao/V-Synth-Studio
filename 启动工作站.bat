@@ -11,7 +11,7 @@ REM    launch.bat                       start the app (window + embedded service
 REM    launch.bat --serve --port=8891   service only, no window (for tests)
 REM
 REM  There is only ONE front end now (React, served at "/").
-REM  Until 2026-10-05 this file chose between the old and the new UI
+REM  Until 2026-10-02 this file chose between the old and the new UI
 REM  ("--old" / "--ui=next"); the old UI is gone, so the choice is gone.
 REM  Files are read from disk per request, so editing the front end still
 REM  needs no rebuild -- only "npm run build" in app\web-next.

@@ -79,7 +79,7 @@ function restoreStandardBackdropFilter(): Plugin {
 
 export default defineConfig({
   /*
-   * 根路径。旧前端（`app/web/index.html` + `js/` + `css/`）已在 2026-10-05 整体退役，
+   * 根路径。旧前端（`app/web/index.html` + `js/` + `css/`）已在 2026-10-02 整体退役，
    * 现在是**唯一**的界面 —— exe 加载 `http://127.0.0.1:<port>/`，直接就是这里。
    */
   base: '/',

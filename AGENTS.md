@@ -176,7 +176,7 @@ powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1 -Local 'D:\
 `fetch-tools.ps1` 拿不到存档时会退到三个上游官方地址现下（gyan.dev / yt-dlp release /
 LibreSVIP release）—— 慢，但不用人去别处找。
 
-> ⚠️ 四条实测教训，别再踩：
+> ⚠️ 六条实测教训，别再踩：
 > ① **判「齐不齐」必须核对解压后的具体文件**，不能只看目录在不在 —— 半途失败的解压
 >    会留下看似完整的空壳，而那要到用户点「工程转换」才现形。
 > ② 下载用 `curl.exe` + **自己写的重试循环**。`Invoke-WebRequest` 读 GitHub release
@@ -189,8 +189,16 @@ LibreSVIP release）—— 慢，但不用人去别处找。
 >    `Could not find a part of the path.`，而且**目标没到位**（源倒是没了）。
 >    同理：**给函数返回值的函数里，报进度要用 `Write-Host` 不能用 `Write-Output`** ——
 >    后者会混进返回值，调用方拿到「提示 + 路径」拼起来的垃圾字符串。
->    这两条都是 2026-10-05 用「把两块大件挪走、从存档重新解一遍」的干净房间测试翻出来的，
->    **别再靠肉眼审脚本**：那次单测就抓出两个必然踩中的 bug。
+> ⑤ **`tools\` 里同时住着入库的源码**（`zip-assets.ps1`、`fetch-jizura-fonts.ps1`）。
+>    所以补齐只能**合并**进去，不能整目录替换 —— 而 `zip-assets.ps1` **不在存档里**
+>    （它就是打存档的那个），替换必删它。规则是「同名目录才先删、其余交给
+>    `Move-Item -Force` 原地覆盖」。
+> ⑥ ⚠️ **`Move-Item` 的目标已存在时是「嵌套」不是「覆盖」**，连目录对目录也一样：
+>    把 `_verify-hold-X\tools` 搬回已经存在的 `tools\`，得到的是 `tools\tools\`
+>    （`-Force` 也拦不住）。还原临时区要**逐项搬内容**，别搬整个目录。
+>    ⑤⑥ 都是 2026-10-02 那轮干净房间验证抓出来的，和 ④ 同源：
+>    **别再靠肉眼审脚本** —— 这个测试脚本一共 6 次运行，抓出 4 个必然踩中的 bug，
+>    其中两个只有在「tools\*.ps1 留在原地」的前提下才测得出来（见下）。
 
 ### Node 只在构建期出现（别和"去 Node"搞混）
 
@@ -208,7 +216,7 @@ LibreSVIP release）—— 慢，但不用人去别处找。
 
 启动器/CI 里任何"这台机器没有 Node"的假设都已失效 —— 编译机必须有。
 
-### 界面只有一套（2026-10-05 切换完成）
+### 界面只有一套（2026-10-02 切换完成）
 
 | 启动方式 | 界面 |
 |---|---|
@@ -221,7 +229,7 @@ LibreSVIP release）—— 慢，但不用人去别处找。
 `docs/LEGACY-UI.md` 一并退役。
 
 > 这一节以前叫「切换界面（旧前端 / 新前端）」，记着「启动器默认新前端、exe 默认旧前端」那套
-> 双界面机制。**那套机制已经不存在了，别再照它推理。** 切换发生在 2026-10-05：
+> 双界面机制。**那套机制已经不存在了，别再照它推理。** 切换发生在 2026-10-02：
 > 用户验收通过后，`main.rs` 里那段 `--ui=` 选择逻辑整体删掉，窗口固定加载根路径 `/`。
 >
 > **改前端不用重新编译**（`app/web/` 仍是每请求从磁盘读）：`npm run build` 或
@@ -313,7 +321,7 @@ npm run watch   # 开发时推荐：改完自动重建，浏览器刷新即可
 ## 四、前端（`app/web-next` → `app/web`）
 
 **只有一套界面了。** 旧的手写前端（`app/web/js` + `app/web/css` + 手写 `index.html`）
-已于 2026-10-05 整体删除，`docs/LEGACY-UI.md` 一并退役 —— 别再去 `app/web/js/` 找东西。
+已于 2026-10-02 整体删除，`docs/LEGACY-UI.md` 一并退役 —— 别再去 `app/web/js/` 找东西。
 
 前端规范、页面约定、库组件清单、接口契约坑、验证工具与人工验收清单
 **全在 `docs/FRONTEND.md`** —— 动前端之前读那份。
@@ -452,10 +460,10 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 | 事项 | 状态 |
 |---|---|
-| **打包 MSI** | **能打出来了（2026-10-05）**，但**装完能不能跑还没验过** —— 见下 |
+| **打包 MSI** | **能打出来了（2026-10-02）**，但**装完能不能跑还没验过** —— 见下 |
 | UTAU Shift-JIS | 纯 Rust 侧不生成 Shift-JIS，默认写 UTF-8 |
 | YouTube | 境内不可达，相关功能要走代理（设置页可配） |
-| `mime_of` | 已补齐（2026-10-05）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
+| `mime_of` | 已补齐（2026-10-02）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
 | `backdrop-filter` 降级 | 无该特性环境的降级方案没做视觉验证 |
 | `audio.rs` 顶部注释 | 写着「ffmpeg 不随程序分发」，与事实相反（注释是旧的） |
 | Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
@@ -463,7 +471,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 ### 打包：能打了，但「装完能不能跑」还没验过
 
-**2026-10-05 更新**：`build.ps1 -Release -Bundle` 与 CI 工作流都写好了，打包链路本身是通的
+**2026-10-02 更新**：`build.ps1 -Release -Bundle` 与 CI 工作流都写好了，打包链路本身是通的
 （`bundle.resources` 的四条映射与 `resolve_paths()` 的期望对齐，见下面的引文）。
 **但打出来的 MSI 一台机器都没装过** —— 剩下的就是实测。
 
@@ -661,7 +669,7 @@ git log --all -- app/data/resources.json
 所以媒体层最终要桌面走 `Command`、移动走 JNI。**现在不用做** —— 调用链的 `tools_dir`
 形参已经一路穿好了，将来是机械替换而非重写。
 
-**上 Vite 时的四条硬约束**（当时想清楚、2026-10-05 全部已落地）：
+**上 Vite 时的四条硬约束**（当时想清楚、2026-10-02 全部已落地）：
 
 - Vite 的 `outDir` 指向 `app/web/`、`base: '/'`，**服务端一行不用改** ——
   因为窗口加载的是 `http://127.0.0.1:<port>`，静态文件是每请求从磁盘读的。

@@ -73,7 +73,7 @@ fn now_millis() -> u64 {
 /// ⚠️ **改这里就是改接口契约**：`tests/contract/fixtures/{config,state}.json` 是冻结的基准，
 /// 增删键都要同步那份夹具，否则 `tests/contract/verify.mjs` 会红。
 ///
-/// 2026-10-05 删掉了 4 个「只写不读」的键 —— 它们从 Node 版继承下来，从来没有读写方：
+/// 2026-10-02 删掉了 4 个「只写不读」的键 —— 它们从 Node 版继承下来，从来没有读写方：
 ///   `lastSourceFormat` / `voiceDirs` / `perfMode` / `customPrograms`
 /// 其中 `perfMode` 早就是前端 localStorage 的事，`customPrograms` 只被
 /// `/api/tools/launch` 的 `{id}` 分支读过（那条分支也一并删了）。
@@ -107,7 +107,7 @@ fn config_path(writable: &Path) -> PathBuf {
 
 /// 读配置。文件不存在就用默认值（和 Node 版行为一致）。
 ///
-/// ⚠️ 文件存在但**解析失败**时会记一行日志再回落默认值（2026-10-05 补）。
+/// ⚠️ 文件存在但**解析失败**时会记一行日志再回落默认值（2026-10-02 补）。
 /// 以前这一步是纯静默的：`config.json` 里多一个花括号，用户改了设置却「没生效」，
 /// 翻遍界面也看不出原因 —— 实际是整份配置被默认值顶掉了。
 pub fn load_config(writable: &Path) -> Value {
@@ -456,7 +456,7 @@ pub async fn fs_delete(Json(body): Json<Value>) -> Result<Json<Value>, ApiError>
  *
  * ⚠️ 这里以前只读 `path` 且要求路径存在，于是前端传 `{url}` 的调用**必然 400**
  * （`body["path"]` 是空串 → 「路径不存在：」）—— 界面上「在浏览器打开」这类按钮
- * 一直是坏的。旧前端（`app/web/js/views/` 下那几套，2026-10-05 已删）也全在传 `{url}`；
+ * 一直是坏的。旧前端（`app/web/js/views/` 下那几套，2026-10-02 已删）也全在传 `{url}`；
  * 现在的新前端有三处：`pages/Resources.tsx`、`pages/Video.tsx`、`pages/Audio.tsx`。
  *
  * 现在两种都收：`path`（要求存在）与 `url`（交给系统默认程序，不做存在性检查）。
