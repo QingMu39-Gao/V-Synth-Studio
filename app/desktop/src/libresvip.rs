@@ -102,18 +102,21 @@ struct PromptRule {
     kw: &'static str,
 }
 
+/// ⚠️ **这些键名现在是 LibreSVIP 的官方选项名**（不再是自造的）
+/// 来源：`libresvip-cli.exe plugin detail svp/vsqx` 的输出（整理成表见 docs/FEATURES.md §3.1）
+/// 版本：LibreSVIP 2.9.0
 const RULES: &[PromptRule] = &[
-    /* 导入（svp / vsqx 这类带包络的工程会问这些） */
-    PromptRule { key: "import.volume", kw: "音量包络" },
-    PromptRule { key: "import.dynamics", kw: "力度包络" },
-    PromptRule { key: "import.pitch", kw: "音高曲线" },
-    PromptRule { key: "import.accompaniment", kw: "伴奏轨" },
-    PromptRule { key: "import.gender", kw: "性别包络" },
-    PromptRule { key: "import.breath", kw: "气声包络" },
-    PromptRule { key: "import.instantPitch", kw: "即时音高" },
-    PromptRule { key: "import.pitchMode", kw: "音高信息输入模式" },
-    PromptRule { key: "import.breathMode", kw: "换气音符" },
-    PromptRule { key: "import.noteGroup", kw: "音符组" },
+    /* 导入（svp 插件 1.11.2 的官方选项名） */
+    PromptRule { key: "导入音量包络", kw: "音量包络" },
+    PromptRule { key: "导入力度包络", kw: "力度包络" },
+    PromptRule { key: "导入音高曲线", kw: "音高曲线" },
+    PromptRule { key: "导入伴奏轨", kw: "伴奏轨" },
+    PromptRule { key: "导入性别包络", kw: "性别包络" },
+    PromptRule { key: "导入气声包络", kw: "气声包络" },
+    PromptRule { key: "遵循即时音高模式设置", kw: "即时音高" },
+    PromptRule { key: "音高信息输入模式", kw: "音高信息输入模式" },
+    PromptRule { key: "换气音符处理方式", kw: "换气音符" },
+    PromptRule { key: "音符组导入方式", kw: "音符组" },
     /* 中间件（这些是旧前端那 13 个「转换处理」选项的真身） */
     PromptRule { key: "middleware.transpose", kw: "音高变调" },
     PromptRule { key: "middleware.scale", kw: "工程缩放" },
@@ -126,10 +129,10 @@ const RULES: &[PromptRule] = &[
     PromptRule { key: "removeShort.threshold", kw: "无声间隙长度" },
     PromptRule { key: "replaceLyrics.from", kw: "被替换" },
     PromptRule { key: "replaceLyrics.to", kw: "替换为" },
-    /* 导出 */
-    PromptRule { key: "export.vsqxVersion", kw: "VSQX文件版本" },
-    PromptRule { key: "export.prettyXml", kw: "美化XML" },
-    PromptRule { key: "export.language", kw: "默认语言" },
+    /* 导出（vsqx 插件 1.0.0 的官方选项名） */
+    PromptRule { key: "VSQX文件版本", kw: "VSQX文件版本" },
+    PromptRule { key: "美化XML", kw: "美化XML" },
+    PromptRule { key: "默认语言", kw: "默认语言" },
     PromptRule { key: "export.compid", kw: "CompID" },
     PromptRule { key: "export.singer", kw: "默认歌手" },
 ];
@@ -164,15 +167,22 @@ fn answer_for(prompt: &str, options: &Value) -> String {
             }
         }
     }
+    
     default_from_prompt(prompt).unwrap_or_default()
 }
 
 /// 给了中间件的参数就自动把它打开（用户填了「音高变化量 = 3」却要自己再去开开关，太别扭）
-fn normalize_options(options: &Value) -> Value {
+/// 
+/// ⚠️ **VSQX 自动降级**：LibreSVIP 2.9.0 导出 VSQX 时遇到参数曲线会崩溃
+/// （`AttributeError: vsqx_name`）。当目标格式是 VSQX 时，自动关闭这四个包络。
+/// 调用方必须检查返回值的 `_vsqx_degraded` 字段，并警告用户丢了什么。
+fn normalize_options(options: &Value, to_format: &str) -> Value {
     let mut o = options.clone();
     if !o.is_object() {
         return json!({});
     }
+    
+    // 中间件参数自动开启对应开关
     let pairs = [
         ("middleware.transpose", "transpose.semitones"),
         ("middleware.scale", "scale.factor"),
@@ -188,6 +198,27 @@ fn normalize_options(options: &Value) -> Value {
             o[mid] = json!(true);
         }
     }
+    
+    // VSQX 自动降级：关闭会导致崩溃的四个包络
+    if to_format.eq_ignore_ascii_case("vsqx") {
+        let envelopes = [
+            "导入音量包络",
+            "导入力度包络", 
+            "导入性别包络",
+            "导入气声包络",
+        ];
+        let mut disabled = Vec::new();
+        for key in &envelopes {
+            if o.get(*key).and_then(|v| v.as_bool()).unwrap_or(true) {
+                o[*key] = json!(false);
+                disabled.push(*key);
+            }
+        }
+        if !disabled.is_empty() {
+            o["_vsqx_degraded"] = json!(disabled);
+        }
+    }
+    
     o
 }
 
@@ -367,7 +398,28 @@ pub fn convert(root: &Path, input: &Path, output: &Path, options: &Value) -> Res
     if !input.is_file() {
         return Err(format!("源文件不存在：{}", input.display()));
     }
-    let options = normalize_options(options);
+    
+    // 提取目标格式（用于 VSQX 自动降级）
+    let to_format = output.extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
+    
+    let options = normalize_options(options, to_format);
+    
+    // 检查是否触发了 VSQX 降级，记录警告
+    let vsqx_warning = if let Some(disabled) = options.get("_vsqx_degraded").and_then(|v| v.as_array()) {
+        let names: Vec<String> = disabled.iter()
+            .filter_map(|v| v.as_str())
+            .map(|s| s.replace("导入", "").replace("包络", ""))
+            .collect();
+        if !names.is_empty() {
+            Some(format!("⚠️ VSQX 兼容性：已自动关闭 {} 包络（LibreSVIP 2.9.0 导出这些曲线会崩溃）", names.join("、")))
+        } else {
+            None
+        }
+    } else {
+        None
+    };
 
     let mut child = crate::server::simple::quiet_command(&cli.to_string_lossy())
         .args(["proj", "convert"])
@@ -472,6 +524,11 @@ pub fn convert(root: &Path, input: &Path, output: &Path, options: &Value) -> Res
     let mut stdout_text = clean_output(&gbk_to_utf8(&raw));
     if timed_out {
         stdout_text.push_str(&format!("（超时 {} 秒，已中止；已答 {} 题）", CONVERT_TIMEOUT_SECS, answers));
+    }
+    
+    // 把 VSQX 降级警告加到 stdout 开头，让用户能看到
+    if let Some(warning) = vsqx_warning {
+        stdout_text = format!("{}\n\n{}", warning, stdout_text);
     }
 
     Ok(ConvertResult {
@@ -666,14 +723,30 @@ mod prompt_tests {
     /// 给了中间件参数就自动开中间件（否则用户填了半音数还要自己去开开关）
     #[test]
     fn parameter_turns_middleware_on() {
-        let o = normalize_options(&json!({ "transpose.semitones": 3 }));
+        let o = normalize_options(&json!({ "transpose.semitones": 3 }), "svp");
         assert_eq!(o.get("middleware.transpose"), Some(&json!(true)));
         // 0 不算「填过」，不该误开
-        let o2 = normalize_options(&json!({ "transpose.semitones": 0 }));
+        let o2 = normalize_options(&json!({ "transpose.semitones": 0 }), "svp");
         assert!(o2.get("middleware.transpose").is_none());
         // 显式关掉时不要被参数打开
-        let o3 = normalize_options(&json!({ "transpose.semitones": 3, "middleware.transpose": false }));
+        let o3 = normalize_options(&json!({ "transpose.semitones": 3, "middleware.transpose": false }), "svp");
         assert_eq!(o3.get("middleware.transpose"), Some(&json!(false)));
+    }
+
+    /// VSQX 自动降级：关闭会导致崩溃的四个包络
+    #[test]
+    fn vsqx_auto_degrades_envelopes() {
+        // 转到 VSQX 时，四个包络自动关闭
+        let opts = json!({ "导入音量包络": true, "导入力度包络": true });
+        let o = normalize_options(&opts, "vsqx");
+        assert_eq!(o.get("导入音量包络"), Some(&json!(false)));
+        assert_eq!(o.get("导入力度包络"), Some(&json!(false)));
+        assert!(o.get("_vsqx_degraded").is_some());
+        
+        // 转到别的格式时不降级
+        let o2 = normalize_options(&opts, "svp");
+        assert_eq!(o2.get("导入音量包络"), Some(&json!(true)));
+        assert!(o2.get("_vsqx_degraded").is_none());
     }
 
     /// 只在「安静下来且结尾是冒号」时才认为它在提问；已经答过的不重复答

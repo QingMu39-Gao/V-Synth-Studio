@@ -5,8 +5,8 @@
  *   node tests/manual/convert-samples.mjs [端口] [--dir <样本目录>] [--only <文件名>] [--options <JSON>]
  *
  * 为什么要它：转换的真实失败率与失败原因（上游 bug / 音符重叠 / 提问没答上）
- * 只能靠真工程量出来。2026-10-02 的基线是 **成功 10 / 16**，其中 5 个撞上游
- * `AttributeError: vsqx_name`。细节与待办见 docs/CONVERT-HANDOFF.md。
+ * 只能靠真工程量出来。2026-10-01 的基线是 **成功 15 / 16** —— 唯一失败的那个是
+ * 源工程自身音符重叠（LibreSVIP 正常拒绝，不是我们的 bug）。细节见 docs/FEATURES.md §3.1。
  *
  * ⚠️ 样本目录**不在 git 里**（默认指向本机的素材目录），别的机器上要 --dir 指定。
  */
@@ -47,7 +47,7 @@ console.log(`样本 ${files.length} 个 · 来源 ${DIR} · 输出 ${OUT}\n`)
 /** 从任务日志里认出失败原因（顺序有讲究：先认最具体的） */
 function reasonOf(job) {
   const last = String(job.logs?.slice(-1)[0] ?? '')
-  if (/vsqx_name/.test(last)) return 'AttributeError: vsqx_name（上游 vsqx 导出器 bug，见 CONVERT-HANDOFF §2.1）'
+  if (/vsqx_name/.test(last)) return 'AttributeError: vsqx_name（上游 vsqx 导出器 bug；目标为 vsqx 时后端会自动降级，见 docs/FEATURES.md §3.1）'
   if (/FileNotFoundError/.test(last)) return 'FileNotFoundError（输出目录 / 写入失败）'
   if (/Aborted/.test(last)) return 'Aborted（交互提问没答上）'
   if (/重叠|overlap/i.test(last)) return '源工程音符重叠，LibreSVIP 拒绝转换'

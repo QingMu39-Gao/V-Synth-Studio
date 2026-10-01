@@ -149,25 +149,61 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 **涉及文件**：`server/convert.rs`、`libresvip.rs`、`data.rs`（算子表）、`app/web-next/src/pages/Convert.tsx`、`lib/api.ts`、`lib/useJob.ts`、`components/Job.tsx`。
 
-#### 转换选项（前端 `options` → LibreSVIP 的逐题提问）
+#### 转换选项（`options` 的键 = LibreSVIP 的**官方选项名**）
 
-**背景**：这个 CLI 的 `proj convert` **没有任何选项参数**，它的选项是在转换过程中**逐题提问**的
-（`导入选项：1. 导入音量包络 [y/n] (y): …`，输出按 GBK 编码）。所以后端 `libresvip::convert`
-改成了「交互式应答器」：读 stdout，认出「安静下来且以冒号结尾」就是一道题，然后
-**照抄提示里括号中的默认值**（`(y)`→`y`、`(1/1)`→`1/1`）——除非 `options` 里有对得上关键词的键。
+**背景**：这个 CLI 的 `proj convert` **没有任何选项参数**，选项是在转换过程中**逐题提问**的
+（`导入选项：1. 导入音量包络 [y/n] (y): …`，输出按 GBK 编码）。后端 `libresvip::convert` 因此是个
+「交互式应答器」：读 stdout，认出「安静下来且以冒号结尾」就是一道题；**`options` 里有没有对得上
+官方选项名的键**，有就答它，没有就照抄提示里括号中的默认值（`(y)`→`y`、`(1/1)`→`1/1`）。
 
-| 键 | 类型 | 默认 | 对应的提问 |
-|---|---|---|---|
-| `import.volume` / `import.dynamics` / `import.pitch` | bool | true | 导入音量包络 / 力度包络 / 音高曲线 |
-| `import.accompaniment` / `import.gender` / `import.breath` | bool | true | 导入伴奏轨 / 性别包络 / 气声包络 |
-| `import.instantPitch` | bool | true | 遵循即时音高模式设置 |
-| `import.pitchMode` | `full\|vibrato\|plain` | `plain` | 音高信息输入模式 |
-| `import.breathMode` | `ignore\|keep\|convert` | `convert` | 换气音符处理方式 |
-| `import.noteGroup` | `split\|merge` | `split` | 音符组导入方式 |
-| `middleware.transpose` / `.scale` / `.lyricsPron` / `.removeShort` / `.replaceLyrics` | bool | false | 启用 X 中间件吗 |
-| `transpose.semitones` / `scale.factor` | 数字 / 字符串 | `0` / `1/1` | 中间件的追问参数（填了参数会自动启用对应中间件） |
-| `export.vsqxVersion` / `export.prettyXml` / `export.language` | `"3"\|"4"` / bool / `"0".."4"` | `"4"` / true / `"4"` | VSQX 文件版本 / 美化 XML / 默认语言 |
-| `export.compid` / `export.singer` | string | 提示里的默认 | 默认的 CompID / 默认歌手名称 |
+> **键名一律用官方的中文选项名**（`导入音量包络`、`音高信息输入模式`……），不要自造
+> `import.pitchMode` 这类英文键 —— 自造键跟 LibreSVIP 的选项表没有任何对应关系。
+> 官方选项名与取值可以用 `libresvip-cli.exe plugin detail svp` / `plugin detail vsqx` 查
+> （**GBK 输出**，PowerShell 里要读 `StandardOutput.BaseStream` 原始字节再按 936 解码）。
+
+| 官方选项名（svp 导入） | 类型 | 官方默认 |
+|---|---|---|
+| `导入音量包络` / `导入力度包络` / `导入音高曲线` | bool | true |
+| `导入伴奏轨` / `导入性别包络` / `导入气声包络` | bool | true |
+| `遵循即时音高模式设置` | bool | true |
+| `音高信息输入模式` | `full` / `vibrato` / `plain` | **`plain`** |
+| `换气音符处理方式` | `ignore` / `keep` / `convert` | `convert` |
+| `音符组导入方式` | `split` / `merge` | `split` |
+| `版本兼容性`（svp 导出） | `100` / `135` / `182` | `100` |
+
+| 官方选项名（vsqx 输出） | 类型 | 官方默认 |
+|---|---|---|
+| `VSQX文件版本` | `3` / `4` | `4` |
+| `美化XML` | bool | true |
+| `默认语言` | `0`~`4`（0=日本語、1=英语…） | `4` |
+
+中间件（`middleware.*`）：启用了才问参数，5 个开关 —— 音高变调 / 工程缩放 / 歌词发音转换 /
+移除短的无声间隙 / 替换歌词（参数键 `transpose.semitones`、`scale.factor` 等；**给了参数会自动启用
+对应中间件**）。
+
+> ⚠️ **`音高信息输入模式` 的官方默认是 `plain`**（= 仅输入"已编辑"部分）。实测同一工程：
+> `plain` 产物 1002 KB / 5556 个 `<cc>` 曲线点，`full` 是 5918 KB / 94026 个。
+> **要完整保留源工程里画的音高，就在界面上把它选成「完整」** —— 界面上默认跟随官方（`plain`）。
+
+**VSQX 自动降级**（LibreSVIP 2.9.0 的上游 bug）：目标格式是 VSQX 时，若源工程带参数曲线，
+导出器会抛 `AttributeError: 'VocaloidParameterDef' object has no attribute 'vsqx_name'`
+（`plugins/vsqx/vocaloid_controllers.py:100`）。实测把四个包络**全关**才能绕开，所以后端在
+目标为 vsqx 时自动把 `导入音量包络` / `导入力度包络` / `导入性别包络` / `导入气声包络` 设为 `false`，
+并在任务日志里写明「已丢弃这四条曲线」。实测样本从 10/16 提到 **15/16**
+（剩下那 1 个是源工程自身音符重叠、LibreSVIP 正常拒绝）。
+
+**两条踩过的坑**（都会让转换 100% 失败，症状都是任务里一句「退出码 1」）：
+
+1. **别喂空行**。旧实现给 stdin 灌 60 个空行，以为「空行=接受默认」；但 y/n 提问不收空行，
+   它会一直回 `Please enter Y or N` 把空行吃光，最后 `Aborted.`。
+2. **输出目录必须先建**。LibreSVIP 不建中间目录，写文件时 `FileNotFoundError`
+   （PyInstaller 打包后只显示 `Failed to execute script`）。
+
+**另外**：`libresvip-cli.exe rpc server --port 15150` 是它的 gRPC 服务，
+`ConversionRequest{input_options, output_options, middleware_options, mode(SPLIT/MERGE)}`
+是官方给 GUI 用的机器接口（`_internal/libresvip/res/protos/libresvip.proto`，选项 schema 在
+`PluginInfo.json_schema`）。现在走的是「驱动交互提问」这条路，够用；哪天要做得更正式可以换过去
+（Rust 侧要 `tonic` + `prost` + `protoc`，本机都还没有）。
 
 **两条踩过的坑**（都会让转换 100% 失败，症状都是任务里一句「退出码 1」）：
 

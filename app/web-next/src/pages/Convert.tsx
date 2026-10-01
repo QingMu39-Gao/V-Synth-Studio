@@ -538,31 +538,31 @@ export function Convert({ state, onToast }: PageProps) {
                   ))}
                 </div>
                 <div className="convert-opt-fields">
-                  <Field label="音高信息" hint="「仅颤音」只搬颤音、「不带音高」等于丢掉调好的滑音">
+                  <Field label="音高信息输入模式" hint="完整=全部音高、颤音模式=仅已编辑颤音、平整模式=仅已编辑音高">
                     <Picker
-                      label="音高信息"
+                      label="音高信息输入模式"
                       labelHidden
-                      value={options['import.pitchMode']}
+                      value={options['音高信息输入模式']}
                       options={PITCH_MODES}
-                      onValueChange={(v) => setOpt('import.pitchMode', v)}
+                      onValueChange={(v) => setOpt('音高信息输入模式', v)}
                     />
                   </Field>
-                  <Field label="换气音符" hint="源工程里的换气记号怎么处理">
+                  <Field label="换气音符处理方式" hint="源工程里的换气记号怎么处理">
                     <Picker
-                      label="换气音符"
+                      label="换气音符处理方式"
                       labelHidden
-                      value={options['import.breathMode']}
+                      value={options['换气音符处理方式']}
                       options={BREATH_MODES}
-                      onValueChange={(v) => setOpt('import.breathMode', v)}
+                      onValueChange={(v) => setOpt('换气音符处理方式', v)}
                     />
                   </Field>
-                  <Field label="音符组" hint="拆开成单个音符，还是合成一整块">
+                  <Field label="音符组导入方式" hint="拆开成单个音符，还是合成一整块">
                     <Picker
-                      label="音符组"
+                      label="音符组导入方式"
                       labelHidden
-                      value={options['import.noteGroup']}
+                      value={options['音符组导入方式']}
                       options={NOTE_GROUPS}
-                      onValueChange={(v) => setOpt('import.noteGroup', v)}
+                      onValueChange={(v) => setOpt('音符组导入方式', v)}
                     />
                   </Field>
                 </div>
@@ -607,30 +607,30 @@ export function Convert({ state, onToast }: PageProps) {
               <section className="convert-opt-group">
                 <p className="group-label">导出（只对支持这些开关的目标格式有意义）</p>
                 <div className="convert-opt-fields">
-                  <Field label="VSQX 版本" hint="写 VSQX 时用哪一版；别的格式忽略">
+                  <Field label="VSQX 文件版本" hint="写 VSQX 时用哪一版；别的格式忽略">
                     <Picker
-                      label="VSQX 版本"
+                      label="VSQX 文件版本"
                       labelHidden
-                      value={options['export.vsqxVersion']}
+                      value={options['VSQX文件版本']}
                       options={VSQX_VERSIONS}
-                      onValueChange={(v) => setOpt('export.vsqxVersion', v)}
+                      onValueChange={(v) => setOpt('VSQX文件版本', v)}
                     />
                   </Field>
                   <Field label="默认语言" hint="给歌手的默认发音语言；「跟随工程」= 用工程里带的">
                     <Picker
                       label="默认语言"
                       labelHidden
-                      value={options['export.language']}
+                      value={options['默认语言']}
                       options={LANGUAGES}
-                      onValueChange={(v) => setOpt('export.language', v)}
+                      onValueChange={(v) => setOpt('默认语言', v)}
                     />
                   </Field>
                 </div>
                 <SwitchRow
                   label="美化 XML"
                   desc="缩进排版的 XML 好读，体积大一点"
-                  checked={options['export.prettyXml']}
-                  onChange={(v) => setOpt('export.prettyXml', v)}
+                  checked={options['美化XML']}
+                  onChange={(v) => setOpt('美化XML', v)}
                 />
               </section>
             </div>
@@ -767,24 +767,26 @@ export function Convert({ state, onToast }: PageProps) {
 
 /**
  * 选项默认值 —— **键名必须逐字对上后端 `libresvip::RULES`**
- * （`app/desktop/src/libresvip.rs`，后端就是按这些键回答 LibreSVIP 的逐题提问的）。
+ * **键名现在是 LibreSVIP 的官方选项名**（中文）。
+ * 来源：`libresvip-cli.exe plugin detail svp/vsqx`（整理的选项表见 `docs/FEATURES.md` §3.1），
+ * LibreSVIP 2.9.0。后端的 `libresvip.rs` 按这些官方名称直接装配答案给 CLI。
  *
- * ⚠️ 写错一个字母**不会报错**：那一题后端读不到，照抄 LibreSVIP 自己的默认值 ——
- * 表现就是「设了跟没设一样」。改这里的键名时对着 `RULES` 一个一个核。
- *
- * 默认值也按官方来：导入全开、中间件全关、导出 VSQX 4 + 美化 XML + 语言 4（西班牙语，LibreSVIP 的默认）。
+ * ⚠️ 默认值一律**跟随官方默认**，包括下面这条 —— `音高信息输入模式: 'plain'`
+ * （官方默认；≈ 只带"已编辑"部分）。实测同一工程 `plain` 产物 1002 KB / 5556 个 `<cc>` 曲线点，
+ * `full` 是 5918 KB / 94026 个。**要完整保留源工程里画的音高，用户在面板上选「完整」。**
+ * （曾经想过默认改 `full`，但那属于替用户改官方语义，没做。）
  */
 interface ConvertOptions {
-  'import.volume': boolean
-  'import.dynamics': boolean
-  'import.pitch': boolean
-  'import.accompaniment': boolean
-  'import.gender': boolean
-  'import.breath': boolean
-  'import.instantPitch': boolean
-  'import.pitchMode': string
-  'import.breathMode': string
-  'import.noteGroup': string
+  '导入音量包络': boolean
+  '导入力度包络': boolean
+  '导入音高曲线': boolean
+  '导入伴奏轨': boolean
+  '导入性别包络': boolean
+  '导入气声包络': boolean
+  '遵循即时音高模式设置': boolean
+  '音高信息输入模式': string
+  '换气音符处理方式': string
+  '音符组导入方式': string
   'middleware.transpose': boolean
   'middleware.scale': boolean
   'middleware.lyricsPron': boolean
@@ -792,9 +794,9 @@ interface ConvertOptions {
   'middleware.replaceLyrics': boolean
   'transpose.semitones': number
   'scale.factor': string
-  'export.vsqxVersion': string
-  'export.prettyXml': boolean
-  'export.language': string
+  'VSQX文件版本': string
+  '美化XML': boolean
+  '默认语言': string
 }
 
 type OptionKey = keyof ConvertOptions
@@ -802,16 +804,16 @@ type OptionKey = keyof ConvertOptions
 type KeyOf<T> = { [K in OptionKey]: ConvertOptions[K] extends T ? K : never }[OptionKey]
 
 const DEFAULTS: ConvertOptions = {
-  'import.volume': true,
-  'import.dynamics': true,
-  'import.pitch': true,
-  'import.accompaniment': true,
-  'import.gender': true,
-  'import.breath': true,
-  'import.instantPitch': true,
-  'import.pitchMode': 'plain',
-  'import.breathMode': 'convert',
-  'import.noteGroup': 'split',
+  '导入音量包络': true,
+  '导入力度包络': true,
+  '导入音高曲线': true,
+  '导入伴奏轨': true,
+  '导入性别包络': true,
+  '导入气声包络': true,
+  '遵循即时音高模式设置': true,
+  '音高信息输入模式': 'plain',  // ← 使用官方默认值 plain
+  '换气音符处理方式': 'convert',
+  '音符组导入方式': 'split',
   'middleware.transpose': false,
   'middleware.scale': false,
   'middleware.lyricsPron': false,
@@ -819,22 +821,22 @@ const DEFAULTS: ConvertOptions = {
   'middleware.replaceLyrics': false,
   'transpose.semitones': 0,
   'scale.factor': '1/1',
-  'export.vsqxVersion': '4',
-  'export.prettyXml': true,
-  'export.language': '4',
+  'VSQX文件版本': '4',
+  '美化XML': true,
+  '默认语言': '4',
 }
 
 /** 沿用旧前端的键（老数据里是另一套平铺字段、没有 `options`，那就整份用默认值） */
 const LS_KEY = 'fandiao.convert.settings'
 
 const IMPORT_SWITCHES: [KeyOf<boolean>, string, string][] = [
-  ['import.volume', '音量包络', '音量 / 表情曲线（VEL）'],
-  ['import.dynamics', '力度包络', '力度曲线（DYN）'],
-  ['import.pitch', '音高曲线', '滑音曲线（PIT）'],
-  ['import.accompaniment', '伴奏轨', '工程里单独一条伴奏音轨'],
-  ['import.gender', '性别包络', '性别参数曲线（GEN）'],
-  ['import.breath', '气声包络', '气声 / 呼吸曲线（BRE）'],
-  ['import.instantPitch', '遵循即时音高', '按音符上的即时音高唱，不受曲线影响'],
+  ['导入音量包络', '音量包络', '音量 / 表情曲线（VEL）'],
+  ['导入力度包络', '力度包络', '力度曲线（DYN）'],
+  ['导入音高曲线', '音高曲线', '滑音曲线（PIT）'],
+  ['导入伴奏轨', '伴奏轨', '工程里单独一条伴奏音轨'],
+  ['导入性别包络', '性别包络', '性别参数曲线（GEN）'],
+  ['导入气声包络', '气声包络', '气声 / 呼吸曲线（BRE）'],
+  ['遵循即时音高模式设置', '遵循即时音高', '按音符上的即时音高唱，不受曲线影响'],
 ]
 
 const MIDDLEWARE_SWITCHES: [KeyOf<boolean>, string, string][] = [
@@ -845,19 +847,22 @@ const MIDDLEWARE_SWITCHES: [KeyOf<boolean>, string, string][] = [
   ['middleware.replaceLyrics', '替换歌词', '按规则替换歌词文本'],
 ]
 
+/** 音高信息输入模式的取值（LibreSVIP 官方枚举 PitchOption） */
 const PITCH_MODES = [
-  { value: 'full', label: '完整' },
-  { value: 'vibrato', label: '仅颤音' },
-  { value: 'plain', label: '不带音高' },
+  { value: 'full', label: '完整音高曲线' },
+  { value: 'vibrato', label: '仅已编辑（颤音模式）' },
+  { value: 'plain', label: '仅已编辑（平整模式）' },
 ]
+/** 换气音符处理方式的取值（LibreSVIP 官方枚举 BreathOption） */
 const BREATH_MODES = [
   { value: 'ignore', label: '忽略' },
   { value: 'keep', label: '保留' },
   { value: 'convert', label: '转成换气音' },
 ]
+/** 音符组导入方式的取值（LibreSVIP 官方枚举 GroupOption） */
 const NOTE_GROUPS = [
-  { value: 'split', label: '拆分' },
-  { value: 'merge', label: '合并' },
+  { value: 'split', label: '全部拆分为轨道' },
+  { value: 'merge', label: '保留原始位置' },
 ]
 const VSQX_VERSIONS = [
   { value: '3', label: 'VSQX 3' },
