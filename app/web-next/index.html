@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="zh-CN" data-theme="dark">
 <head>
 <meta charset="UTF-8">
@@ -34,6 +34,157 @@
 </script>
 </head>
 <body>
+<!--
+  启动加载画面。**静态存在**，模块还没跑起来时它就在屏幕上 ——
+  否则「等 JS 下载解析 + 等 /api/state 探测完 ffmpeg/yt-dlp（2~3 秒）」这段时间是白屏。
+
+  三条规矩（和旧前端 `app/web/index.html` 的 `#boot` 对齐）：
+   1. 样式**内联在这一段**，不能等 CSS 包 —— 等它就没意义了。
+   2. 颜色用字面量，不能用库的 `--lg-*`：那些 token 挂在 `[data-lg-theme]` 下，
+      而那是 `GlassProvider` 运行后才写的。这里只认上面那段内联脚本写的 `data-theme`。
+   3. **必须有兜底**：谁都不该被永久卡在加载页。12 秒没揭开就显示「重新载入」，
+      揭开由 `src/lib/boot.ts` 的 `hideBoot()` 负责（App 在首次 /api/state 落定后调）。
+-->
+<div class="boot" id="boot" role="status" aria-live="polite">
+  <div class="boot-card">
+    <div class="boot-mark">
+      <img src="/img/logo.png" alt="" width="76" height="76">
+      <span class="boot-sweep" aria-hidden="true"></span>
+    </div>
+    <div class="boot-title">V-Synth-Studio</div>
+    <div class="boot-sub">正在载入工作台…</div>
+    <div class="boot-sub boot-stuck">本地服务没有响应。可以点下面重新载入。</div>
+    <div class="boot-bar" aria-hidden="true"><span></span></div>
+    <button class="boot-retry" type="button" onclick="location.reload()">重新载入</button>
+  </div>
+</div>
+
+<style>
+  /* ⚠️ 这两行不是废话：这一段是**应用 CSS 之前**唯一样式。
+     浏览器默认给 body 8px 外边距 → 文档比视口高 → 首屏就冒出一条纵向滚动条
+     （实测截图里右边那条就是它）。`margin: 0` 和应用里的最终值一致，不会打架。 */
+  html, body { margin: 0; }
+  .boot {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    display: grid;
+    place-items: center;
+    background: #0b0d12;
+    color: #eef1f6;
+    transition: opacity 0.38s ease, visibility 0.38s ease;
+  }
+  html[data-theme='light'] .boot {
+    background: #f3f4f6;
+    color: #1b2027;
+  }
+  .boot[data-out='true'] {
+    opacity: 0;
+    visibility: hidden;
+  }
+  .boot-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    animation: boot-in 0.5s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+  @keyframes boot-in {
+    from { opacity: 0; transform: translateY(8px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  .boot-mark {
+    position: relative;
+    width: 76px;
+    height: 76px;
+    margin-bottom: 6px;
+  }
+  .boot-mark img {
+    width: 76px;
+    height: 76px;
+    border-radius: 20px;
+    animation: boot-breathe 2.6s ease-in-out infinite;
+  }
+  @keyframes boot-breathe {
+    0%, 100% { transform: scale(1); opacity: 0.9; }
+    50% { transform: scale(1.04); opacity: 1; }
+  }
+  /* 图标本身是个圆环，这里再套一圈转起来的光弧 —— 不额外画图形，几何是共通的 */
+  .boot-sweep {
+    position: absolute;
+    inset: -11px;
+    border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 0 62%, #39c5bb 94%, transparent 100%);
+    -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    mask: radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+    animation: boot-spin 1.5s linear infinite;
+  }
+  @keyframes boot-spin {
+    to { transform: rotate(1turn); }
+  }
+  .boot-title {
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.02em;
+    font-family: system-ui, 'Microsoft YaHei', sans-serif;
+  }
+  .boot-sub {
+    font-size: 13px;
+    opacity: 0.62;
+    font-family: system-ui, 'Microsoft YaHei', sans-serif;
+  }
+  .boot-stuck { display: none; }
+  .boot-bar {
+    width: 168px;
+    height: 3px;
+    border-radius: 999px;
+    background: color-mix(in srgb, currentColor 18%, transparent);
+    overflow: hidden;
+  }
+  .boot-bar span {
+    display: block;
+    width: 40%;
+    height: 100%;
+    border-radius: inherit;
+    background: #39c5bb;
+    animation: boot-slide 1.25s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  }
+  @keyframes boot-slide {
+    from { transform: translateX(-110%); }
+    to { transform: translateX(310%); }
+  }
+  .boot-retry {
+    display: none;
+    margin-top: 2px;
+    padding: 7px 16px;
+    border: 0;
+    border-radius: 10px;
+    background: #39c5bb;
+    color: #04231f;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: system-ui, 'Microsoft YaHei', sans-serif;
+    cursor: pointer;
+  }
+  /* 12 秒还没揭开 = 出事了。**用户被永久卡在加载页是最糟的结果。** */
+  .boot[data-stuck='true'] .boot-sub:not(.boot-stuck) { display: none; }
+  .boot[data-stuck='true'] .boot-stuck { display: block; }
+  .boot[data-stuck='true'] .boot-bar { display: none; }
+  .boot[data-stuck='true'] .boot-retry { display: inline-flex; }
+  /* 前庭敏感的用户：动画全停，只留静态画面 */
+  @media (prefers-reduced-motion: reduce) {
+    .boot-card, .boot-mark img, .boot-sweep, .boot-bar span { animation: none; }
+  }
+</style>
+<script>
+  /* 揭开由 src/lib/boot.ts 负责；这里只管兜底 */
+  setTimeout(function () {
+    var b = document.getElementById('boot')
+    if (b && b.dataset.out !== 'true') b.dataset.stuck = 'true'
+  }, 12000)
+</script>
+
 <div id="root"></div>
 <script type="module" src="/src/main.tsx"></script>
 </body>

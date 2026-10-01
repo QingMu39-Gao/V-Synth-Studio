@@ -306,6 +306,34 @@ try {
    * 视图切换改用 hash：`hashchange` 会被应用自己接住，不需要换文档。
    */
   await cdp.send('Page.reload', { ignoreCache: true })
+
+  /**
+   * 启动画面：**趁它还在的时候截一张** —— 等 ready 之后再截就永远是空的
+   * （`hideBoot()` 在首次 `/api/state` 落定后就把它揭掉了，那要 2~3 秒）。
+   *
+   * ⚠️ **别贴着重载就截**：`Page.reload` 一返回就 `captureScreenshot`，
+   * 合成器交出来的可能还是**旧文档的残留帧**（旧文档那时也在加载、遮罩是它那个主题的底色）。
+   * 实测症状是「亮色跑的却截出一张暗图」，而同一刻读 DOM 明明是亮色 —— 我为此排查了一轮。
+   * 所以：**先轮询到新文档真的接管了（遮罩在 + `<html data-theme>` 已经是本次要的主题），
+   * 再截图**，顺便把那一刻的主题和底色一起记下来。
+   */
+  let splashInfo = null
+  for (let i = 0; i < 25; i++) {
+    splashInfo = await cdp.evalJs(`(() => {
+      const b = document.getElementById('boot')
+      return {
+        shown: !!b,
+        theme: document.documentElement.dataset.theme ?? null,
+        bg: b ? getComputedStyle(b).backgroundColor : null,
+        stored: localStorage.getItem('qingmu.theme'),
+      }
+    })()`)
+    if (splashInfo.shown && splashInfo.theme === THEME) break
+    await sleep(120)
+  }
+  const splashShot = await cdp.send('Page.captureScreenshot', { format: 'png' })
+  const splashShown = splashInfo.shown
+
   if (PAGE) await cdp.evalJs(`(() => { location.hash = '#/${PAGE}'; return true })()`)
 
   // 等应用真渲染出来（后端 /api/state 本机要几秒），别写死 sleep。
@@ -320,6 +348,10 @@ try {
     await sleep(500)
   }
   if (!ready) throw new Error('页面没渲染完（没有玻璃面，或状态一直停在加载中）')
+  /* 淡出要 380ms，**就绪那一刻查会抓在淡出中间**，看着像没揭掉（我第一版就是这么误判的） */
+  await sleep(1200)
+  /* 揭开验完就删干净：加载页永久盖在界面上是最糟的结果 */
+  const splashGone = await cdp.evalJs(`!document.getElementById('boot')`)
   await sleep(1500)   // 让首帧的透镜定位、字体就绪后的重新度量都跑完
 
   /* 首帧采样：前 3 帧就应当在目标位置（等于最终值），否则就是「打开时方块飞过来」 */
@@ -343,6 +375,10 @@ try {
   const shot = await cdp.send('Page.captureScreenshot', { format: 'png' })
   const file = join(OUT, `glass-${THEME}-${MATERIAL}${SUFFIX}.png`)
   writeFileSync(file, Buffer.from(shot.data, 'base64'))
+
+  /* 启动画面那张（趁它还在时截的）也存下来，当证据 */
+  const splashFile = join(OUT, `boot-${THEME}${SUFFIX}.png`)
+  writeFileSync(splashFile, Buffer.from(splashShot.data, 'base64'))
 
   /**
    * 侧栏高亮块：**逐帧采样**，别只看声明。
@@ -386,7 +422,18 @@ try {
     }
   })()`)
 
-  console.log(JSON.stringify({ theme: THEME, material: MATERIAL, screenshot: file, boot, slide, ...data }, null, 2))
+  console.log(
+    JSON.stringify(
+      {
+        theme: THEME, material: MATERIAL, screenshot: file, boot,
+        /* 启动画面：趁它还在时截的那张，以及「就绪后有没有揭干净」 */
+        splash: { shownEarly: splashShown, atBoot: splashInfo, goneWhenReady: splashGone, file: splashFile },
+        slide, ...data,
+      },
+      null,
+      2,
+    ),
+  )
 } finally {
   try { cdp?.close() } catch { /* 无所谓 */ }
   edge.kill()

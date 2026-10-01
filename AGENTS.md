@@ -85,6 +85,8 @@ app/
       pages/          Dashboard.tsx  Settings.tsx  Placeholder.tsx
 ```
 
+> **启动加载画面**：`index.html` 的 `#boot`（样式内联、12 秒兜底）+ `lib/boot.ts` 揭开，规范见 `GLASS-HANDOFF` §4。
+
 > ⚠️ **目录树里这几个文件已经不存在了**：`lib/useTheme.ts`、`lib/usePerfMode.ts`。
 > 主题与「降低透明度」现在都在 `App.tsx` 里，直接喂给库的 `GlassProvider`
 > （`theme` / `transparency` 两个 prop）。`perfMode` 这个 config 字段后端有，
@@ -797,16 +799,11 @@ getComputedStyle(document.querySelector('.app-sidebar')).getPropertyValue('corne
 ⚠️ 新前端第一版**只铺了纯 CSS 渐变、根本没放图**，于是 `backdrop-filter` 明明生效却
 看不出毛玻璃（纯色底上模糊与不模糊一模一样）。修旧前端时漏了新前端，用户又报了一次。
 
-### 玻璃通透度与背景可见度（旧前端的令牌，新前端不用了）
+### 玻璃通透度（旧前端的令牌；新前端归库管，不用手调）
 
-旧前端 `/` 有一组互相抵消的令牌（`--glass` / `--blur-chrome` / `--blur-panel` /
-`--bg-veil` / `--bg-blur`），两条规律都实测过，换个前端也成立：
-
-1. **「通透」靠低不透明度 + 低模糊**，不是靠加大模糊（高模糊 + 高透明 = 一片奶白）。
-2. **背景看不见时先看玻璃自身的不透明度**，别只调背景 —— 玻璃 72% 不透明时，
-   背景调多亮都会被挡掉大半。
-
-新前端这两样都归库管（材质由 `material` + `size` 决定），不用手调这几个令牌。
+旧前端 `/` 一组互相抵消的令牌（`--glass` / `--blur-chrome` / `--blur-panel` /
+`--bg-veil` / `--bg-blur`）换来两条通用规律：**「通透」靠低不透明度 + 低模糊，不是靠加大模糊**；
+**背景看不见时先看玻璃自身的不透明度**，别只调背景。新前端材质由库的 `material` + `size` 决定。
 
 ### 亮色背景图与取参（⚠️ 这一节说的是**旧前端** `/`，新前端的值不一样）
 

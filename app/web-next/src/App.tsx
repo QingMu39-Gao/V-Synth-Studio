@@ -12,6 +12,7 @@ import {
 } from '@ttqtt/liquid-glass-react'
 import { levelMaterial, levelTransparency, useGlassLevel } from '@/lib/useGlass'
 import { useNavLens } from '@/lib/useNavLens'
+import { hideBoot } from '@/lib/boot'
 import { materialOptions } from '@/components/Glass'
 import { Dashboard } from '@/pages/Dashboard'
 import { Settings } from '@/pages/Settings'
@@ -107,6 +108,12 @@ export default function App() {
   useEffect(() => {
     void refreshState()
   }, [refreshState])
+
+  /* 首次 /api/state 落定（成功或失败）就揭开启动画面 —— 失败也要揭，
+     否则用户看到的是一个永远转圈的遮罩，而不是「连不上本地服务」那块提示。 */
+  useEffect(() => {
+    if (!refreshing) hideBoot()
+  }, [refreshing])
 
   const navigate = useCallback((id: string) => {
     if (!PAGES.some((p) => p.id === id)) return

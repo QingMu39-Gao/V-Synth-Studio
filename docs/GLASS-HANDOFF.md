@@ -1,4 +1,4 @@
-# 交接文档 —— 新前端（`app/web-next`）玻璃材质
+﻿# 交接文档 —— 新前端（`app/web-next`）玻璃材质
 
 > **给新会话的接手者。** 这份只讲「看代码看不出来」的东西：现在卡在哪、
 > 哪些路已经试过并且**走不通**、下一步从哪下手。
@@ -462,3 +462,33 @@ localStorage 改了、DOM 不动，看着就是「切材质没有任何用」。
 7. 剩下的页面（`convert` / `video` / `audio` / `lyrics` / `pv` / `resources`）
    还在旧前端跑，`/` 上功能完整。搬迁见 `AGENTS.md` 第十一节。
 
+
+---
+
+## 4. 启动加载画面（`#boot`）
+
+新前端原来是在「等 JS 下载解析 + 等 `/api/state` 探测 ffmpeg/yt-dlp」这段时间**白屏** 2~3 秒。
+现在 `app/web-next/index.html` 里有一层静态遮罩，`lib/boot.ts` 负责揭开。
+
+**四条规矩**（都是踩出来的）：
+
+1. **样式内联在 `index.html` 那段**，不能等 CSS 包 —— 等它就没意义了。
+   颜色也只能用字面量：库的 `--lg-*` token 挂在 `[data-lg-theme]` 下，
+   而那是 `GlassProvider` 运行后才写的；这里只认 `<head>` 里那段内联脚本写的 `data-theme`。
+2. **必须有兜底**：12 秒还没揭开就显示「重新载入」。**谁都不该被永久卡在加载页。**
+   `hideBoot()` 内部除了 `transitionend` 还有一条定时器强制删节点（后台标签页会被节流）。
+3. **最短展示 520ms**：接口偶尔很快，直接揭会闪一下，比不做还难看。
+4. **失败也要揭**：`/api/state` 挂了要让用户看到「连不上本地服务」那块提示，
+   而不是一个永远转圈的遮罩。
+
+**动画本身**：图标呼吸 + 一圈 `conic-gradient` 光弧绕它转 + 一条不定长滑动的进度条。
+光弧不是新画的图形 —— 图标本身就是个圆环，几何是共通的。
+`prefers-reduced-motion` 下全部动画停掉。
+
+**验证**（`tests/manual/glass-probe.mjs`）：探针在重载后**轮询到新文档接管**再截图
+（`splash.shownEarly` / `splash.atBoot` / `splash.goneWhenReady`），产出
+`tests/manual/out/boot-<theme>.png`。
+
+⚠️ **别贴着重载就截图**：`Page.reload` 一返回就 `captureScreenshot`，
+合成器可能还在交**旧文档的残留帧**（旧文档那时也在加载、遮罩是它那个主题的底色）。
+症状是「亮色跑的却截出一张暗图」，而同一刻读 DOM 明明是亮色 —— 排查了一轮才定位到。
