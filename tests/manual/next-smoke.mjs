@@ -104,6 +104,8 @@ function connect(wsUrl) {
 const edge = startEdge()
 let cdp = null
 const results = []
+/** 侧栏「待迁」标签数量，在 try 里取，最后用来判定 */
+let navTagCount = null
 
 try {
   // 等 CDP 起来（这个端口偶尔会返回非 JSON，重试即可）
@@ -186,6 +188,13 @@ try {
     }
     results.push({ ...p, verdict, glass: state.glass, notes })
   }
+
+  /**
+   * 侧栏不该再挂「待迁」标签 —— 8 页全搬完后这是**回归护栏**：
+   * 哪天新加一页忘了在 `App.tsx` 的 `PAGES` 里标 `ported: true`，这里会红。
+   * ⚠️ 必须在 `cdp` 关掉之前取（放在 finally 之后会挂成 unsettled await）。
+   */
+  navTagCount = await cdp.evalJs(`document.querySelectorAll('.nav-row-tag').length`)
 } finally {
   try { cdp?.close() } catch { /* 无所谓 */ }
   edge.kill()
@@ -197,6 +206,8 @@ try {
   } catch { /* 清不掉就算了 */ }
 }
 
+
+let navTags = navTagCount
 const width = Math.max(...results.map((r) => r.name.length)) + 2
 for (const r of results) {
   const tag = r.verdict === 'PASS' ? '通过' : r.verdict === 'PENDING' ? '待迁' : '失败'
@@ -204,5 +215,8 @@ for (const r of results) {
 }
 const fail = results.filter((r) => r.verdict === 'FAIL').length
 const pending = results.filter((r) => r.verdict === 'PENDING').length
+if (navTags !== null && navTags > 0) {
+  console.log(`\n⚠️ 侧栏还有 ${navTags} 个「待迁」标签 —— 有页面搬完了却没在 App.tsx 的 PAGES 里标 ported: true`)
+}
 console.log(`\n═══ 通过 ${results.length - fail - pending} / 待迁 ${pending} / 失败 ${fail} ═══`)
-process.exit(fail ? 1 : 0)
+process.exit(fail || (navTags ?? 0) > 0 ? 1 : 0)
