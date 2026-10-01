@@ -307,33 +307,77 @@ try {
 
     # ⚠️ 顺序是**实测定的，别调换**：`set "PATH=$pathClean"` 必须在 `call vcvars` **之前**。
     #    vcvars64.bat 是把 MSVC 的路径 **prepend** 到它运行时的 PATH 上；先 call vcvars
-    #    再覆盖 PATH 会把 vcvars 刚加进去的 MSVC 那几段整段抹掉 —— 实测 `where link.exe`
-    #    直接变成 `INFO: Could not find files for the given pattern(s).`（连 MSVC 都没了）。
-    #    先清后 call，vcvars 才会在干净 PATH 上把它自己的路径加到最前面。
-    $inner = @("set `"PATH=$pathClean`"", "call `"$vcvars`" >nul")
-    if ($cargoHome)  { $inner += "set `"CARGO_HOME=$cargoHome`"" }
-    if ($rustupHome) { $inner += "set `"RUSTUP_HOME=$rustupHome`"" }
-    $inner += "set `"PATH=$(Split-Path -Parent $cargo);%PATH%`""
-    $inner += "`"$cargo`" $($cargoArgs -join ' ')"
-    $inner = $inner -join ' && '
+    #    再覆盖 PATH 会把 vcvars 刚加进去的 MSVC 那几段整段抹掉。
+    #
+    # ⚠️⚠️ 更要命的一条（CI 上连挂两次的**真正原因**）：**别再拼 `cmd /c "a && b && c"` 这种长链**。
+    #    cmd 把整条链**先整体解析、把 `%PATH%` 之类的 `%VAR%` 全部展开完**，然后才逐条执行 ——
+    #    所以链里那句 `set "PATH=...;%PATH%"` 里的 `%PATH%` 拿到的是**启动 cmd 时的原始 PATH**，
+    #    而不是前面 `set`/`vcvars` 改过的运行时值。结果：`call vcvars` 好不容易把 MSVC 排到最前，
+    #    最后又一句 `set PATH` 把 Git 的 `usr\bin` 原样放回前面 → rustc 调裸名 `link.exe` 时
+    #    拿到的是 Git 自带的 coreutils `link`（`ln` 的别名），报
+    #    `/usr/bin/link: extra operand ...rcgu.o`（后面那句「build tools may need to be repaired」
+    #    是纯误导，MSVC 装得好好的）。
+    #    改法：把命令写进临时 `.cmd` 再执行 —— 批处理是**逐行**解析执行的，`%PATH%` 才在运行时展开。
+    #
+    # 另外双保险：从 vcvars 那里问出 MSVC 工具链位置，把它的 `bin\Hostx64\x64` 顶到 PATH 最前面
+    # （rustc 调裸名 `link.exe`，PATH 里第一个就是答案 —— 谁在最前谁赢，不赌 vcvars 的 prepend）。
+    $msvcBin = $null
+    try {
+        $vct = (& cmd /c "call `"$vcvars`" >nul && set VCToolsInstallDir" 2>$null) |
+               Where-Object { $_ -match '^VCToolsInstallDir=' } | Select-Object -First 1
+        if ($vct) {
+            $cand = Join-Path ($vct -replace '^VCToolsInstallDir=', '').Trim() 'bin\Hostx64\x64'
+            if (Test-Path -LiteralPath (Join-Path $cand 'link.exe') -PathType Leaf) { $msvcBin = $cand }
+        }
+    } catch { }
+    if ($msvcBin) { Write-Host "MSVC 链接器：$msvcBin\link.exe" }
+    else          { Write-Warning "没从 vcvars 问出 VCToolsInstallDir，只能靠 PATH 剔除 Git 段兜着。" }
+
+    # 双保险②：把 MSVC 的 `bin\Hostx64\x64` **顶到 PATH 最前面**。
+    #    rustc 调的是裸名 `link.exe`，PATH 里第一个就是答案 —— 这样即使 `$pathClean`
+    #    没剔干净（或 vcvars 没按预期 prepend），MSVC 也稳赢 Git 那个 coreutils `link`。
+    #    ⚠️ 别改用 RUSTFLAGS=-C linker=... ：实测 `set "RUSTFLAGS=-C linker="C:\...\link.exe""`
+    #    里的引号会被 cmd 原样塞给 rustc，报 `could not exec the linker "\"C:\\...\""`
+    #    （文件名、目录名或卷标语法不正确，os error 123）—— 引号在 cmd 里没法干净地嵌套。
+    $bat = @("set `"PATH=$pathClean`"", "call `"$vcvars`" >nul")
+    if ($msvcBin) { $bat += "set `"PATH=$msvcBin;%PATH%`"" }
+    if ($cargoHome)  { $bat += "set `"CARGO_HOME=$cargoHome`"" }
+    if ($rustupHome) { $bat += "set `"RUSTUP_HOME=$rustupHome`"" }
+    $bat += "set `"PATH=$(Split-Path -Parent $cargo);%PATH%`""
+    $bat += "where link.exe > `"$whereFile`" 2>nul"
+    $bat += "`"$cargo`" $($cargoArgs -join ' ')"
+
+    $cmdFile   = Join-Path $env:TEMP 'vsynth-cargo-build.cmd'
+    $whereFile = Join-Path $env:TEMP 'vsynth-where-link.txt'
+    Remove-Item $whereFile -Force -ErrorAction SilentlyContinue
+    [IO.File]::WriteAllText($cmdFile, (($bat -join "`r`n") + "`r`n"), (New-Object Text.UTF8Encoding $false))
 
     Write-Host "执行: cargo $($cargoArgs -join ' ')"
     Write-Host ("─" * 60)
 
-    # 开跑前验一次链接器身份，别把十几分钟的编译赌在一句假设上。
-    # GNU coreutils 的 `link`（Git for Windows 自带）光叫一声就打印 help 并以 1 退出；
-    # MSVC 的 link.exe 会去链接（无参时退出 0 或 1100）。两者一撞就分得出来。
-    $probe = (& cmd /c "set `"PATH=$pathClean`" && call `"$vcvars`" >nul && link.exe" 2>&1) -join "`n"
-    $probeCode = $LASTEXITCODE
-    if ($probeCode -eq 1 -and $probe -match 'usage:\s*link') {
-        throw ("PATH 里第一个 link.exe 是 GNU coreutils 的 `ln`，不是 MSVC 的链接器 —— 编译必然失败。`n" +
-               "（已剔除 PATH 里的 \Git\usr、\Git\mingw64、\Git\cmd，但这个仍排在前面，说明还有别处也放了 link.exe。）`n" +
-               "排查：where.exe /r C:\ link.exe`n走的 PATH 前几段：`n  " + (($pathClean -split ';' | Select-Object -First 4) -join "`n  "))
+    try {
+        & cmd /c "`"$cmdFile`""
+        $code = $LASTEXITCODE
+    } finally {
+        Remove-Item $cmdFile -Force -ErrorAction SilentlyContinue
     }
-
-    & cmd /c $inner
-    $code = $LASTEXITCODE
     Write-Host ("─" * 60)
+
+    # 开跑前验一次链接器身份，别把二十多分钟的编译赌在一句假设上。
+    # 只用 `where link.exe` 的**第一行**（重定向进文件再读，避免编码/退出码的歧义）：
+    # 第一行就落在 `\Git\` 里说明链接器还是 coreutils 的 `ln`，直接报出来，别等编译到一半才炸。
+    if (Test-Path -LiteralPath $whereFile) {
+        $firstLink = Get-Content -LiteralPath $whereFile -TotalCount 1
+        Remove-Item $whereFile -Force -ErrorAction SilentlyContinue
+        if ($firstLink) {
+            Write-Host "首选 link.exe：$firstLink"
+            if ($firstLink -match '\\Git\\') {
+                throw ("PATH 里第一个 link.exe 是 Git 自带的 GNU coreutils `link`（不是 MSVC 链接器），编译必然失败：`n  $firstLink`n" +
+                       "已剔除 \Git\usr / \Git\mingw64 / \Git\cmd，说明还有别处也放了 link.exe。`n" +
+                       "排查：where.exe /r C:\ link.exe")
+            }
+        }
+    }
 
     if ($code -ne 0) { throw "编译失败（退出码 $code）" }
 
