@@ -218,6 +218,28 @@ LibreSVIP release）—— 慢，但不用人去别处找。
 
 启动器/CI 里任何"这台机器没有 Node"的假设都已失效 —— 编译机必须有。
 
+### 版本号写在哪儿（改版本号时五处一起改）
+
+对外显示的是 `1.2beta` 这种写法，但 Cargo / npm / 打包器各自要的是合法 semver：
+
+| 位置 | 现在写的 | 谁读它 |
+|---|---|---|
+| `app/desktop/src/server/simple.rs` 的 `APP_VERSION` | `1.2beta` | **界面**（总览页脚、「关于」小节的「程序版本」），`/api/health` 与 `/api/state` 都发它 |
+| `app/desktop/Cargo.toml` 的 `version` | `1.2.0` | cargo（必须是合法 semver，`1.2.0-beta` 那种给人看太啰嗦） |
+| `app/desktop/tauri.conf.json` 的 `version` | `1.2.0` | **MSI 的版本号**（不是 git tag） |
+| `app/web-next/package.json` 的 `version` | `1.2.0` | npm（只在日志里出现，但别让它落后） |
+| 两个锁文件 `Cargo.lock` / `package-lock.json` | `1.2.0` | 别手改，跑下面两条命令让它们自己跟上 |
+
+```powershell
+# 锁文件（两处都别手改）
+cargo update -p v-synth-studio --precise 1.2.0                                  # 在 app\desktop 下
+cd app\web-next; npm install --package-lock-only --no-audit --no-fund
+```
+
+⚠️ 只改 `APP_VERSION` 而不改 `tauri.conf.json`，装出来的 MSI 版本号会跟界面显示的对不上；
+只改 `tauri.conf.json` 而不改 `APP_VERSION`，界面还显示旧版本 —— **两处都没有自动同步**。
+（`AUTHOR_TAG` 同理，作者署名固定 `QingMu39`，改名史见第一节。）
+
 ### 界面只有一套（2026-10-02 切换完成）
 
 | 启动方式 | 界面 |

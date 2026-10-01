@@ -23,9 +23,13 @@ use super::{ok, AppState};
 
 /// 对外显示的版本号。
 ///
-/// Cargo 的 `version` 必须是合法 semver（`1.1.0-beta`），但那个字符串给人看太啰嗦。
-/// 界面上要的是 `1.1beta`，所以单独列一个常量 —— 改版本号时两处都要改。
-pub const APP_VERSION: &str = "1.1beta";
+/// Cargo 的 `version` 必须是合法 semver（`1.2.0-beta`），但那个字符串给人看太啰嗦。
+/// 界面上要的是 `1.2beta`，所以单独列一个常量 —— 改版本号时五处都要改：
+/// 这里、`Cargo.toml`、`tauri.conf.json`、`app/web-next/package.json`
+/// （后两个是打包器与 npm 各读各的），以及 `Cargo.lock` / `package-lock.json`
+/// 那两条锁文件记录（跑 `cargo update -p v-synth-studio --precise <版本>` 与
+/// `npm install --package-lock-only` 让它们自己跟上，别手改）。
+pub const APP_VERSION: &str = "1.2beta";
 
 /// 作者标识。出现在「关于」里，也散落在源码注释中作为出处水印。
 pub const AUTHOR_TAG: &str = "QingMu39";

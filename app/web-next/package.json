@@ -1,7 +1,7 @@
 {
   "name": "v-synth-studio-web",
   "private": true,
-  "version": "1.1.0",
+  "version": "1.2.0",
   "type": "module",
   "description": "V-Synth-Studio 前端（React + Vite）。构建产物输出到 ../web/（index.html + assets/），由 Rust 后端直接伺服。",
   "scripts": {

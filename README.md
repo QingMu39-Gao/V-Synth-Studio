@@ -31,8 +31,10 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 | `build.ps1 -NoCopy` | 编完**不**往根目录复制 exe（CI 用，省得去动仓库根） |
 | `build.ps1 -SkipWeb` | 只编后端，跳过前端（`app/web/` 会是上次的旧产物） |
 
-打 tag 推上去（`git tag v1.1.0 && git push origin v1.1.0`）会由
+打 tag 推上去（`git tag v1.2.0 && git push origin v1.2.0`）会由
 `.github/workflows/build-msi.yml` 在 GitHub Actions 上自动编译、打包、传 Release。
+（MSI 里的版本号取自 `app/desktop/tauri.conf.json` 的 `version`，不是 tag 名 ——
+改版本号要动的地方见 `AGENTS.md` 的「版本号写在哪儿」。）
 
 ---
 

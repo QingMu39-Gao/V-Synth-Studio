@@ -4039,7 +4039,7 @@ dependencies = [
 
 [[package]]
 name = "v-synth-studio"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "axum",
  "flate2",

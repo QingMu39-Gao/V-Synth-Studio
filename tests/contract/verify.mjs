@@ -121,11 +121,11 @@ function typeName(v) {
  */
 const INTENDED = [
   {
-    // 用户要求：产品改名成 V-Synth-Studio（原名「清沐的虚拟歌姬工作站」），显示版本 1.1beta。
+    // 用户要求：产品改名成 V-Synth-Studio（原名「清沐的虚拟歌姬工作站」），显示版本 1.2beta。
     // （打包元数据仍是 1.1.0 —— MSI 只认纯数字版本，所以两者刻意分开，
     //   显示走 APP_VERSION 常量，打包走 Cargo.toml。）
     match: /^health\.(name|version):/,
-    why: '改名 + 版本号 1.0.0 → 1.1beta，用户要求的显示变更',
+    why: '改名 + 版本号 1.0.0 → 1.2beta（夹具是改名前的冻结基准），用户要求的显示变更',
   },
   {
     // 夹具是在 harness 沙箱里抓的，那时 HOME 下没有 Downloads 目录，

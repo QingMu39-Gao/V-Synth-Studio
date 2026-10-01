@@ -2,7 +2,9 @@
 #
 # 手动跑：Actions → 打包 Windows (MSI) → Run workflow
 #   勾上 release 就顺手把 MSI 传到 Release 上（只有 tag 触发才需要勾，平时留空即可）
-# 打 tag 跑：`git tag v1.1.0 && git push origin v1.1.0` —— 自动编译并把 MSI 传上 Release
+# 打 tag 跑：`git tag v1.2.0 && git push origin v1.2.0` —— 自动编译并把 MSI 传上 Release
+#   ⚠️ MSI 里的版本号**不来自 tag**，来自 `app/desktop/tauri.conf.json` 的 `version`。
+#      tag 只要匹配 `v*` 就会触发，所以两者写岔了也不报错 —— 出包前对一眼。
 #
 # ── 这个仓库里没有任何二进制 ────────────────────────────────────────────────
 #
