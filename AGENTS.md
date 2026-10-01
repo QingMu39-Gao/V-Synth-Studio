@@ -354,7 +354,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | 端口不能随机 | 固定 17878；**localStorage 按 origin 隔离**，端口一变 = 全新存储（JIZURA 标记、界面设置、PV 工程自动保存全丢） |
 | 悬停/过渡「生硬地闪一下」 | 多半是 `var(--x)` **没定义** → 整条 `transition` 静默失效。先跑 `LESSONS.md` 里那段查未定义变量的脚本 |
 | 过渡曲线 | `--ease` 管微交互、--ease-out 管入场、--spring 只给大位移；**两套前端各有一套，别互相套用**（表在 `LESSONS.md`） |
-| 侧栏/导航 | **一个框 + 一个滑动高亮块**（库的 .lg-selection-lens），行本身零描边零底色；首帧不能滑、用 offsetTop 量位置（lib/useNavLens.ts） |
+| 侧栏/导航 | **一个框 + 一个滑动高亮块**（库的 .lg-selection-lens），行本身零描边零底色；首帧不能滑、用 offsetTop 量位置（lib/useNavLens.ts）。⚠️ 高亮块**不是玻璃面**，库的 `--lg-lens-bg` 只按主题分档（亮色故意不透明）；要玻璃得自己在 `.nav-lens` 上改半透明 + 消费 `--lg-backdrop`。⚠️ 侧栏 `position: sticky` 的 `top` **必须等于初始位置**（含让开顶栏那 44px），否则一滚就先跳 44px —— 看着就是「侧栏跟着滚轮走」（细节在 `LESSONS.md`） |
 | 玻璃 | 用现成的库，**永远别自己写**；材质写在 GlassProvider 上；背景自身模糊要小（3~5px）；栏本身不画底。三条教训的细节在 GLASS-HANDOFF.md §2.2 |
 | 苹果式圆角 | corner-shape: squircle + @supports 兜底；**别用在玻璃面上**（库的位移贴图是受限几何） |
 | 自定义 CSS 与工具类 | 新前端目前是纯手写 CSS（没用 Tailwind 工具类）。哪天开始用工具类，自定义类必须进 @layer components，否则会静默盖掉工具类 |

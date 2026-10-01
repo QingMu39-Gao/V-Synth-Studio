@@ -1,4 +1,4 @@
-﻿/* ══════════════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════════════
    外壳样式。
 
    ## 玻璃在哪儿？
@@ -261,13 +261,20 @@ html[data-boot='out'] .app-main {
 /* ── 侧栏（玻璃）──────────────────────────────────────────────── */
 .app-sidebar {
   position: sticky;
-  top: var(--lg-space-4);
   width: var(--sidebar-w);
   flex: none;
   /* 让开顶栏那行品牌（26px 图标 + 间距）—— **只有侧栏让**：
      内容列现在和品牌同一行起排，这正是「右边整体往上移」要的效果。 */
   margin-block-start: 44px;
-  max-height: calc(100dvh - 32px);
+  /**
+   * ⚠️ `top` **必须等于初始位置**（= 上内边距 16 + 上面那 44 的品牌让位）。
+   *
+   * 以前写的是 `top: var(--lg-space-4)`（16px），而初始位置在 60px —— 于是页面一滚，
+   * 侧栏先自己往上跳 44px 再吸附。用户看到的就是「侧栏跟着滚轮滚动」。
+   */
+  top: calc(var(--lg-space-4) + 44px);
+  /* 吸附后底边还要留一个 --lg-space-4，别顶到视口外 */
+  max-height: calc(100dvh - 44px - var(--lg-space-4) * 2);
 }
 .app-sidebar-inner {
   display: flex;
@@ -298,6 +305,23 @@ html[data-boot='out'] .app-main {
 .nav-lens {
   /* 与行同心同形：面板 26px 圆角 − 12px 内边距 = 14px */
   border-radius: 14px;
+  /**
+   * 选中块**是玻璃**，不是贴上去的白纸。
+   *
+   * 库的 `.lg-selection-lens` 外观来自 `--lg-lens-bg`，而那个 token **只按主题分档、
+   * 不按材质**：亮色是 `rgb(255 255 255)`（库的注释：白轨道上放半透明白胶囊会看不见，
+   * 所以故意做成不透明）、暗色才是 20% 白。放在**玻璃侧栏**上时，亮色下就是一块
+   * 白贴纸 —— 用户报的「选择框不能正确应用液态玻璃」就是这个。
+   *
+   * 改法：底改半透明，并**消费面板自己的 `--lg-backdrop`** —— 液态档下那个值里带
+   * 位移贴图（`url(#lg-…)`），于是选中块和面板一起折射，才真的是同一块玻璃。
+   * ⚠️ **fallback 必须给**：档 1（不透明）没有 `--lg-backdrop`，而未定义的 `var()`
+   * 会让整条声明失效（这个坑踩过多次）。
+   */
+  --lg-lens-bg: rgb(255 255 255 / 0.22);
+  --lg-lens-border: rgb(255 255 255 / 0.5);
+  -webkit-backdrop-filter: var(--lg-backdrop, blur(10px) saturate(1.5));
+  backdrop-filter: var(--lg-backdrop, blur(10px) saturate(1.5));
 }
 /* 滑动时挤压。只改喂进 transform 的那个变量 —— 另起一条 animation 会整个接管 transform，
    过渡就完全不生效了（那条路踩过，表现是「瞬移」）。 */

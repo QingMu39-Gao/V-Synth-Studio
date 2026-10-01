@@ -1,4 +1,4 @@
-# 踩坑史与取舍（`AGENTS.md` 第六节的外移部分）
+﻿# 踩坑史与取舍（`AGENTS.md` 第六节的外移部分）
 
 > 这份记的是**为什么**：当时是什么症状、怎么定位的、改了什么、还留下什么。
 > AGENTS.md 第六节只保留结论速查；要动相关代码之前，来这里看细节。
@@ -302,3 +302,43 @@ getComputedStyle(document.querySelector('.app-sidebar')).getPropertyValue('corne
 ⚠️ **查这类问题的正确方法**：别看源码猜，**逐档量 `[data-material]` 的分布**
 （`material` / `size` / 有没有 `.lg-material-view`），一眼就能看出哪一层没跟着走。
 只看截图很容易把「内容层是实色」误判成「库没生效」。
+---
+
+### 侧栏的两条：高亮块要自己做玻璃 + 粘性位置必须等于初始位置
+
+用户报「侧栏的选择框不能正确应用液态玻璃（包括设置子侧边栏）」和「侧栏不应该跟随滚轮滚动」。
+
+**高亮块（选择框）**：库的 `.lg-selection-lens` 外观全部来自 `--lg-lens-bg` /
+`--lg-lens-border` / `--lg-lens-shadow` 三个 token，它**本身不是玻璃面**（没有
+`backdrop-filter`、没有 `data-material`）。而 `--lg-lens-bg` 在库里**只按主题分档、
+不按材质**：
+
+| 主题 | 库的取值 | 库的理由（源码注释） |
+|---|---|---|
+| 亮色 | `rgb(255 255 255)` **不透明** | 「白轨道上放半透明白胶囊会看不见，所以做成不透明 + 一条比轨道深的细边 + 阴影」 |
+| 暗色 | `rgb(255 255 255 / .20)` | 「胶囊是从轨道里抬起来的一级，靠边而不是靠阴影」 |
+
+放在**玻璃侧栏**上时，亮色下那块不透明纯白就是「贴上去的一张白纸」——
+所以观感上完全没有液态玻璃。改法是把它改回玻璃（`index.css` 的 `.nav-lens`）：
+
+```css
+.app-nav .nav-lens {
+  --lg-lens-bg: rgb(255 255 255 / 0.22);
+  --lg-lens-border: rgb(255 255 255 / 0.5);
+  backdrop-filter: var(--lg-backdrop, blur(10px) saturate(1.5));
+}
+```
+
+关键是**消费面板自己的 `--lg-backdrop`**：液态档下那个值里带位移贴图
+（`blur(3px) url("#lg-…") saturate(…)`），于是选中块和面板**一起折射** —— 才像同一块玻璃。
+`var()` 的 fallback 必须给（未定义的 `var()` 会让整条声明失效，这坑踩过多次）。
+
+**侧栏「跟着滚轮走」**：不是粘性失效，而是**粘性位置与初始位置不一致**。
+它靠 `margin-block-start: 44px` 让开顶栏那行品牌，但 `top` 写的是 `--lg-space-4`（16px）——
+于是页面一滚，侧栏先自己往上跳 44px 再吸附（实测 `top` 从 60 变 16）。
+改成 `top: calc(var(--lg-space-4) + 44px)`（= 初始的 60px）后，滚 400px 位置纹丝不动。
+`max-height` 也要跟着减掉那 44px，否则吸附后底边会顶出视口。
+
+**验证**：`top` 滚动前后都是 60；高亮块 `background: rgba(255,255,255,.22)` +
+`backdrop-filter: blur(3px) url(#lg-…)`（液态档）；探针对齐仍是 dx/dy/dw/dh = 0、切换 31 帧。
+截图：`tests/manual/out/nav-lens-*.png`（亮/暗 × 主侧栏/设置子导航）。
