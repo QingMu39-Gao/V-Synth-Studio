@@ -42,6 +42,8 @@ const SUFFIX = OVERRIDE.length
 const BASE = `http://127.0.0.1:${PORT}`
 /** 第 6 个参数：落在哪个视图（dashboard / settings / …），用来截图核对具体页面 */
 const PAGE = process.argv[6] ?? ''
+/** 第 4 个参数是材质名（老叫法），映射到**玻璃等级**：off→1、frosted→2、liquid→3 */
+const LEVEL = MATERIAL === 'liquid' ? '3' : MATERIAL === 'off' || MATERIAL === 'none' ? '1' : '2'
 /** 第 7 个参数：额外写进 localStorage 的键值，k=v,k=v。用来验「开关关掉」那一档 */
 const LS = (process.argv[7] ?? '')
   .split(',')
@@ -156,11 +158,41 @@ const PROBE = String.raw`(async () => {
   const scrollEl = document.querySelector('.app-sidebar, .lg-tabbar') ?? document.body
   return {
     theme: document.documentElement.dataset.lgTheme,
-    /* 回读 localStorage：验「开关有没有写进去 / 页面有没有读到」 */
+    /* 玻璃等级滑块：**真的拖一下**（原生 setter + input 事件，React 才认），
+       再看等级有没有落到 localStorage、玻璃面有没有跟着变。 */
+    slider: await (async () => {
+      const el = document.querySelector('input[type="range"]')
+      if (!el) return { found: false }
+      const before = { min: el.min, max: el.max, value: el.value }
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set
+      const poke = async (v) => {
+        /* ⚠️ **每次都重新取节点**：1 级时面板从玻璃面换成 MaterialView，
+           React 会把整棵子树卸载重建，原来那个 el 就成了脱离文档的死节点 ——
+           往它身上写值不会有任何反应（我第一版就是这么被骗了一次）。 */
+        const live = document.querySelector('input[type="range"]')
+        if (!live) return
+        setter.call(live, String(v))
+        live.dispatchEvent(new Event('input', { bubbles: true }))
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)))
+      }
+      await poke(el.max)
+      const top = {
+        level: localStorage.getItem('qingmu.glassLevel'),
+        clear: document.querySelectorAll('[data-material="clear"]').length,
+      }
+      await poke(el.min)
+      const bottom = {
+        level: localStorage.getItem('qingmu.glassLevel'),
+        clear: document.querySelectorAll('[data-material="clear"]').length,
+        materialViews: document.querySelectorAll('.lg-material-view').length,
+      }
+      await poke(2)
+      return { found: true, ...before, top, bottom, restored: localStorage.getItem('qingmu.glassLevel') }
+    })(),    /* 回读 localStorage：验「开关有没有写进去 / 页面有没有读到」 */
     ls: {
       theme: localStorage.getItem('qingmu.theme'),
       glass: localStorage.getItem('qingmu.glass'),
-      globalGlass: localStorage.getItem('qingmu.globalGlass'),
+      glassLevel: localStorage.getItem('qingmu.glassLevel'),
     },
     glass,
     materials,
@@ -231,7 +263,7 @@ try {
   await sleep(1200)
   await cdp.evalJs(`(() => {
     localStorage.setItem('qingmu.theme', ${JSON.stringify(THEME)});
-    localStorage.setItem('qingmu.glass', ${JSON.stringify(MATERIAL)});
+    localStorage.setItem('qingmu.glassLevel', ${JSON.stringify(LEVEL)});
     for (const [k, v] of ${JSON.stringify(LS)}) localStorage.setItem(k, v);
     return true
   })()`)

@@ -1,29 +1,82 @@
-import { useCallback, useSyncExternalStore } from 'react'
-import { readMaterial, writeMaterial, type GlassMaterial } from '@/components/Glass'
+﻿import { useCallback, useSyncExternalStore } from 'react'
+import { readMaterial, type GlassMaterial } from '@/components/Glass'
 
 export type { GlassMaterial }
 
 /**
- * 当前的玻璃材质：`frosted`（毛玻璃）/ `liquid`（液态玻璃）。
+ * **玻璃等级 1~3** —— 一个滑块管住原来三个开关：
+ *
+ * | 等级 | 名字 | 材质 | 透明度 | 内容面板 |
+ * |---|---|---|---|---|
+ * | 1 | 关 | — | `opaque`（库画不透明底、不做模糊） | 不是玻璃（`MaterialView`） |
+ * | 2 | 毛玻璃 | `regular` | `system` | 玻璃 |
+ * | 3 | 液态玻璃 | `clear` + 折射 | `system` | 玻璃 |
+ *
+ * 原来的「液态/毛玻璃」两张选项卡、「全局玻璃」勾选框、「降低透明度」勾选框
+ * 各自管一件事，用户看到的是三个互相影响的开关。合成一档之后语义才清楚：
+ * **级别越高越「玻璃」，代价也越大。**
  *
  * ⚠️ **必须用 `useSyncExternalStore`，不能用 `useState`。**
  * 踩过：钩子里用 `useState`、再被两个组件各调一次，两个组件各拿一份独立 state ——
- * localStorage 改了、DOM 没变，看着就是「切材质没有任何用」。
- * 模块级 store + `useSyncExternalStore` 才是共享的。
+ * localStorage 改了、DOM 没变，看着就是「改了没有任何用」。
  */
+export type GlassLevel = 1 | 2 | 3
 
+export const GLASS_LEVELS: { level: GlassLevel; label: string; desc: string }[] = [
+  {
+    level: 1,
+    label: '关',
+    desc: '不透明底色，不做模糊。文字对比最高，低端机、远控桌面选这档',
+  },
+  { level: 2, label: '毛玻璃', desc: '只模糊提色，不折射。安静、可读性最好，开销低' },
+  { level: 3, label: '液态玻璃', desc: '边缘把背后的内容折弯，带轻微色差。开销约为毛玻璃的三倍' },
+]
+
+/** 等级 → 库的材质参数 */
+export function levelMaterial(level: GlassLevel): GlassMaterial {
+  return level === 3 ? 'liquid' : 'frosted'
+}
+
+/** 等级 → 库的透明度策略（1 级走 `opaque`：库会关掉模糊、改画不透明底） */
+export function levelTransparency(level: GlassLevel): 'opaque' | 'system' {
+  return level === 1 ? 'opaque' : 'system'
+}
+
+/** 等级 → 内容区的面板要不要玻璃面（1 级退回 `MaterialView`） */
+export function levelGlobalGlass(level: GlassLevel): boolean {
+  return level > 1
+}
+
+const LEVEL_KEY = 'qingmu.glassLevel'
 const listeners = new Set<() => void>()
-let current: GlassMaterial | null = null
+let current: GlassLevel | null = null
 
-function get(): GlassMaterial {
-  if (current === null) current = readMaterial()
+function readLevel(): GlassLevel {
+  try {
+    const raw = localStorage.getItem(LEVEL_KEY)
+    if (raw === '1' || raw === '2' || raw === '3') return Number(raw) as GlassLevel
+    /* 迁移：老版本把这件事拆成两个键（`qingmu.globalGlass` + `qingmu.glass`），
+       老用户已经选过的不要丢。 */
+    if (localStorage.getItem('qingmu.globalGlass') === 'off') return 1
+    return readMaterial() === 'liquid' ? 3 : 2
+  } catch {
+    return 2 /* 隐私模式：用默认档 */
+  }
+}
+
+function get(): GlassLevel {
+  if (current === null) current = readLevel()
   return current
 }
 
-function set(m: GlassMaterial) {
-  if (current === m) return
-  current = m
-  writeMaterial(m)
+function set(level: GlassLevel) {
+  if (current === level) return
+  current = level
+  try {
+    localStorage.setItem(LEVEL_KEY, String(level))
+  } catch {
+    /* 隐私模式：本次会话仍然生效 */
+  }
   for (const l of listeners) l()
 }
 
@@ -34,64 +87,20 @@ function subscribe(cb: () => void) {
   }
 }
 
+export function useGlassLevel() {
+  const level = useSyncExternalStore(subscribe, get, () => 2 as GlassLevel)
+  const setLevel = useCallback((l: GlassLevel) => set(l), [])
+  return { level, setLevel }
+}
+
+/* ── 下面两个是给不认识「等级」的地方用的派生值 ───────────────────── */
+
+/** 材质（`components/Glass.tsx` 按它取折射参数） */
 export function useMaterial() {
-  const material = useSyncExternalStore(subscribe, get, () => 'liquid' as GlassMaterial)
-  const setMaterial = useCallback((m: GlassMaterial) => set(m), [])
-  const toggle = useCallback(() => set(get() === 'liquid' ? 'frosted' : 'liquid'), [])
-  return { material, setMaterial, toggle }
+  return { material: levelMaterial(useGlassLevel().level) }
 }
 
-/* ══════════════════════════════════════════════════════════════ 全局玻璃 ══ */
-
-/**
- * 「全局玻璃」开关：内容区的**面板**也当玻璃面（`GlassSurface`）。
- *
- * 关掉就回到换库之后、全局玻璃之前的样子 —— 面板用库的 `MaterialView`
- * （有模糊、有底色，但没有折射、没有高光边），只有栏 / 侧栏 / 控件是玻璃。
- * 那一版在 `git tag backup-pre-global-glass`。
- *
- * ⚠️ **这个开关只影响面板材质，不动背景参数**（`--bg-blur` / `--bg-dim` /
- * `--bg-contrast` / `--bg-veil` 在 `index.css` 里，两档共用一套）。
- *
- * 和 `useMaterial` 一样必须用 `useSyncExternalStore`：两个组件各存一份 state 的话，
- * localStorage 改了、界面不动（那个坑踩过）。
- */
-
-const GG_KEY = 'qingmu.globalGlass'
-const ggListeners = new Set<() => void>()
-let ggCurrent: boolean | null = null
-
-function ggGet(): boolean {
-  if (ggCurrent === null) {
-    try {
-      ggCurrent = localStorage.getItem(GG_KEY) !== 'off'
-    } catch {
-      ggCurrent = true /* 隐私模式：用默认值 */
-    }
-  }
-  return ggCurrent
-}
-
-function ggSet(on: boolean) {
-  if (ggCurrent === on) return
-  ggCurrent = on
-  try {
-    localStorage.setItem(GG_KEY, on ? 'on' : 'off')
-  } catch {
-    /* 隐私模式：本次会话仍然生效 */
-  }
-  for (const l of ggListeners) l()
-}
-
-function ggSubscribe(cb: () => void) {
-  ggListeners.add(cb)
-  return () => {
-    ggListeners.delete(cb)
-  }
-}
-
+/** 内容面板要不要玻璃面（`components/Panel.tsx`） */
 export function useGlobalGlass() {
-  const globalGlass = useSyncExternalStore(ggSubscribe, ggGet, () => true)
-  const setGlobalGlass = useCallback((v: boolean) => ggSet(v), [])
-  return { globalGlass, setGlobalGlass }
+  return { globalGlass: levelGlobalGlass(useGlassLevel().level) }
 }

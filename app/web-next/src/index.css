@@ -745,6 +745,51 @@ body::before {
   font-size: 15px;
   font-weight: 600;
 }
+/* ── 玻璃等级的滑块一组 ──────────────────────────────────────
+   滑块本身是**库的 `GlassSlider`**（真 `<input type=range>` 打底，键盘/读屏都能用），
+   这里只排它下面那三档说明：竖排、可点、当前档高亮。 */
+.slider-row {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+  max-width: 520px;
+}
+.slider-legend {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.slider-legend-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--lg-space-3);
+  border: 0;
+  border-radius: var(--lg-radius-s);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--lg-duration-layout) var(--lg-ease-out);
+}
+.slider-legend-item:hover {
+  /* 玻璃上的元素用填充，不再叠一层玻璃（库的规矩） */
+  background: var(--lg-fill-quaternary);
+}
+.slider-legend-item[aria-pressed='true'] {
+  background: var(--lg-fill-tertiary);
+}
+.slider-legend-label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.slider-legend-desc {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+}
+
 .choice-desc {
   font-size: 12.5px;
   line-height: 18px;

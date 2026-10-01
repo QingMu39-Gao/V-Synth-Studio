@@ -10,7 +10,7 @@ import {
   ScrollEdge,
   useGlassPolicy,
 } from '@ttqtt/liquid-glass-react'
-import { useMaterial } from '@/lib/useGlass'
+import { levelMaterial, levelTransparency, useGlassLevel } from '@/lib/useGlass'
 import { materialOptions } from '@/components/Glass'
 import { Dashboard } from '@/pages/Dashboard'
 import { Settings } from '@/pages/Settings'
@@ -28,7 +28,7 @@ import { Placeholder } from '@/pages/Placeholder'
  *
  * ## 两种材质
  *
- * `GlassProvider` 统一管主题与辅助功能偏好；**材质由 `useMaterial()` 决定**
+ * `GlassProvider` 统一管主题与辅助功能偏好；**玻璃等级由 `useGlassLevel()` 决定**（材质 / 透明度 / 折射全从它派生）
  * （毛玻璃 / 液态玻璃），传给 `<GlassPanel>`。这两个东西是分开的：
  * 主题是全局的一套配色，材质是玻璃面自己的事。
  *
@@ -78,7 +78,6 @@ export default function App() {
     return m && PAGES.some((p) => p.id === m[1]) ? m[1] : 'dashboard'
   })
   const [theme, setTheme] = useState<ThemeMode>(readTheme)
-  const [opaque, setOpaque] = useState(false)
   const [state, setState] = useState<AppState | null>(null)
   const [refreshing, setRefreshing] = useState(true)
   const [dead, setDead] = useState<string | null>(null)
@@ -133,7 +132,8 @@ export default function App() {
   }, [])
 
   const current = PAGES.find((p) => p.id === active)!
-  const { material } = useMaterial()
+  const { level } = useGlassLevel()
+  const material = levelMaterial(level)
   const navRef = useRef<HTMLElement>(null)
   const lensRef = useRef<HTMLSpanElement>(null)
   useNavLens(navRef, lensRef, active)
@@ -142,7 +142,7 @@ export default function App() {
   return (
     <GlassProvider
       theme={theme}
-      transparency={opaque ? 'opaque' : 'system'}
+      transparency={levelTransparency(level)}
       /* ⚠️ 材质要写在 **Provider** 上，不能只给自家包装的面传：库的控件
          （GlassButton / GlassSegmentedControl / TabBar…）不接材质参数，读的是 policy。
          之前漏了这行，实测「切到液态玻璃只有侧栏变 clear，按钮还是 regular」——
@@ -159,7 +159,7 @@ export default function App() {
         不开的话两种材质的差别只剩模糊半径，名不副实。
         选「毛玻璃」时是纯 CSS，零额外开销。
       */
-      enableSvgAuto={material === 'liquid'}
+      enableSvgAuto={level === 3}
     >
       <ToneScope>
         <div className="app">
@@ -252,8 +252,6 @@ export default function App() {
                     state={state}
                     theme={theme}
                     onThemeChange={changeTheme}
-                    opaque={opaque}
-                    onOpaqueChange={setOpaque}
                     onRefreshState={refreshState}
                     onNavigate={navigate}
                     onToast={toast}

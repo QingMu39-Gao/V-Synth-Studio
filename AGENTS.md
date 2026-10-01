@@ -662,10 +662,11 @@ document.querySelectorAll('.app-nav .lg-selection-lens').length
 3. **栏本身不画底。** 库的 `GlassToolbar` 注释：「工具栏本身不携带背景 —— 它是一行分组，
    玻璃是每一组」。一整条大玻璃 + 一堆手写平控件 = 屏幕上看不出材质。
    平栏要配 `ScrollEdge`（不给 `targetRef` 即盯页面滚动），否则内容会从文字下面穿过去。
-4. **全局玻璃是设置里的开关**（默认开）：关掉就回到 `git tag backup-pre-global-glass`
-   那一版的面板材质（`MaterialView`），**背景参数两档共用、不受影响**。
-   存在 localStorage `qingmu.globalGlass`，实现是 `lib/useGlass.ts` 的 `useGlobalGlass()`
-   + `components/Panel.tsx` 里的分支。
+4. **玻璃是设置里的 1~3 级滑块**（库的 `GlassSlider`，键 `qingmu.glassLevel`）：
+   1 级 = 库的 `opaque` 策略 + 面板退回 `MaterialView`（= `backup-pre-global-glass` 那一版）；
+   2 级 = 毛玻璃；3 级 = 液态玻璃（折射）。**材质 / 透明度 / 全局玻璃三件事全由这一档派生**
+   （`lib/useGlass.ts` 的 `level*()` 三个函数），`Panel.tsx` 只看 `level > 1`。
+   背景参数不随等级变（两档共用一套）。
 
 ---
 
@@ -1080,7 +1081,7 @@ git log --all -- app/data/resources.json
 | 前端脚手架 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4），产物落 `app/web/next/`，访问 `/next/` |
 | 主题 + 透明度 | ⚠️ **原表写的 `lib/useTheme.ts` / `lib/usePerfMode.ts` 已不存在**（换库时删了）。现在主题与「降低透明度」是 `App.tsx` 里喂给库 `GlassProvider` 的两个 prop；`perfMode` 字段后端有、前端**还没接** |
 | **玻璃材质修好**（2026-10-01） | 默认改成毛玻璃、侧栏改 `size="large"`、面板降到 `thin`、顶栏（后改为绝对定位）、侧栏高亮块改用库的透镜、补回 `corner-shape: squircle`。见 `docs/GLASS-HANDOFF.md` 第二节 |
-| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页，重新检测在总览页「环境就绪度」里；顶栏同时**移出文档流**（`position: absolute`），内容列整体上移 76px，只剩侧栏让开那行品牌。⚠️ 顶栏的 `inset-inline` 要写 `var(--lg-margin)`：绝对定位的包含块是**内边距盒**，写 0 会贴到内边距外沿，品牌比其它所有东西偏左 20px |
+| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页（今为「玻璃等级」滑块）、重新检测在总览页。顶栏**移出文档流**，内容列上移 76px；⚠️ 顶栏 `inset-inline` 必须写 `var(--lg-margin)` —— 绝对定位的包含块是**内边距盒**，写 0 会偏左 20px |
 | **`glass-probe.mjs`** | 玻璃专项探针：计算值 + 截图 + 高亮块逐帧/首帧采样（`tests/manual/glass-probe.mjs`） |
 | **`app/web-next` 入库** | 首次提交 `83320cd` —— 在此之前它一个 commit 都没有 |
 

@@ -4,7 +4,8 @@ import type { AppState, HealthInfo } from '@/lib/types'
 import { Button } from '@/components/Button'
 import { Field, TextInput } from '@/components/Field'
 import { Chip, Panel, PanelHead, Stat } from '@/components/Panel'
-import { useGlobalGlass, useMaterial, type GlassMaterial } from '@/lib/useGlass'
+import { GlassSlider } from '@ttqtt/liquid-glass-react'
+import { GLASS_LEVELS, useGlassLevel, type GlassLevel } from '@/lib/useGlass'
 import type { ThemeMode } from '@/App'
 
 /**
@@ -36,8 +37,6 @@ export function Settings({
   state,
   theme,
   onThemeChange,
-  opaque,
-  onOpaqueChange,
   onRefreshState,
   onNavigate,
   onToast,
@@ -45,8 +44,6 @@ export function Settings({
   state: AppState | null
   theme: ThemeMode
   onThemeChange: (m: ThemeMode) => void
-  opaque: boolean
-  onOpaqueChange: (v: boolean) => void
   onRefreshState: () => Promise<void>
   onNavigate: (id: string) => void
   onToast: (msg: string, tone?: string) => void
@@ -101,12 +98,7 @@ export function Settings({
 
       <div className="stack-lg settings-body">
         {section === 'appearance' && (
-          <Appearance
-            theme={theme}
-            onThemeChange={onThemeChange}
-            opaque={opaque}
-            onOpaqueChange={onOpaqueChange}
-          />
+          <Appearance theme={theme} onThemeChange={onThemeChange} />
         )}
         {section === 'paths' && (
           <Paths cfg={cfg} state={state} onSave={save} onToast={onToast} />
@@ -133,25 +125,15 @@ export function Settings({
 function Appearance({
   theme,
   onThemeChange,
-  opaque,
-  onOpaqueChange,
 }: {
   theme: ThemeMode
   onThemeChange: (m: ThemeMode) => void
-  opaque: boolean
-  onOpaqueChange: (v: boolean) => void
 }) {
-  const { material, setMaterial } = useMaterial()
-  const { globalGlass, setGlobalGlass } = useGlobalGlass()
+  const { level, setLevel } = useGlassLevel()
 
-  const MATERIALS: { id: GlassMaterial; label: string; desc: string }[] = [
-    {
-      id: 'liquid',
-      label: '液态玻璃',
-      desc: '边缘把背后的内容折弯，带轻微色差。开销约为毛玻璃的三倍',
-    },
-    { id: 'frosted', label: '毛玻璃', desc: '只模糊提色，不折射。安静、可读性最好，开销低' },
-  ]
+  /** 滑块给的是 number，收进 1~3（拖动/键盘理论上都给不出界外值，防御一下） */
+  const clampLevel = (v: number): GlassLevel =>
+    Math.min(3, Math.max(1, Math.round(v))) as GlassLevel
   const THEMES: { id: ThemeMode; label: string; desc: string }[] = [
     { id: 'system', label: '跟随系统', desc: '系统切换配色时自动跟着换' },
     { id: 'light', label: '明亮', desc: '浅色底、细描边' },
@@ -160,50 +142,52 @@ function Appearance({
 
   return (
     <>
+      {/*
+        玻璃等级：一个滑块管住原来三件事 —— 材质（毛玻璃/液态）、
+        「全局玻璃」（内容面板要不要玻璃面）、「降低透明度」（库的 opaque 策略）。
+        用户看到的是三个互相影响的开关，合成分级之后语义才清楚：级别越高越「玻璃」，代价越大。
+        滑块本身是**库的 `GlassSlider`**（真 `<input type=range>` 打底，键盘/读屏都能用）。
+      */}
       <Panel>
         <PanelHead
-          title="玻璃材质"
-          desc="栏、侧栏、浮层用的材质。两种都来自开源项目 @ttqtt/liquid-glass-react，只是参数不同"
+          title="玻璃等级"
+          desc="拖动滑块调整。级别越高越「玻璃」，开销也越大 —— 1 级最省、对比最高，3 级折射最明显"
         />
-        <div className="choice-grid">
-          {MATERIALS.map((m) => (
-            <button
-              key={m.id}
-              type="button"
-              className="choice"
-              aria-pressed={material === m.id}
-              onClick={() => setMaterial(m.id)}
-            >
-              <span className="choice-head">
-                <span className="choice-label">{m.label}</span>
-                {material === m.id && <Chip tone="accent">已选</Chip>}
-              </span>
-              <span className="choice-desc">{m.desc}</span>
-            </button>
-          ))}
+        <div className="slider-row">
+          <GlassSlider
+            aria-label="玻璃等级"
+            min={1}
+            max={3}
+            step={1}
+            marks
+            value={level}
+            onValueChange={(v) => setLevel(clampLevel(v))}
+            formatValue={(v) => `${v} 级：${GLASS_LEVELS[v - 1]?.label ?? ''}`}
+            minLabel="1"
+            maxLabel="3"
+          />
+          <div className="slider-legend">
+            {GLASS_LEVELS.map((l) => (
+              <button
+                key={l.level}
+                type="button"
+                className="slider-legend-item"
+                aria-pressed={level === l.level}
+                onClick={() => setLevel(l.level)}
+              >
+                <span className="slider-legend-label">
+                  {l.level} 级 · {l.label}
+                </span>
+                <span className="slider-legend-desc">{l.desc}</span>
+              </button>
+            ))}
+          </div>
         </div>
-
-        {/*
-          全局玻璃开关。关掉就回到「只有操作层是玻璃」的那一版
-          （面板改用库的 MaterialView），**背景参数两档共用、不受影响**。
-        */}
-        <div className="stack" style={{ marginBlockStart: 'var(--lg-space-5)' }}>
-          <label className="toggle-row">
-            <input
-              type="checkbox"
-              checked={globalGlass}
-              onChange={(e) => setGlobalGlass(e.target.checked)}
-            />
-            <span>全局玻璃：内容区的面板也用玻璃材质</span>
-          </label>
-          <p className="hint" style={{ marginBlockStart: 0 }}>
-            {globalGlass
-              ? '开：正文区那几块面板也是玻璃面（有折射和高光边）。'
-              : '关：面板退回轻量材质（只有模糊和底色），玻璃只留在栏、侧栏和控件上。'}
-            这一项**只切面板材质，背景图参数两档共用**。折射元素越多开销越大，
-            低端机或远控桌面建议关掉。
-          </p>
-        </div>
+        <p className="hint">
+          1 级会把玻璃换成不透明底色（内容面板也退回轻量材质）；2 级只模糊提色；
+          3 级开折射，画面里每个玻璃面都会多一层 SVG 位移贴图。
+          系统里开了「减少透明度」时，模糊会自动失效 —— 那是库的无障碍策略，不受这里影响。
+        </p>
       </Panel>
 
       <Panel>
@@ -225,25 +209,6 @@ function Appearance({
             </button>
           ))}
         </div>
-      </Panel>
-
-      <Panel>
-        <PanelHead
-          title="降低透明度"
-          desc="关掉玻璃的模糊与半透明，改用不透明底色。文字对比最高，低端机、远控桌面也建议打开"
-        />
-        <label className="toggle-row">
-          <input
-            type="checkbox"
-            checked={opaque}
-            onChange={(e) => onOpaqueChange(e.target.checked)}
-          />
-          <span>{opaque ? '已开启（玻璃面变成不透明底色）' : '关闭（使用玻璃材质）'}</span>
-        </label>
-        <p className="hint">
-          系统里开了「减少透明度」时这一项会自动生效，不用手动打开 ——
-          这是库的无障碍策略，不是我们的开关在起作用。
-        </p>
       </Panel>
     </>
   )
