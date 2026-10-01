@@ -158,38 +158,43 @@ jobs:
       #      help: a command with a similar name exists: `miri`
       #      → 编译失败（退出码 101）
       #    版本跟本机对齐（本机 `cargo tauri --version` = 2.12.0）。
-      # 顺序很关键：**先 restore 再判断**。反过来的话判断完才 restore，等于每次都不命中。
+      # ⚠️ 可执行文件叫 **`cargo-tauri.exe`，不是 `tauri.exe`**（cargo 子命令的命名规则）。
+      #    本机实测：H:\DevTools\cargo\bin 下只有 cargo-tauri.exe。
+      #    第一次写成 tauri.exe，结果 12 分钟后「装是装成了」却被自己的检查判死：
+      #      Installed package `tauri-cli v2.12.1` (executable `cargo-tauri.exe`)
+      #      → 装完了但 PATH 里没有 tauri
+      # 顺序也很关键：**先 restore 再判断**。反过来的话判断完才 restore，等于每次都不命中。
       - name: 取缓存（tauri-cli）
         id: tauri-cache
         uses: actions/cache/restore@v4
         with:
-          path: ~/.cargo/bin/tauri.exe
-          key: tauri-cli-2.12-${{ runner.os }}
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-2.12-cargo-tauri-${{ runner.os }}
 
       - name: 装 tauri-cli
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $cli = Join-Path $env:CARGO_HOME 'bin\tauri.exe'
+          $cli = Join-Path $env:CARGO_HOME 'bin\cargo-tauri.exe'
           if (Test-Path $cli) {
             Write-Host "tauri-cli 命中缓存：$cli"
           } else {
-            Write-Host "没有缓存，现装 tauri-cli 2.12.*（第一次要十几分钟：cargo install 是源码编译）"
+            Write-Host "没有缓存，现装 tauri-cli 2.12.*（第一次要 7 分钟左右：cargo install 是源码编译）"
             cargo install tauri-cli --version '^2.12' --locked
             if ($LASTEXITCODE -ne 0) { throw "cargo install tauri-cli 失败（退出码 $LASTEXITCODE）" }
           }
-          # 报明白话，别让下一步的 `no such command` 再当一次谜题
-          $c = Get-Command tauri -ErrorAction SilentlyContinue
-          if (-not $c) { throw "装完了但 PATH 里没有 tauri —— 检查 $env:CARGO_HOME\bin 是否在 PATH 上" }
-          Write-Host "tauri 就绪：$($c.Source)"
+          # 真验一次，别拿文件名猜。注意是 `cargo tauri`（bin 名是 cargo-tauri）
+          $v = (cargo tauri --version) 2>&1
+          if ($LASTEXITCODE -ne 0) { throw "cargo tauri 调不通：$v" }
+          Write-Host "tauri 就绪：$v"
 
       # 没命中才存（命中时不必再存一遍，省几十秒）
       - name: 存缓存（tauri-cli）
         if: steps.tauri-cache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:
-          path: ~/.cargo/bin/tauri.exe
-          key: tauri-cli-2.12-${{ runner.os }}
+          path: ~/.cargo/bin/cargo-tauri.exe
+          key: tauri-cli-2.12-cargo-tauri-${{ runner.os }}
 
       # 解存档 → tools\ 与 app\web\vendor\jizura\，并逐项核对（缺什么这里就说，
       # 不让它变成「装出来的程序点按钮没反应」）。-Local 让它只用缓存里的 zip，不联网。
