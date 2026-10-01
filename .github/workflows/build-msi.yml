@@ -1,3 +1,4 @@
+# 首次注册：这个文件先前没被 Actions 索引到，2026-10-02 空提交一次强制重新解析。
 # 编译 + 打包 Windows 安装包（MSI）
 #
 # 手动跑：Actions → 打包 Windows (MSI) → Run workflow
