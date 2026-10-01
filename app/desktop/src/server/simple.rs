@@ -1,4 +1,4 @@
-//! 阶段 1：基础路由
+﻿//! 阶段 1：基础路由
 //!
 //! health / state / config / fs/* / jobs/* / resources / 静态文件
 //!
@@ -495,6 +495,14 @@ pub async fn fs_reveal(Json(body): Json<Value>) -> Result<Json<Value>, ApiError>
 
 /// 单块上限 16MB；前端按 8MB 切，留一倍余量。
 pub const PV_CHUNK_LIMIT: usize = 16 * 1024 * 1024;
+
+/// 工程文件上传的上限（`convert/run-upload` / `convert/preview-upload`）。
+///
+/// axum 的默认 body 上限是 **2MB**，而拖进来的工程是 base64 编码的（体积 ×1.34）——
+/// 一个 2MB 的 .svp 就会被 413 挡掉。这里给到 96MB（≈ 单个 70MB 的工程），
+/// 够装下实测最大的工程（2.3MB）几十倍。
+/// ⚠️ 改这个值时要同时看前端：`Convert.tsx` 里拖入文件前会按同一量级提示太大。
+pub const CONVERT_UPLOAD_LIMIT: usize = 96 * 1024 * 1024;
 
 #[derive(serde::Deserialize)]
 pub struct SaveQuery {

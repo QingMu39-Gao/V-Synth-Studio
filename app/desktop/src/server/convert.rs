@@ -235,6 +235,12 @@ pub async fn run(
         .unwrap_or("{name}")
         .to_string();
     let overwrite = body.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
+    /*
+     * 转换选项。**后端真的会用它** —— LibreSVIP 的选项是「转换时逐题提问」，
+     * `libresvip::convert` 按这里的键回答那些提问（键名见 `libresvip::RULES`）。
+     * 旧前端那 13 个「转换处理」开关就是这套东西（中间件），以前发了没人读。
+     */
+    let options = body.get("options").cloned().unwrap_or_else(|| json!({}));
 
     // 目标扩展名：取该格式的第一个扩展名
     let ext = crate::libresvip::list_formats(&st.root)
@@ -246,6 +252,16 @@ pub async fn run(
         .and_then(|v| v.as_str())
         .map(String::from)
         .ok_or_else(|| ApiError::bad_request(format!("LibreSVIP 不支持目标格式「{to_format}」")))?;
+
+    /*
+     * ⚠️ **输出目录必须先建出来。** LibreSVIP 自己不会层层建目录，写文件时直接
+     * `FileNotFoundError` 抛出来（PyInstaller 包成「Failed to execute script」），
+     * 任务里只剩一句「退出码 1」—— 用户看到的就是「转换直接失败」。
+     * 实测：目录不存在时 100% 失败，先建出来就过。
+     */
+    if !out_dir.is_empty() {
+        std::fs::create_dir_all(&out_dir).map_err(|e| ApiError::internal(format!("建输出目录失败：{e}")))?;
+    }
 
     let job_id = new_job(&st, "convert", &format!("转换 {} 个工程 → .{}", inputs.len(), ext), &to_format);
 
@@ -282,7 +298,8 @@ pub async fn run(
             let inp = PathBuf::from(input);
             let outp = out_path.clone();
 
-            let result = tokio::task::spawn_blocking(move || crate::libresvip::convert(&root, &inp, &outp)).await;
+            let opts = options.clone();
+            let result = tokio::task::spawn_blocking(move || crate::libresvip::convert(&root, &inp, &outp, &opts)).await;
 
             match result {
                 Ok(Ok(r)) if r.ok => {
@@ -527,6 +544,12 @@ pub async fn run_upload(
         .unwrap_or("{name}")
         .to_string();
     let overwrite = body.get("overwrite").and_then(|v| v.as_bool()).unwrap_or(false);
+    /*
+     * 转换选项。**后端真的会用它** —— LibreSVIP 的选项是「转换时逐题提问」，
+     * `libresvip::convert` 按这里的键回答那些提问（键名见 `libresvip::RULES`）。
+     * 旧前端那 13 个「转换处理」开关就是这套东西（中间件），以前发了没人读。
+     */
+    let options = body.get("options").cloned().unwrap_or_else(|| json!({}));
 
     let ext = crate::libresvip::list_formats(&st.root)
         .as_array()
@@ -537,6 +560,11 @@ pub async fn run_upload(
         .and_then(|v| v.as_str())
         .map(String::from)
         .ok_or_else(|| ApiError::bad_request(format!("LibreSVIP 不支持目标格式「{to_format}」")))?;
+
+    /* 同 run()：输出目录必须先建出来，否则 LibreSVIP 写文件时 FileNotFoundError */
+    if !out_dir.is_empty() {
+        std::fs::create_dir_all(&out_dir).map_err(|e| ApiError::internal(format!("建输出目录失败：{e}")))?;
+    }
 
     // 原始文件名（用于命名输出），临时路径只用来读
     let inputs: Vec<(String, PathBuf)> = uploaded
@@ -589,8 +617,9 @@ pub async fn run_upload(
                 .file_name()
                 .map(|n| n.to_string_lossy().to_string())
                 .unwrap_or_default();
+            let opts = options.clone();
             let result =
-                tokio::task::spawn_blocking(move || crate::libresvip::convert(&root, &inp, &outp)).await;
+                tokio::task::spawn_blocking(move || crate::libresvip::convert(&root, &inp, &outp, &opts)).await;
 
             match result {
                 Ok(Ok(r)) if r.ok => {

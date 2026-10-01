@@ -9,15 +9,187 @@
 //! 任何 LibreSVIP 支持的格式都能读成统一结构，我们只解析一种 JSON。
 
 use std::collections::BTreeMap;
-use std::io::Write;
+use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
+use std::sync::mpsc;
+use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 
-/// CLI 需要往 stdin 喂一串「接受默认值」的空行，否则它会卡在交互提问上
-/// （实测：不喂就 Aborted 退出，退出码 1）
-const STDIN_BLANKS: usize = 60;
+/// ⚠️ **别再往 stdin 喂空行了。** 以前这里是 `STDIN_BLANKS = 60` 个空行，
+/// 以为「空行 = 接受默认值」—— 但 LibreSVIP 的 y/n 提问**不收空行**，
+/// 它会一直回 `Please enter Y or N`，把空行一条条吃光，最后 EOF → `Aborted.` 退出码 1。
+/// 用户看到的就是「转换直接失败」。正确做法见下面 `answer_for`：
+/// **每一题照抄提示里括号中的默认值**（`[y/n] (y)` → `y`、`(1/1)` → `1/1`）。
+const MAX_ANSWERS: usize = 80;
+/// 整场转换的上限（实测 20 个提示、最大那个 2.3 MB 的 svp 也在 20 秒内）
+const CONVERT_TIMEOUT_SECS: u64 = 600;
+/// 提示是不带换行打出来的，所以判据是「安静了一小会儿 + 结尾是冒号」
+const PROMPT_QUIET_MS: u64 = 160;
+
+/* ══════════════════════════════════ GBK 编解码 ══════════════════════════════════ */
+
+/// LibreSVIP 的中文提示是按**系统 ANSI 代码页（简体中文 = 936/GBK）**打出来的
+/// （试过 `PYTHONIOENCODING=utf-8` / `PYTHONUTF8=1`，没用）。
+/// 所以要按 GBK 解，才能按中文关键词认出「这一题问的是什么」。
+///
+/// 用 Win32 的 `MultiByteToWideChar` 走一圈，**不引第三方编码表**
+/// （仓库已经依赖 `windows-sys`，`Win32_Globalization` 也在 feature 里）。
+#[cfg(windows)]
+fn gbk_to_utf8(bytes: &[u8]) -> String {
+    use windows_sys::Win32::Globalization::MultiByteToWideChar;
+    if bytes.is_empty() {
+        return String::new();
+    }
+    unsafe {
+        let n = MultiByteToWideChar(936, 0, bytes.as_ptr(), bytes.len() as i32, std::ptr::null_mut(), 0);
+        if n <= 0 {
+            return String::from_utf8_lossy(bytes).into_owned();
+        }
+        let mut wide = vec![0u16; n as usize];
+        let got = MultiByteToWideChar(936, 0, bytes.as_ptr(), bytes.len() as i32, wide.as_mut_ptr(), n);
+        if got <= 0 {
+            return String::from_utf8_lossy(bytes).into_owned();
+        }
+        wide.truncate(got as usize);
+        String::from_utf16_lossy(&wide)
+    }
+}
+
+#[cfg(not(windows))]
+fn gbk_to_utf8(bytes: &[u8]) -> String {
+    String::from_utf8_lossy(bytes).into_owned()
+}
+
+/// 反过来：用户填的中文（比如「替换歌词」的原文/替换为）要按 GBK 写给它的 stdin
+#[cfg(windows)]
+fn utf8_to_gbk(s: &str) -> Vec<u8> {
+    use windows_sys::Win32::Globalization::WideCharToMultiByte;
+    let wide: Vec<u16> = s.encode_utf16().collect();
+    if wide.is_empty() {
+        return Vec::new();
+    }
+    unsafe {
+        let n = WideCharToMultiByte(936, 0, wide.as_ptr(), wide.len() as i32, std::ptr::null_mut(), 0, std::ptr::null(), std::ptr::null_mut());
+        if n <= 0 {
+            return s.as_bytes().to_vec();
+        }
+        let mut out = vec![0u8; n as usize];
+        let got = WideCharToMultiByte(936, 0, wide.as_ptr(), wide.len() as i32, out.as_mut_ptr(), n, std::ptr::null(), std::ptr::null_mut());
+        if got <= 0 {
+            return s.as_bytes().to_vec();
+        }
+        out.truncate(got as usize);
+        out
+    }
+}
+
+#[cfg(not(windows))]
+fn utf8_to_gbk(s: &str) -> Vec<u8> {
+    s.as_bytes().to_vec()
+}
+
+/* ══════════════════════════════════ 提问 → 选项 ══════════════════════════════════ */
+
+/// 提示里的中文关键词 → 前端传上来的选项键。
+///
+/// ⚠️ 这张表是**实测出来的**（把 LibreSVIP 问过的每一题都记下来了，见
+/// `docs/FEATURES.md` 的转换一节）。它的题库会随输入/输出格式变，
+/// 认不出来的题一律照抄括号里的默认值 —— 所以表不全也不会转失败。
+struct PromptRule {
+    key: &'static str,
+    kw: &'static str,
+}
+
+const RULES: &[PromptRule] = &[
+    /* 导入（svp / vsqx 这类带包络的工程会问这些） */
+    PromptRule { key: "import.volume", kw: "音量包络" },
+    PromptRule { key: "import.dynamics", kw: "力度包络" },
+    PromptRule { key: "import.pitch", kw: "音高曲线" },
+    PromptRule { key: "import.accompaniment", kw: "伴奏轨" },
+    PromptRule { key: "import.gender", kw: "性别包络" },
+    PromptRule { key: "import.breath", kw: "气声包络" },
+    PromptRule { key: "import.instantPitch", kw: "即时音高" },
+    PromptRule { key: "import.pitchMode", kw: "音高信息输入模式" },
+    PromptRule { key: "import.breathMode", kw: "换气音符" },
+    PromptRule { key: "import.noteGroup", kw: "音符组" },
+    /* 中间件（这些是旧前端那 13 个「转换处理」选项的真身） */
+    PromptRule { key: "middleware.transpose", kw: "音高变调" },
+    PromptRule { key: "middleware.scale", kw: "工程缩放" },
+    PromptRule { key: "middleware.lyricsPron", kw: "歌词发音转换" },
+    PromptRule { key: "middleware.removeShort", kw: "无声间隙" },
+    PromptRule { key: "middleware.replaceLyrics", kw: "替换歌词" },
+    /* 中间件的追问参数 */
+    PromptRule { key: "transpose.semitones", kw: "音高变化量" },
+    PromptRule { key: "scale.factor", kw: "缩放系数" },
+    PromptRule { key: "removeShort.threshold", kw: "无声间隙长度" },
+    PromptRule { key: "replaceLyrics.from", kw: "被替换" },
+    PromptRule { key: "replaceLyrics.to", kw: "替换为" },
+    /* 导出 */
+    PromptRule { key: "export.vsqxVersion", kw: "VSQX文件版本" },
+    PromptRule { key: "export.prettyXml", kw: "美化XML" },
+    PromptRule { key: "export.language", kw: "默认语言" },
+    PromptRule { key: "export.compid", kw: "CompID" },
+    PromptRule { key: "export.singer", kw: "默认歌手" },
+];
+
+/// 提示里 `(x)` 的那一段 —— **它一定是合法答案**，认不出题目时就照抄它。
+///
+/// ⚠️ 不要在 `[...]` 的候选里挑第一个：`[1/1/2/1/…] (1/1)` 这种是按 `/` 切开的碎片
+/// （候选里有 `1/2`、`3/5` 这类分数），挑第一个会给出非法值，CLI 会一直重问然后 Aborted。
+fn default_from_prompt(prompt: &str) -> Option<String> {
+    let open = prompt.rfind('(')?;
+    let close = prompt.rfind(')')?;
+    if close < open {
+        return None;
+    }
+    Some(prompt[open + 1..close].trim().to_string())
+}
+
+/// 这一题该答什么：先看用户有没有对得上关键词的选项，否则照抄默认值
+fn answer_for(prompt: &str, options: &Value) -> String {
+    for rule in RULES {
+        if prompt.contains(rule.kw) {
+            if let Some(v) = options.get(rule.key) {
+                let s = match v {
+                    Value::Bool(true) => "y".to_string(),
+                    Value::Bool(false) => "n".to_string(),
+                    Value::String(s) => s.clone(),
+                    other => other.to_string(),
+                };
+                if !s.is_empty() {
+                    return s;
+                }
+            }
+        }
+    }
+    default_from_prompt(prompt).unwrap_or_default()
+}
+
+/// 给了中间件的参数就自动把它打开（用户填了「音高变化量 = 3」却要自己再去开开关，太别扭）
+fn normalize_options(options: &Value) -> Value {
+    let mut o = options.clone();
+    if !o.is_object() {
+        return json!({});
+    }
+    let pairs = [
+        ("middleware.transpose", "transpose.semitones"),
+        ("middleware.scale", "scale.factor"),
+    ];
+    for (mid, param) in pairs {
+        let touched = match o.get(param) {
+            Some(Value::Number(n)) => n.as_f64().map(|f| f != 0.0).unwrap_or(false),
+            Some(Value::String(s)) => !s.trim().is_empty() && s.trim() != "0",
+            Some(Value::Bool(b)) => *b,
+            _ => false,
+        };
+        if touched && o.get(mid).is_none() {
+            o[mid] = json!(true);
+        }
+    }
+    o
+}
 
 /// CLI 可能放的位置
 pub fn cli_path(root: &Path) -> Option<PathBuf> {
@@ -180,13 +352,24 @@ pub struct ConvertResult {
 }
 
 /// 转一个工程。格式按扩展名自动推断，不需要额外参数。
-pub fn convert(root: &Path, input: &Path, output: &Path) -> Result<ConvertResult, String> {
+/// 转换一个工程。
+///
+/// `options` 是前端传上来的选项表（键见 `RULES`）；缺的项一律照抄 CLI 提示里的默认值。
+///
+/// 实现要点（每一条都对应一个踩过的坑）：
+///  1. **静默起进程**：用 `crate::server::simple::quiet_command`（CREATE_NO_WINDOW）。
+///     以前用 `Command::new`，每转一个文件就闪一个控制台窗口 —— 批量转换时满屏都是窗口。
+///  2. **逐题应答**：stdout 单独开线程读、用 channel 递过来；主循环在「安静 160ms
+///     且结尾是冒号」时认为它在等回答，写一条答案进去。
+///  3. **超时与题量上限**：认不出的题库变化不至于把任务永久挂住。
+pub fn convert(root: &Path, input: &Path, output: &Path, options: &Value) -> Result<ConvertResult, String> {
     let cli = cli_path(root).ok_or_else(|| "没有找到 LibreSVIP CLI（应该在 tools\\libresvip\\）".to_string())?;
     if !input.is_file() {
         return Err(format!("源文件不存在：{}", input.display()));
     }
+    let options = normalize_options(options);
 
-    let mut child = Command::new(&cli)
+    let mut child = crate::server::simple::quiet_command(&cli.to_string_lossy())
         .args(["proj", "convert"])
         .arg(input)
         .arg(output)
@@ -197,27 +380,127 @@ pub fn convert(root: &Path, input: &Path, output: &Path) -> Result<ConvertResult
         .spawn()
         .map_err(|e| format!("启动 LibreSVIP 失败：{e}"))?;
 
-    // 把导入选项的答案喂进去（空行 = 接受默认值）
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all("\n".repeat(STDIN_BLANKS).as_bytes());
-        // 不 drop 得太早：有些版本会在读到 EOF 前就退出
-        drop(stdin);
+    let mut stdin = child.stdin.take().ok_or_else(|| "拿不到 LibreSVIP 的 stdin".to_string())?;
+    let mut stdout = child.stdout.take().ok_or_else(|| "拿不到 LibreSVIP 的 stdout".to_string())?;
+    let stderr = child.stderr.take();
+
+    // stderr 也单独读：两边都不读会把它堵死（管道写满就卡住）
+    let err_handle = stderr.map(|mut e| {
+        std::thread::spawn(move || {
+            let mut buf = Vec::new();
+            let _ = e.read_to_end(&mut buf);
+            buf
+        })
+    });
+
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    std::thread::spawn(move || {
+        let mut buf = [0u8; 512];
+        loop {
+            match stdout.read(&mut buf) {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    if tx.send(buf[..n].to_vec()).is_err() {
+                        break;
+                    }
+                }
+            }
+        }
+    });
+
+    let started = Instant::now();
+    let mut raw: Vec<u8> = Vec::new();     // 原始字节（GBK）
+    let mut answered_upto = 0usize;        // 已经回答到 raw 的哪个位置
+    let mut answers = 0usize;
+    let mut timed_out = false;
+
+    loop {
+        if started.elapsed() > Duration::from_secs(CONVERT_TIMEOUT_SECS) || answers > MAX_ANSWERS {
+            timed_out = true;
+            let _ = child.kill();
+            break;
+        }
+        match rx.recv_timeout(Duration::from_millis(PROMPT_QUIET_MS)) {
+            Ok(chunk) => {
+                raw.extend_from_slice(&chunk);
+                // 收到就继续等下一块；等安静下来再判题
+                while let Ok(more) = rx.try_recv() {
+                    raw.extend_from_slice(&more);
+                }
+                if let Some(prompt) = pending_prompt(&raw, answered_upto) {
+                    let answer = answer_for(&prompt, &options);
+                    let mut line = utf8_to_gbk(&answer);
+                    line.push(b'\n');
+                    if stdin.write_all(&line).is_err() {
+                        break;
+                    }
+                    let _ = stdin.flush();
+                    answered_upto = raw.len();
+                    answers += 1;
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Timeout) => {
+                // 安静了：可能是在等回答，也可能已经跑完
+                if let Some(prompt) = pending_prompt(&raw, answered_upto) {
+                    let answer = answer_for(&prompt, &options);
+                    let mut line = utf8_to_gbk(&answer);
+                    line.push(b'\n');
+                    if stdin.write_all(&line).is_err() {
+                        break;
+                    }
+                    let _ = stdin.flush();
+                    answered_upto = raw.len();
+                    answers += 1;
+                    continue;
+                }
+                match child.try_wait() {
+                    Ok(Some(_)) => break,          // 已经退出
+                    Ok(None) => continue,          // 还在跑（比如在写文件）
+                    Err(_) => break,
+                }
+            }
+            Err(mpsc::RecvTimeoutError::Disconnected) => break, // stdout 关了 = 结束
+        }
     }
 
-    let out = child
-        .wait_with_output()
-        .map_err(|e| format!("等待 LibreSVIP 结束失败：{e}"))?;
+    drop(stdin);
+    let status = child.wait().map_err(|e| format!("等待 LibreSVIP 结束失败：{e}"))?;
+    let err_bytes = err_handle.and_then(|h| h.join().ok()).unwrap_or_default();
 
-    let code = out.status.code().unwrap_or(-1);
+    let code = status.code().unwrap_or(-1);
     let bytes = std::fs::metadata(output).map(|m| m.len()).unwrap_or(0);
+    let mut stdout_text = clean_output(&gbk_to_utf8(&raw));
+    if timed_out {
+        stdout_text.push_str(&format!("（超时 {} 秒，已中止；已答 {} 题）", CONVERT_TIMEOUT_SECS, answers));
+    }
 
     Ok(ConvertResult {
         ok: code == 0 && output.is_file(),
         code,
-        stdout: clean_output(&String::from_utf8_lossy(&out.stdout)),
-        stderr: clean_output(&String::from_utf8_lossy(&out.stderr)),
+        stdout: stdout_text,
+        stderr: clean_output(&gbk_to_utf8(&err_bytes)),
         bytes,
     })
+}
+
+/// 现在是不是在等我们回答？是就把这一题的提示文本返回。
+///
+/// 判据：从上次回答的位置往后，**去掉尾部空白后以冒号结尾**，且最后一行不长。
+/// （LibreSVIP 的提示是 `print` 出来的，不带换行，所以「结尾冒号」就是它的提问形态。）
+fn pending_prompt(raw: &[u8], answered_upto: usize) -> Option<String> {
+    if answered_upto >= raw.len() {
+        return None;
+    }
+    let text = gbk_to_utf8(&raw[answered_upto..]);
+    let trimmed = text.trim_end();
+    if !trimmed.ends_with(':') {
+        return None;
+    }
+    let line = trimmed.rsplit('\n').next().unwrap_or(trimmed).trim();
+    if line.is_empty() || line.chars().count() > 120 {
+        return None;
+    }
+    Some(line.to_string())
 }
 
 /// 去掉 ANSI 控制字符，方便直接显示在界面日志里
@@ -255,7 +538,8 @@ pub fn read_project(root: &Path, input: &Path) -> Result<Value, String> {
         now_nanos()
     ));
 
-    let result = convert(root, input, &tmp)?;
+    /* 读取只关心能不能解析出来，选项一律用 LibreSVIP 的默认值 */
+    let result = convert(root, input, &tmp, &json!({}))?;
     let parsed = if result.ok {
         std::fs::read_to_string(&tmp)
             .map_err(|e| format!("读取 ufdata 失败：{e}"))

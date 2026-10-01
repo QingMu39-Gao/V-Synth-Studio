@@ -342,3 +342,55 @@ getComputedStyle(document.querySelector('.app-sidebar')).getPropertyValue('corne
 **验证**：`top` 滚动前后都是 60；高亮块 `background: rgba(255,255,255,.22)` +
 `backdrop-filter: blur(3px) url(#lg-…)`（液态档）；探针对齐仍是 dx/dy/dw/dh = 0、切换 31 帧。
 截图：`tests/manual/out/nav-lens-*.png`（亮/暗 × 主侧栏/设置子导航）。
+---
+
+### 工程转换：三个让「转换直接失败 / 满屏窗口」的真因
+
+用户报「工程转换坏了：**预检拖慢了很多进度**、**转换出来直接失败了**、**转换时莫名冒出来很多窗口**、
+**可选项都没了**」。逐条查下来，前三条都是后端的老问题，跟界面无关。
+
+**① 转换失败的真因：往 stdin 喂空行。**
+旧实现（`libresvip.rs` 的 `STDIN_BLANKS = 60`）以为「空行 = 接受默认值」，于是灌 60 个空行。
+但 LibreSVIP 的 y/n 提问**不收空行** —— 它会一直回 `Please enter Y or N`，把空行一条条吃光，
+最后 EOF → `Aborted.`（退出码 1）。实测复现：
+
+```
+$ libresvip-cli proj convert 分之子.svp out.vsqx   # stdin 喂 8 个空行
+1. 导入音量包络 [y/n] (y): Please enter Y or N
+1. 导入音量包络 [y/n] (y): 2. 导入力度包络 [y/n] (y): … 7. …: Please enter Y or N
+Aborted.        ← 退出码 1，没有产物
+```
+
+**正确做法**：CLI 的提示是 `print` 出来的、**不带换行**，所以「安静下来 + 结尾是冒号」= 它在等你回答；
+**照抄提示里括号中的默认值**（`(y)` → `y`、`(1/1)` → `1/1`、`(BETDB8W6KWZPYEB9)` → 原样）。
+⚠️ **别在方括号的候选里挑第一个**：`[1/1/2/1/1/2/5/3/3/2/6/5/4/5/3/5/3/4] (1/1)` 是按 `/` 切开的碎片
+（里面混着 `1/2`、`3/5` 这种分数），挑第一个会给出非法值 → 它一直重问 → Aborted。
+按这个规则驱动之后，20 道题全部答上，`分之子.svp → vsqx` 120 KB、`十年人间.svp → vsqx` 172 KB，退出码 0。
+
+**② 第二条失败原因：输出目录不存在。**
+LibreSVIP **不会层层建目录**，写文件时直接 `FileNotFoundError`（PyInstaller 包成
+`Failed to execute script`），任务里只剩一句「退出码 1」。`run` 与 `run_upload` 都补了
+`create_dir_all(out_dir)`。⚠️ 日志里那句「无效的音频文件：…」是 **stderr 噪音**（工程引用了已挪走的
+伴奏 wav），不是失败原因 —— 我一开始就是被它带偏的，真正致命的是最后那行 `FileNotFoundError`。
+
+**③ 满屏窗口：`Command::new` 没设 CREATE_NO_WINDOW。**
+`libresvip.rs` 用的是裸 `Command::new`，而它是控制台程序 —— 每个文件（预检一次 + 转换一次）
+都弹一个黑窗口，批量转换就是几十个。改用仓库里的 `simple::quiet_command`。
+**顺手扫了全后端**：只有这一处漏了；`audio.rs`（ffmpeg）、`ytdlp.rs` 本来就是静的，
+`platform.rs` 里那几个是 explorer / rundll32（GUI 程序，不产生控制台）。
+
+**④ 「可选项都没了」的真相**：CLI 的 `proj convert --help` **只有 `--help`**，没有任何选项参数 ——
+选项全是转换过程中**逐题提问**的（导入 10 题 + 中间件 5 题 + 导出 5 题）。
+旧前端那 13 个「转换处理」开关（`transpose`/`retargetBpm`/`removeShort`…）就是这些中间件的参数，
+只是以前发了没人读。现在后端按 `options` 的键回答对应提问，键表见 `docs/FEATURES.md`。
+
+**⑤ 拖入文件走的是「上传版」**：浏览器**不给**拖进来的文件的本机路径，所以
+`run-upload`（base64）才是拖放的路。它的 body 上限原来没放宽 —— axum 默认 **2MB**，
+而一个 2MB 的工程 base64 后 ~2.7MB，直接被 413 挡掉。加了 `simple::CONVERT_UPLOAD_LIMIT`（96MB）。
+另外 Tauri 默认的 `drag_drop_enabled = true` 会把拖放**截走**（改成发它自己的事件），
+而我们是「网页 + 本地 HTTP」架构、页面收不到 Tauri IPC —— 于是 HTML5 的 `drop` 永远不触发。
+窗口构建处加了 `.disable_drag_drop_handler()`（Tauri 2 的方法名，不是 `drag_drop_enabled(bool)`）。
+
+**验证**（都是真工程、走 API 实测）：路径版 `run` 成功 120 KB / 带 `export.vsqxVersion:"3"` 输出
+`<vsq3>`（默认是 `<vsq4>`）；上传版 `run-upload` 成功 213 KB 且同样是 `<vsq3>`；
+`inspect` 12.2 秒、`preview` 11.5 秒都正常返回（以前卡死）。

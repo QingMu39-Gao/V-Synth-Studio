@@ -1,4 +1,4 @@
-# FEATURES.md —— 功能实现文档（给后续维护者）
+﻿# FEATURES.md —— 功能实现文档（给后续维护者）
 
 **这份文档回答一件事**：每一项功能，从界面上点下去到后端做完，中间发生了什么、代码在哪个文件、有哪些不能踩的约束。
 
@@ -97,9 +97,9 @@ WebView2 窗口（Tauri 2）
 | 18 | POST | `/api/convert/collect` | `server/convert.rs::collect` | 递归收集工程文件（要 `{dirs:[…]}`） | Convert |
 | 19 | POST | `/api/convert/inspect` | `convert.rs::inspect` | 读工程概览（轨道/音符/音域/歌词） | Convert |
 | 20 | POST | `/api/convert/preview` | `convert.rs::preview` | 转换前预检 findings | Convert |
-| 21 | POST | `/api/convert/preview-upload` | `convert.rs::preview_upload` | 上传（base64）版预检 | **无人调用**（`lib/api.ts` 未包） |
+| 21 | POST | `/api/convert/preview-upload` | `convert.rs::preview_upload` | 上传（base64）版预检 | **Convert 页的拖入文件走它**（需放宽 body 上限；原先的 `lib/api.ts` 未包） |
 | 22 | POST | `/api/convert/run` | `convert.rs::run` | 批量转换，回 `{jobId}` | Convert |
-| 23 | POST | `/api/convert/run-upload` | `convert.rs::run_upload` | 上传版转换 | **无人调用** |
+| 23 | POST | `/api/convert/run-upload` | `convert.rs::run_upload` | 上传版转换 | **Convert 页的拖入文件走它**（`simple::CONVERT_UPLOAD_LIMIT` = 96MB，axum 默认 2MB 装不下 base64 过的工程） |
 | 24 | GET | `/api/tools/detect` | `server/tools.rs::detect` | 工具 + 编辑器探测（`?force=1` 被忽略） | Dashboard、Settings |
 | 25 | POST | `/api/tools/install` | `server/tools.rs::install` | **固定 400**：工具随包分发，不联网下载 | **无人调用** |
 | 26 | POST | `/api/tools/launch` | `server/tools.rs::launch` | 启动外部程序（`{path}`，或 `{id}` 查配置） | Audio（UVR） |
@@ -135,7 +135,7 @@ WebView2 窗口（Tauri 2）
 | `inspect` | 读工程 → 概览 | 读 **`inputPath`**（兼容 `path`）；`read_project` 是「把源文件转成临时 `.ufdata` 再解析 JSON」，所以任何格式只解析一种结构；重活走 `spawn_blocking` |
 | `preview` | 读 `inputs` + `toFormat`，产出 findings | **只分析 `inputs[0]`**，批量要逐个调；`capability(to)` 表决定 warn 文案（不支持音高曲线 / 单轨 / 不带歌词）；读不出来给 `level:"err"` |
 | `run` | 逐文件跑 LibreSVIP CLI，边跑边更新任务 | 目标扩展名取该格式 `exts[0]`；输出名 `nameTemplate.replace("{name}", stem)`；`overwrite=false` 时 `unique_path` 加 ` (2)`；每文件 `set_job(percent)` + `log_job`，结束 `finish_job(status:done, percent:100)` |
-| `run` 里的 `options` | **后端完全不读** | 读的键只有 `inputs / toFormat / outDir / nameTemplate / overwrite`。`/api/state` 里的 `transformOps`（`data.rs::transform_ops`，**13 个算子**：转调/歌词改写/量化/速度重设/整体平移/音域适配/限制音高/清理过短/合并同音/合并轨道/按音高拆轨/丢弃参数/参数重采样）**只有旧前端 `convert.js` 会渲染**，选了也不会生效 —— 这一整块目前是纯 UI |
+| `run` 里的 `options` | **后端会读**（2026-10-02 起）：LibreSVIP 的选项是「转换时逐题提问」，`libresvip::convert` 按这些键回答，键名与取值见本节末尾「转换选项」表 |
 | 上传变体 | `{files:[{name,base64}]}`（JSON 里的 base64，手写解码，不引 crate） | 单批 ≤200 文件、单文件 ≤80MB；落 `%TEMP%\qingmu-uploads-<pid>-<ms>\`，跑完删；**新前端未使用** |
 
 CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in> <out>`，**stdin 喂 60 个空行**（不喂会卡在交互提问上、退出码 1）；`stdout/stderr` 去掉 ANSI 后进日志；`ok = 退出码 0 且输出文件存在`。
@@ -149,7 +149,39 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 **涉及文件**：`server/convert.rs`、`libresvip.rs`、`data.rs`（算子表）、`app/web-next/src/pages/Convert.tsx`、`lib/api.ts`、`lib/useJob.ts`、`components/Job.tsx`。
 
-### 3.2 视频解析下载
+#### 转换选项（前端 `options` → LibreSVIP 的逐题提问）
+
+**背景**：这个 CLI 的 `proj convert` **没有任何选项参数**，它的选项是在转换过程中**逐题提问**的
+（`导入选项：1. 导入音量包络 [y/n] (y): …`，输出按 GBK 编码）。所以后端 `libresvip::convert`
+改成了「交互式应答器」：读 stdout，认出「安静下来且以冒号结尾」就是一道题，然后
+**照抄提示里括号中的默认值**（`(y)`→`y`、`(1/1)`→`1/1`）——除非 `options` 里有对得上关键词的键。
+
+| 键 | 类型 | 默认 | 对应的提问 |
+|---|---|---|---|
+| `import.volume` / `import.dynamics` / `import.pitch` | bool | true | 导入音量包络 / 力度包络 / 音高曲线 |
+| `import.accompaniment` / `import.gender` / `import.breath` | bool | true | 导入伴奏轨 / 性别包络 / 气声包络 |
+| `import.instantPitch` | bool | true | 遵循即时音高模式设置 |
+| `import.pitchMode` | `full\|vibrato\|plain` | `plain` | 音高信息输入模式 |
+| `import.breathMode` | `ignore\|keep\|convert` | `convert` | 换气音符处理方式 |
+| `import.noteGroup` | `split\|merge` | `split` | 音符组导入方式 |
+| `middleware.transpose` / `.scale` / `.lyricsPron` / `.removeShort` / `.replaceLyrics` | bool | false | 启用 X 中间件吗 |
+| `transpose.semitones` / `scale.factor` | 数字 / 字符串 | `0` / `1/1` | 中间件的追问参数（填了参数会自动启用对应中间件） |
+| `export.vsqxVersion` / `export.prettyXml` / `export.language` | `"3"\|"4"` / bool / `"0".."4"` | `"4"` / true / `"4"` | VSQX 文件版本 / 美化 XML / 默认语言 |
+| `export.compid` / `export.singer` | string | 提示里的默认 | 默认的 CompID / 默认歌手名称 |
+
+**两条踩过的坑**（都会让转换 100% 失败，症状都是任务里一句「退出码 1」）：
+
+1. **别喂空行**。旧实现给 stdin 灌 60 个空行，以为「空行=接受默认」；但 y/n 提问不收空行，
+   它会一直回 `Please enter Y or N` 把空行吃光，最后 `Aborted.`。
+2. **输出目录必须先建**。LibreSVIP 不建中间目录，写文件时 `FileNotFoundError`
+   （PyInstaller 打包后只显示 `Failed to execute script`）。
+
+**顺带**：`libresvip-cli.exe rpc server --port 15150` 是它的 gRPC 服务，
+`ConversionRequest{input_options, output_options, middleware_options, mode(SPLIT/MERGE)}`
+才是「正规」的机器接口（`_internal/libresvip/res/protos/libresvip.proto`）。
+本轮**没用它**：Rust 侧要 `tonic` + `prost`，机器上既没有缓存也没有 `protoc`（要联网）。
+哪天换过去，上面那张键表就是 `input_options`/`output_options` 的 JSON 字段来源。
+## 3.2 视频解析下载
 
 **界面上是什么**：Video 页 —— 粘贴链接 → 解析 → 分P/剧集选择、画质与编码选择（AVC 优先提示 HEVC 兼容性）、yt-dlp 格式列表、下载选项（封面/弹幕/字幕、仅音频、转封装）→ 队列顺序下载。
 

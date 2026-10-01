@@ -119,9 +119,16 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/convert/collect", post(convert::collect))
         .route("/api/convert/inspect", post(convert::inspect))
         .route("/api/convert/preview", post(convert::preview))
-        .route("/api/convert/preview-upload", post(convert::preview_upload))
+        // 上传版要单独放宽 body 上限：axum 默认 2MB，base64 过的工程很容易超（见 simple::CONVERT_UPLOAD_LIMIT）
+        .route(
+            "/api/convert/preview-upload",
+            post(convert::preview_upload).layer(DefaultBodyLimit::max(simple::CONVERT_UPLOAD_LIMIT)),
+        )
         .route("/api/convert/run", post(convert::run))
-        .route("/api/convert/run-upload", post(convert::run_upload))
+        .route(
+            "/api/convert/run-upload",
+            post(convert::run_upload).layer(DefaultBodyLimit::max(simple::CONVERT_UPLOAD_LIMIT)),
+        )
         // ── 工具与声库（阶段 3）───────────────────────────
         .route("/api/tools/detect", get(tools::detect))
         .route("/api/tools/install", post(tools::install))

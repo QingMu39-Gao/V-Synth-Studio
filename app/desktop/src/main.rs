@@ -1,4 +1,4 @@
-// 清沐的虚拟歌姬工作站  ·  QingMu39
+// V-Synth-Studio  ·  QingMu39
 // Tauri 桌面外壳 + 内嵌 HTTP 后端
 //
 // 架构：
@@ -6,8 +6,8 @@
 //   没有 node.exe 子进程，也没有任何 sidecar 子进程。
 //
 // 两种运行方式：
-//   qingmu-workstation.exe                        开窗口（正常使用）
-//   qingmu-workstation.exe --serve --port=8787    只跑服务，不开窗口（开发/对照测试用）
+//   v-synth-studio.exe                        开窗口（正常使用）
+//   v-synth-studio.exe --serve --port=17878    只跑服务，不开窗口（开发/对照测试用）
 //
 // ── 关于「为什么没有控制台窗口」──
 // 这里**始终**用 windows 子系统，debug 版也不例外。
@@ -79,11 +79,39 @@ use std::path::{Path, PathBuf};
 
 use tauri::{Manager, WebviewUrl, WebviewWindowBuilder};
 
-const WINDOW_TITLE: &str = "清沐的虚拟歌姬工作站";
+const WINDOW_TITLE: &str = "V-Synth-Studio";
 const STARTUP_TIMEOUT_SECS: u64 = 30;
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
+
+    // ── 选界面：旧前端（默认）还是新 React 前端 ──────────────────
+    //
+    //   v-synth-studio.exe                 → 旧前端（app/web/index.html）
+    //   v-synth-studio.exe --ui=next       → 新前端（app/web/next/，React + Vite）
+    //
+    // 前端是**每请求从磁盘读**的，所以切换界面不需要重新编译 —— 只要改这个 URL 前缀。
+    // 这也是并行迁移能落地的前提：两套界面同时在，谁都没被破坏。
+    //
+    // 默认仍是旧前端：新前端还在逐页搬迁中（见 AGENTS.md 第十一节），
+    // 等 8 页搬完、验收通过，把 default 改成 "next" 即可，一处改动完成切换。
+    let ui_path = match args.iter().find_map(|a| a.strip_prefix("--ui=")) {
+        Some("next") => "next",
+        Some("old") => "",
+        Some(other) => {
+            note!("警告：--ui={other} 不认识（只认 next / old），按旧前端启动");
+            ""
+        }
+        None => "",
+    };
+    let base_path = if ui_path.is_empty() {
+        String::new()
+    } else {
+        format!("/{ui_path}")
+    };
+    // 把选中的界面记进日志 —— 用户说「还是旧的」时，先看这行确认参数有没有生效，
+    // 不然只能靠猜（切界面不重新编译，所以这一步很容易被忽略）。
+    note!("界面：{}（URL 前缀 '{}'）", if ui_path.is_empty() { "旧前端" } else { "新前端 next" }, if base_path.is_empty() { "/" } else { &base_path });
 
     // ── 纯服务模式（开发与对照测试用）──────────────────────────
     if args.iter().any(|a| a == "--serve") {
@@ -112,8 +140,9 @@ fn main() {
     }
 
     // ── 正常模式：Tauri 窗口 + 内嵌服务 ────────────────────────
+    // `move` 是必需的：setup 闭包要活到 'static，得把 base_path 的所有权交进去。
     tauri::Builder::default()
-        .setup(|app| {
+        .setup(move |app| {
             let handle = app.handle().clone();
 
             // 安装版的界面/工具在 Tauri 的 resource_dir 下；绿色版在 exe 旁边。
@@ -150,7 +179,9 @@ fn main() {
                 return Ok(());
             }
 
-            let url: tauri::Url = format!("http://127.0.0.1:{port}")
+            // 注意末尾的斜杠：/next 少了它，静态文件处理器会先 301 再补，
+            // 直接带上省一次跳转。
+            let url: tauri::Url = format!("http://127.0.0.1:{port}{base_path}/")
                 .parse()
                 .expect("本地地址一定能解析");
 
@@ -158,6 +189,14 @@ fn main() {
                 .title(WINDOW_TITLE)
                 .inner_size(1360.0, 880.0)
                 .min_inner_size(960.0, 640.0)
+                /*
+                 * ⚠️ **必须关掉 Tauri 的拖放拦截**，否则网页里收不到 HTML5 的 drop 事件。
+                 * Tauri 默认 `drag_drop_enabled = true`：文件拖进来会被它自己截走、改发成 Tauri 事件，
+                 * 而我们是「网页 + 本地 HTTP 服务」的架构（页面拿不到 Tauri IPC），
+                 * 结果就是「把工程拖进窗口」永远没反应。
+                 * 关掉之后交给 WebView 原生处理，`dataTransfer.files` 才有值。
+                 */
+                .disable_drag_drop_handler()
                 .center()
                 .build()?;
 

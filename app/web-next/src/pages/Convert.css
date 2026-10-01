@@ -4,10 +4,11 @@
    规矩和其它页面一样（见 `docs/NEXT-UI.md` §3.3）：
      - **一行玻璃都没有**：材质来自库，页面只管排布；
      - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**（写死 = 亮色下瞎掉）；
-     - 控件是库的（`GlassButton` / `GlassSwitch` / `DirectoryInput`），这里不重造。
+     - 控件是库的（`GlassButton` / `GlassSwitch` / `Picker` / `GlassStepper` /
+       `DisclosureGroup` / `DirectoryInput`），这里不重造。
    ══════════════════════════════════════════════════════════════════════════ */
 
-/* ── 两栏：左（来源 + 目标格式）/ 右（输出 + 预检 + 执行）──────────────
+/* ── 两栏：左（来源 + 目标格式）/ 右（输出 + 选项 + 预检 + 执行）────────
    目标格式一格一格的（40 种），宽度不够时窄栏会挤成一列字，所以给左右都留 minmax(0, …)
    并让窄屏直接落成一栏。 */
 .convert-layout {
@@ -28,9 +29,43 @@
   min-width: 0;
 }
 
+/* ── 拖放区 ───────────────────────────────────────────────────────────
+   边框用 `--lg-separator` 画虚线（写死颜色 = 亮色下瞎掉），拖到上面时整块换成强调色。
+   `data-over` 由 React 的 dragover / drop 控制 —— 高亮和真正的落点用同一个状态，
+   不会出现「亮着但掉下去没反应」。 */
+.convert-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: var(--lg-space-5) var(--lg-space-4);
+  text-align: center;
+  color: var(--lg-label-secondary);
+  background: var(--lg-fill-quaternary);
+  border: 1px dashed var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+  transition:
+    border-color var(--lg-duration-layout) var(--lg-ease-out),
+    background var(--lg-duration-layout) var(--lg-ease-out);
+}
+.convert-drop[data-over='true'] {
+  border-color: var(--lg-accent);
+  background: var(--lg-fill-tertiary);
+}
+.convert-drop-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--lg-label);
+}
+.convert-drop-note {
+  font-size: 12.5px;
+  line-height: 1.5;
+  max-width: var(--lg-readable);
+}
+
 /* ── 来源列表 ─────────────────────────────────────────────────────────
-   一行一个文件：图标 / 名字（超长省略）/ 扩展名 / 大小 / 两个图标按钮。
-   列表长了（整目录收集可能几十个）自己滚，不去撑高整页。 */
+   一行一个文件：图标 / 名字（超长省略）/ 扩展名 / 来源 / 大小 / 两个图标按钮。
+   列表长了自己滚，不去撑高整页。 */
 .convert-sources {
   display: flex;
   flex-direction: column;
@@ -61,6 +96,16 @@
   font-family: var(--lg-font-mono);
   font-size: 11px;
   color: var(--lg-label-secondary);
+}
+/* 来源标记：「拖入」没有本机路径（走上传版），「路径」后端直接读盘 ——
+   两者提交方式不同，所以列表里必须看得出来。 */
+.convert-source-src {
+  padding: 1px 6px;
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-xs);
+  font-size: 11px;
+  color: var(--lg-label-secondary);
+  white-space: nowrap;
 }
 .convert-source-size {
   font-size: 12px;
@@ -159,6 +204,39 @@
   color: var(--lg-label-secondary);
 }
 
+/* ── 转换选项（可折叠）────────────────────────────────────────────────
+   折叠行本身是**库的 `DisclosureGroup`**（真 `<details>`），这里只补两件事：
+   它在玻璃面板里不能画自己的实色底（等于在材质上凿洞），以及里面三组的间距。 */
+.convert-opts-fold {
+  background: var(--lg-fill-quaternary);
+}
+.convert-opts {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+  padding-block-start: var(--lg-space-2);
+}
+.convert-opt-group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+}
+.convert-opt-group + .convert-opt-group {
+  padding-block-start: var(--lg-space-4);
+  border-block-start: 1px solid var(--lg-separator);
+}
+/* 一排开关：窄了自动落成一列（每个开关右边跟着库的 GlassSwitch，别挤） */
+.convert-opt-grid {
+  display: grid;
+  gap: var(--lg-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(268px, 100%), 1fr));
+}
+.convert-opt-fields {
+  display: grid;
+  gap: var(--lg-space-3);
+  grid-template-columns: repeat(auto-fit, minmax(min(228px, 100%), 1fr));
+}
+
 /* ── 预检：一个源文件一段 ─────────────────────────────────────────────
    多个文件时按文件分段，段与段之间拉一条分隔线（批量预检的「逐文件」那层结构）。 */
 .convert-report {
@@ -214,7 +292,7 @@
 /* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
    必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
 @supports (corner-shape: squircle) {
-  :where(.convert-source, .convert-format) {
+  :where(.convert-source, .convert-format, .convert-drop) {
     corner-shape: squircle;
   }
 }
