@@ -134,6 +134,8 @@ body::before {
 
 /* ── 整体布局 ────────────────────────────────────────────────── */
 .app {
+  /* 顶栏是绝对定位（见下），靠这里做定位上下文 */
+  position: relative;
   max-width: var(--shell-max);
   margin-inline: auto;
   padding: var(--lg-space-4) var(--lg-margin) var(--lg-space-8);
@@ -153,8 +155,9 @@ body::before {
    * 吸顶：内容从它下面滚过去 —— 玻璃的观感来自「有东西从背后经过」。
    * 平栏吸顶本身不需要模糊，但里面的玻璃控件（分段控件 / 按钮）需要。
    */
-  position: sticky;
-  top: var(--lg-space-4);
+  position: absolute;
+  inset-block-start: var(--lg-space-4);
+  inset-inline: 0;
   z-index: 10;
 }
 /**
@@ -174,9 +177,9 @@ body::before {
   display: flex;
   align-items: center;
   gap: var(--lg-space-3);
-  /* 平栏，横向不加内边距（要和内容列对齐）；高度与玻璃版保持一致，
-     侧栏的吸顶偏移 `calc(var(--lg-space-4) + 76px)` 是按这个算的。 */
-  min-height: 60px;
+  /* 高度归品牌自己（26px 图标）。以前这里是 60px —— 那是给右上角那排控件留的，
+     控件移除后它还压着内容，用户看到的就是「右边一片空白、内容被顶下去」。 */
+  min-height: 26px;
 }
 .brand {
   display: flex;
@@ -216,10 +219,13 @@ body::before {
 /* ── 侧栏（玻璃）──────────────────────────────────────────────── */
 .app-sidebar {
   position: sticky;
-  top: calc(var(--lg-space-4) + 76px);
+  top: var(--lg-space-4);
   width: var(--sidebar-w);
   flex: none;
-  max-height: calc(100dvh - 104px);
+  /* 让开顶栏那行品牌（26px 图标 + 间距）—— **只有侧栏让**：
+     内容列现在和品牌同一行起排，这正是「右边整体往上移」要的效果。 */
+  margin-block-start: 44px;
+  max-height: calc(100dvh - 32px);
 }
 .app-sidebar-inner {
   display: flex;
@@ -323,7 +329,7 @@ body::before {
   outline: none;
 }
 .page-head {
-  padding-block: var(--lg-space-1) var(--lg-space-4);
+  padding-block: 0 var(--lg-space-4);
 }
 .page-title {
   margin: 0;
@@ -691,7 +697,7 @@ body::before {
   flex-direction: column;
   gap: 1px;
   position: sticky;
-  top: calc(var(--lg-space-4) + 76px);
+  top: var(--lg-space-4);
 }
 .settings-body {
   flex: 1;
