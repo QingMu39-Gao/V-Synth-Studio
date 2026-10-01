@@ -78,7 +78,12 @@ New-Item -ItemType Directory -Path $Zip -Force | Out-Null
 $tmp = Join-Path $Zip 'tmp'
 New-Item -ItemType Directory -Path $tmp -Force | Out-Null
 
-function Say([string]$Msg) { Write-Output $Msg }
+# ⚠️ 必须写**信息流**（Write-Host），不能写输出流（Write-Output）。
+# Get-Archive 会在同一次调用里既说一句「用本机存档 …」又 `return $cached`；
+# 用 Write-Output 的话那句提示会一起被捕获，调用方拿到的就是
+# 「提示 + 路径」两行拼起来的垃圾字符串，Expand-Archive 报「路径不存在」。
+# 实测踩过：`路径"  用本机存档 资料归档\jizura.zip 资料归档\jizura.zip"不存在`。
+function Say([string]$Msg) { Write-Host $Msg }
 
 function Invoke-Download([string]$Url, [string]$Out) {
     Say "  下载 $Url"
@@ -124,6 +129,16 @@ function Expand-Archive-Clean([string]$Archive, [string]$Into) {
     Expand-Archive -Path $Archive -DestinationPath $Into -Force
 }
 
+# ⚠️ Move-Item **不会**替你建中间目录：往 `app\web\vendor\jizura` 搬、而 `vendor\` 不存在时，
+# 它报的是 `Could not find a part of the path.`，但**已经把源删掉了**（源没了、目标没到位）。
+# 实测踩过：jizura 搬完变成了「哪都没有」。所以搬之前先把父目录建出来。
+function Move-Into([string]$From, [string]$To) {
+    $parent = Split-Path -Parent $To
+    if ($parent -and -not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+    if (Test-Path $To) { Remove-Item $To -Recurse -Force }
+    Move-Item $From $To
+}
+
 # ── ① tools\ ─────────────────────────────────────────────────────────────────
 if ($Only -in 'all', 'tools') {
     $fFfmpeg = Join-Path $root 'tools\ffmpeg\bin\ffmpeg.exe'
@@ -144,9 +159,7 @@ if ($Only -in 'all', 'tools') {
             Expand-Archive-Clean $arch $ex
             # zip 里就是 ffmpeg\ 、yt-dlp.exe 、libresvip\ 三项，整体覆盖过去
             foreach ($item in Get-ChildItem $ex) {
-                $target = Join-Path $root "tools\$($item.Name)"
-                if (Test-Path $target) { Remove-Item $target -Recurse -Force }
-                Move-Item $item.FullName $target
+                Move-Into $item.FullName (Join-Path $root "tools\$($item.Name)")
             }
             Remove-Item $ex -Recurse -Force -ErrorAction SilentlyContinue
         } else {
@@ -177,8 +190,7 @@ if ($Only -in 'all', 'tools') {
                 if (-not $inner) { throw "上游 LibreSVIP 包里找不到 libresvip-cli.exe（布局变了？看 $ex）" }
                 $dst = Join-Path $root 'tools\libresvip\libresvip-cli'
                 if (Test-Path $dst) { Remove-Item $dst -Recurse -Force }
-                New-Item -ItemType Directory -Path (Split-Path -Parent $dst) -Force | Out-Null
-                Move-Item $inner $dst
+                Move-Into $inner $dst
                 Remove-Item $z, $ex -Recurse -Force -ErrorAction SilentlyContinue
             }
         }
@@ -208,9 +220,7 @@ if ($Only -in 'all', 'jizura') {
         if (-not $src -or -not (Test-Path (Join-Path $src 'index.html'))) {
             throw "jizura.zip 里找不到 jizura\index.html（布局变了？看 $ex）"
         }
-        New-Item -ItemType Directory -Path (Split-Path -Parent $vDir) -Force | Out-Null
-        if (Test-Path $vDir) { Remove-Item $vDir -Recurse -Force }
-        Move-Item $src $vDir
+        Move-Into $src $vDir
         Remove-Item $ex -Recurse -Force -ErrorAction SilentlyContinue
     }
 }

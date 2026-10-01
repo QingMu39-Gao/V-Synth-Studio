@@ -147,6 +147,7 @@ docs/                  THIRD-PARTY-NOTICES.md
 | `-Release` / `-Bundle` | 可选参数；`-Bundle` 打 MSI（见第八节） |
 | `-SkipWeb` | 只编后端（改 Rust 时省几秒，但 `app/web/` 里会是旧产物） |
 | `-FetchTools` | 先补齐 `tools/` 与 JIZURA 字体（干净机器 / CI 上用；要联网） |
+| `-NoCopy` | 编完**不**把 exe 复制到程序根目录（CI 用；本地别加，加了双击启动器跑的还是旧的） |
 | 工具链 | Rust 在 `H:\DevTools\cargo`、MSVC 在 `H:\VSBuildTools`（build.ps1 会加载 vcvars） |
 | | **前端还要 Node + npm**（见下）—— 这是新前端引入的**构建期**依赖 |
 | 打包 | CI 在 `.github/workflows/build-msi.yml`（打 tag `v*` 自动出 MSI 并传 Release） |
@@ -175,7 +176,7 @@ powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1 -Local 'D:\
 `fetch-tools.ps1` 拿不到存档时会退到三个上游官方地址现下（gyan.dev / yt-dlp release /
 LibreSVIP release）—— 慢，但不用人去别处找。
 
-> ⚠️ 三条实测教训，别再踩：
+> ⚠️ 四条实测教训，别再踩：
 > ① **判「齐不齐」必须核对解压后的具体文件**，不能只看目录在不在 —— 半途失败的解压
 >    会留下看似完整的空壳，而那要到用户点「工程转换」才现形。
 > ② 下载用 `curl.exe` + **自己写的重试循环**。`Invoke-WebRequest` 读 GitHub release
@@ -183,6 +184,13 @@ LibreSVIP release）—— 慢，但不用人去别处找。
 >    不认 `--retry-all-errors`（报 unknown option）。
 > ③ `-Bundle` 现在会**在编译前**核对 `tools\`、`vendor\jizura\`、`app\web\index.html`
 >    在不在 —— `bundle.resources` 是「源目录缺文件就静默少打包」，缺了要到用户手里才现形。
+> ④ **搬目录前先把父目录建出来**（脚本里的 `Move-Into` 就是干这个的）。`Move-Item`
+>    不建中间目录，往 `app\web\vendor\jizura` 搬而 `vendor\` 不存在时报
+>    `Could not find a part of the path.`，而且**目标没到位**（源倒是没了）。
+>    同理：**给函数返回值的函数里，报进度要用 `Write-Host` 不能用 `Write-Output`** ——
+>    后者会混进返回值，调用方拿到「提示 + 路径」拼起来的垃圾字符串。
+>    这两条都是 2026-10-05 用「把两块大件挪走、从存档重新解一遍」的干净房间测试翻出来的，
+>    **别再靠肉眼审脚本**：那次单测就抓出两个必然踩中的 bug。
 
 ### Node 只在构建期出现（别和"去 Node"搞混）
 

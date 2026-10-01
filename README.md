@@ -28,6 +28,8 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 | `build.ps1 -Release` | release 版（体积小、跑得快，无控制台窗口） |
 | `build.ps1 -Bundle` | 出 Windows 安装包（MSI），要 `-Release` 一起用 |
 | `build.ps1 -FetchTools` | 先把 `tools/` 与 JIZURA 字体补齐（干净机器 / CI 上用） |
+| `build.ps1 -NoCopy` | 编完**不**往根目录复制 exe（CI 用，省得去动仓库根） |
+| `build.ps1 -SkipWeb` | 只编后端，跳过前端（`app/web/` 会是上次的旧产物） |
 
 打 tag 推上去（`git tag v1.1.0 && git push origin v1.1.0`）会由
 `.github/workflows/build-msi.yml` 在 GitHub Actions 上自动编译、打包、传 Release。

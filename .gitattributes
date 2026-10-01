@@ -15,6 +15,10 @@
 # 脚本类保持 LF
 *.sh text eol=lf
 *.mjs text eol=lf
+# 工作流：GitHub Actions 的跑批环境是 Linux，YAML 里的 shell 步骤按 LF 读；
+# 别让 Windows 上的 checkout 把它转成 CRLF
+*.yml text eol=lf
+*.yaml text eol=lf
 *.js text eol=lf
 *.css text eol=lf
 *.html text eol=lf
