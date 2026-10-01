@@ -60,37 +60,50 @@ $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 # 程序根目录：app\desktop → app → 工作站（就是含 app\web\index.html 的那一层）
 $root = Split-Path -Parent (Split-Path -Parent $here)
 
+# ⚠️ 探测路径一律用这个，别直接写 Test-Path：CI runner 上根本没有 H 盘
+#    （开发机的自装工具链都在 H 盘），而 `Test-Path H:\...` 对不存在的盘符在
+#    PS 5.1 / pwsh 上都会**报错**，`Join-Path` 更是会直接抛
+#    "Cannot find drive. A drive with the name 'H' does not exist."。
+#    在 $ErrorActionPreference='Stop' 的脚本里，这么一句能让你连「脚本到底跑没跑」都看不出来。
+function Test-Exists {
+    param([string]$Candidate)          # ⚠️ 别把参数命名成 $Path：PowerShell 变量名大小写不敏感，会和 $env:PATH 撞
+    if (-not $Candidate) { return $false }
+    try { Test-Path -LiteralPath $Candidate -ErrorAction Stop } catch { $false }
+}
+
 # ── 工具链探测（开发机自装路径优先，找不到就用系统默认）──────────────────
 #
 # 开发机把 Rust/MSVC 装在 H 盘（不占 C 盘）；GitHub Actions 的 runner 上它们在
 # 默认位置。两种都支持，所以这里全部改成「探测」而不是「写死 + 检查存在」。
-$cargoHome  = 'H:\DevTools\cargo'
-$rustupHome = 'H:\DevTools\rustup'
-$vsRoot     = 'H:\VSBuildTools'
-if (-not (Test-Path (Join-Path $cargoHome 'bin\cargo.exe'))) { $cargoHome = '' }    # 空 = 用默认 %USERPROFILE%\.cargo
-if (-not (Test-Path (Join-Path $rustupHome 'toolchains')))   { $rustupHome = '' }
+$devDriveOk = Test-Exists 'H:\'          # 连盘符本身都先确认，别让 H: 的路径去碰 Test-Path
+
+$cargoHome  = if ($devDriveOk) { 'H:\DevTools\cargo' }  else { '' }   # 空 = 用默认 %USERPROFILE%\.cargo
+$rustupHome = if ($devDriveOk) { 'H:\DevTools\rustup' } else { '' }
+$vsRoot     = if ($devDriveOk) { 'H:\VSBuildTools' }    else { '' }
+if ($cargoHome  -and -not (Test-Exists (Join-Path $cargoHome 'bin\cargo.exe'))) { $cargoHome  = '' }
+if ($rustupHome -and -not (Test-Exists (Join-Path $rustupHome 'toolchains')))   { $rustupHome = '' }
 
 # vcvars64.bat：先看自装路径，再问 vswhere（VS 安装器自带，位置固定）
-$vcvars = Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat'
-if (-not (Test-Path $vcvars)) {
+$vcvars = if ($vsRoot) { Join-Path $vsRoot 'VC\Auxiliary\Build\vcvars64.bat' } else { $null }
+if (-not (Test-Exists $vcvars)) {
     $vswhere = Join-Path ${env:ProgramFiles(x86)} 'Microsoft Visual Studio\Installer\vswhere.exe'
-    if (Test-Path $vswhere) {
+    if (Test-Exists $vswhere) {
         $vsPath = & $vswhere -latest -products * -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 `
                              -property installationPath 2>$null | Select-Object -First 1
         if ($vsPath) { $vcvars = Join-Path $vsPath.Trim() 'VC\Auxiliary\Build\vcvars64.bat' }
     }
 }
-if (-not (Test-Path $vcvars)) {
-    throw "找不到 vcvars64.bat（MSVC 的 C++ 生成工具）。开发机请先运行 H:\DevTools\安装VC工具链.bat；`nCI 上请用 microsoft/setup-msbuild 或 preinstalled 的 VS。`n找过的地方：$vsRoot、vswhere 报告的 VS 安装目录。"
+if (-not (Test-Exists $vcvars)) {
+    throw "找不到 vcvars64.bat（MSVC 的 C++ 生成工具）。开发机请先运行 H:\DevTools\安装VC工具链.bat；`nCI 上 windows-latest 自带 VS，应能通过 vswhere 找到（若找不到，先加一步 microsoft/setup-msbuild）。`n找过的地方：$vsRoot、vswhere 报告的 VS 安装目录。"
 }
 
 # cargo：优先自装，否则从 PATH 找（rustup 装的话在 %USERPROFILE%\.cargo\bin）
 $cargo = if ($cargoHome) { Join-Path $cargoHome 'bin\cargo.exe' } else { $null }
-if (-not $cargo -or -not (Test-Path $cargo)) {
+if (-not (Test-Exists $cargo)) {
     $cargo = (Get-Command cargo.exe -CommandType Application -EA SilentlyContinue |
               Select-Object -First 1).Source
 }
-if (-not $cargo -or -not (Test-Path $cargo)) {
+if (-not (Test-Exists $cargo)) {
     throw "找不到 cargo。装 Rust（rustup）后重试；CI 上用 dtolnay/rust-toolchain。"
 }
 
@@ -156,12 +169,13 @@ try {
         )
         $npmExe = $null
         foreach ($p in $npmCandidates) {
-            if (Test-Path $p) { $npmExe = $p; break }
+            # ⚠️ 必须用 Test-Exists：CI runner 上没有 H 盘，直接 Test-Path 会**报错**而不是返回 false
+            if (Test-Exists $p) { $npmExe = $p; break }
         }
         if (-not $npmExe) {
             # 退回到 PATH 搜索：遍历结果，取第一个真实存在的
             foreach ($c in @(Get-Command npm.cmd -CommandType Application -EA SilentlyContinue)) {
-                if ($c.Source -and (Test-Path $c.Source)) { $npmExe = $c.Source; break }
+                if ($c.Source -and (Test-Exists $c.Source)) { $npmExe = $c.Source; break }
             }
         }
         if (-not $npmExe) {
