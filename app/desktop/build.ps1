@@ -118,6 +118,28 @@ if (-not $sdkOk) {
 Write-Host "cargo   : $cargo"
 Write-Host "vcvars  : $vcvars"
 Write-Host "Win SDK : $($sdkOk.FullName)"
+
+# 谁会被当成链接器 —— rustc 调的是裸名 `link.exe`，所以「PATH 里第一个 link.exe」就是答案。
+# 这一行是给 CI 排障用的：运行 #5 那次就是 Git 的 /usr/bin/link 抢到了，而报错信息
+# （"Visual Studio build tools may need to be repaired"）把人往完全错误的方向指。
+# 只列**不重复的目录**，且跳过 target\ 下的中间产物（rustc 的临时 link.exe 一大堆）。
+function Get-LinkExeDirs {
+    param([string]$PathValue)
+    $found = @()
+    foreach ($p in ($PathValue -split ';')) {
+        if (-not $p -or $p -match '\\target\\') { continue }
+        if (Test-Path -LiteralPath (Join-Path $p 'link.exe') -PathType Leaf) { $found += $p }
+    }
+    ,$found
+}
+$linkDirs = Get-LinkExeDirs $env:PATH
+if ($linkDirs.Count) {
+    Write-Host "link.exe: $($linkDirs[0])"
+    if ($linkDirs.Count -gt 1) {
+        $rest = if ($linkDirs.Count -gt 4) { ($linkDirs[1..3] -join ' ； ') + " 等 $($linkDirs.Count) 处" } else { $linkDirs[1..($linkDirs.Count-1)] -join ' ； ' }
+        Write-Host "          后面还有：$rest" -ForegroundColor DarkGray
+    }
+}
 Write-Host ""
 
 # ── 第零步（可选）：补齐 tools\ 与 JIZURA 字体 ─────────────────────────────────
@@ -261,7 +283,34 @@ try {
     # 在 cmd 里 call vcvars 设置好 MSVC 环境，再跑 cargo。
     # CARGO_HOME / RUSTUP_HOME 只在探测到自装路径时才覆盖 —— 留空就等于让 rustup 用默认位置
     # （CI 上就是默认的 %USERPROFILE%\.cargo 与 %USERPROFILE%\.rustup）。
-    $inner = @("call `"$vcvars`" >nul")
+    #
+    # ⚠️ 必须把 Git 的 Unix 工具目录从 PATH 里剔掉，否则 Rust 会拿 /usr/bin/link 当链接器。
+    #
+    #    GitHub 的 windows-latest 装了 **Git for Windows**，它的
+    #    `C:\Program Files\Git\usr\bin` 是**系统 PATH 的一部分**（永久），而且里面有 coreutils
+    #    的 `link.exe`（就是 `ln` 的别名）。rustc 默认调裸名 `link.exe`，找到谁用谁 ——
+    #    于是打包时报（运行 #5 实测，末尾 3 行是关键）：
+    #      error: linking with `link.exe` failed: exit code: 1
+    #      = note: "C:\\Program Files\\Git\\usr\\bin\\link.exe" "/NOLOGO" ...
+    #      = note: /usr/bin/link: extra operand '...cgu.0.rcgu.o'
+    #      note: the Visual Studio build tools may need to be repaired using the Visual Studio installer
+    #    最后那句提示是**纯误导**：MSVC 装得好好的，只是没轮到它。
+    #
+    # 开发机从没暴露：H 盘那套工具链加上 vcvars 抢先，Git 的 usr\bin 排不到前面。
+    # 刻意**不**去猜是不是「vcvars 没抢过 Git」——直接把 `\Git\...` 的 PATH 段全删掉，
+    # 让 MSVC 成为唯一的 link.exe 来源，顺便把结果打出来当证据。
+    #
+    # 正则只吃 `\Git\usr` / `\Git\mingw64` / `\Git\cmd` 三段。**别写成 '\\Git\\'**：
+    # 那样会连 Git 的安装根、以及探测时自己造的临时目录一起吃掉，定位时吃过一次假阴性。
+    $pathParts = $env:PATH -split ';' | Where-Object { $_ -and $_ -notmatch '\\Git\\(usr|mingw64|cmd)' }
+    $pathClean = ($pathParts -join ';')
+
+    # ⚠️ 顺序是**实测定的，别调换**：`set "PATH=$pathClean"` 必须在 `call vcvars` **之前**。
+    #    vcvars64.bat 是把 MSVC 的路径 **prepend** 到它运行时的 PATH 上；先 call vcvars
+    #    再覆盖 PATH 会把 vcvars 刚加进去的 MSVC 那几段整段抹掉 —— 实测 `where link.exe`
+    #    直接变成 `INFO: Could not find files for the given pattern(s).`（连 MSVC 都没了）。
+    #    先清后 call，vcvars 才会在干净 PATH 上把它自己的路径加到最前面。
+    $inner = @("set `"PATH=$pathClean`"", "call `"$vcvars`" >nul")
     if ($cargoHome)  { $inner += "set `"CARGO_HOME=$cargoHome`"" }
     if ($rustupHome) { $inner += "set `"RUSTUP_HOME=$rustupHome`"" }
     $inner += "set `"PATH=$(Split-Path -Parent $cargo);%PATH%`""
@@ -270,6 +319,18 @@ try {
 
     Write-Host "执行: cargo $($cargoArgs -join ' ')"
     Write-Host ("─" * 60)
+
+    # 开跑前验一次链接器身份，别把十几分钟的编译赌在一句假设上。
+    # GNU coreutils 的 `link`（Git for Windows 自带）光叫一声就打印 help 并以 1 退出；
+    # MSVC 的 link.exe 会去链接（无参时退出 0 或 1100）。两者一撞就分得出来。
+    $probe = (& cmd /c "set `"PATH=$pathClean`" && call `"$vcvars`" >nul && link.exe" 2>&1) -join "`n"
+    $probeCode = $LASTEXITCODE
+    if ($probeCode -eq 1 -and $probe -match 'usage:\s*link') {
+        throw ("PATH 里第一个 link.exe 是 GNU coreutils 的 `ln`，不是 MSVC 的链接器 —— 编译必然失败。`n" +
+               "（已剔除 PATH 里的 \Git\usr、\Git\mingw64、\Git\cmd，但这个仍排在前面，说明还有别处也放了 link.exe。）`n" +
+               "排查：where.exe /r C:\ link.exe`n走的 PATH 前几段：`n  " + (($pathClean -split ';' | Select-Object -First 4) -join "`n  "))
+    }
+
     & cmd /c $inner
     $code = $LASTEXITCODE
     Write-Host ("─" * 60)
