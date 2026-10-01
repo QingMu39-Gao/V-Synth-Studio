@@ -22,7 +22,14 @@
 # tools/ 里是 ffmpeg（约 200MB）、yt-dlp、LibreSVIP CLI（约 70MB），合计约 288MB。
 # 补齐方式：powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1
 # 仓库只放源码 —— 这几样是官方二进制，放进 git 只会让每次 clone 都拖几百 MB。
-/tools/
+#
+# ⚠️ 这三行必须**按这个顺序**写，别合并成一句 /tools/：
+#     git 不会进入被排除的目录，所以「排除 tools\ 再单独放行里面的脚本」是无效的
+#     （!/tools/*.ps1 永远匹配不上，因为 git 压根没往里走）。
+#     正确写法是先让 tools/ 本身不被排除，再逐层排除里面的东西。
+#     效果：仓库里只有 tools\*.ps1 这几个脚本，下面的二进制全都不进。
+/tools/*
+!/tools/*.ps1
 
 # ── 本机配置 ────────────────────────────────────────────────
 # 含个人路径（输出目录、下载目录）。程序首次运行会自动按默认值生成。
