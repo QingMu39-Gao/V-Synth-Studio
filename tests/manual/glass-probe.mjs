@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 新前端（/next/）玻璃材质的实测探针
  *
  *   node tests/manual/glass-probe.mjs [port] [theme] [material]
@@ -348,6 +348,28 @@ try {
     await sleep(500)
   }
   if (!ready) throw new Error('页面没渲染完（没有玻璃面，或状态一直停在加载中）')
+  /**
+   * **交接那一帧**：等 `data-boot="out"` 出现（遮罩开始淡出），立刻读双方的不透明度 ——
+   * 遮罩应当在淡出中（<1），侧栏/内容区应当在入场中（<1）。
+   * 两边同时 <1 才叫交叉过渡；只有遮罩 <1 就是「界面早就画好、啪地出现」。
+   */
+  let handoff = null
+  for (let i = 0; i < 60; i++) {
+    const st = await cdp.evalJs(`(() => {
+      const op = (el) => (el ? Number(getComputedStyle(el).opacity) : null)
+      const m = document.querySelector('.app-main')
+      return {
+        boot: document.documentElement.dataset.boot ?? null,
+        splash: op(document.getElementById('boot')),
+        main: op(m), sidebar: op(document.querySelector('.app-sidebar')),
+        anim: m ? getComputedStyle(m).animationName : null,
+      }
+    })()`)
+    if (st.boot === 'out') { handoff = st; break }
+    await sleep(60)
+  }
+  const handoffShot = await cdp.send('Page.captureScreenshot', { format: 'png' })
+
   /* 淡出要 380ms，**就绪那一刻查会抓在淡出中间**，看着像没揭掉（我第一版就是这么误判的） */
   await sleep(1200)
   /* 揭开验完就删干净：加载页永久盖在界面上是最糟的结果 */
@@ -379,6 +401,9 @@ try {
   /* 启动画面那张（趁它还在时截的）也存下来，当证据 */
   const splashFile = join(OUT, `boot-${THEME}${SUFFIX}.png`)
   writeFileSync(splashFile, Buffer.from(splashShot.data, 'base64'))
+  /* 交接那一帧（遮罩淡出 + 界面入场同时进行） */
+  const handoffFile = join(OUT, `boot-handoff-${THEME}${SUFFIX}.png`)
+  writeFileSync(handoffFile, Buffer.from(handoffShot.data, 'base64'))
 
   /**
    * 侧栏高亮块：**逐帧采样**，别只看声明。
@@ -427,7 +452,7 @@ try {
       {
         theme: THEME, material: MATERIAL, screenshot: file, boot,
         /* 启动画面：趁它还在时截的那张，以及「就绪后有没有揭干净」 */
-        splash: { shownEarly: splashShown, atBoot: splashInfo, goneWhenReady: splashGone, file: splashFile },
+        splash: { shownEarly: splashShown, atBoot: splashInfo, goneWhenReady: splashGone, file: splashFile, handoff, handoffFile },
         slide, ...data,
       },
       null,

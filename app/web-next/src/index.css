@@ -145,6 +145,41 @@ body::before {
   gap: var(--lg-space-4);
 }
 
+/* ── 启动画面 → 界面的交接 ────────────────────────────────────
+   遮罩淡出（index.html 的 `#boot[data-out]`，300ms）的**同一帧**，
+   侧栏和内容区各自往上浮 10px、淡入。两边交叉，才像一次交接；
+   只淡遮罩的话，界面在底下早就画好了，看着就是「啪」地出现。
+
+   ⚠️ **两边的时长要拉开**：遮罩快（300ms）、界面慢（720ms）。
+   一样长的话，界面入场的绝大部分是在遮罩还盖着的时候走完的，
+   露出来的只剩最后一两成 —— 观感上仍然接近「啪」。
+   实测：520/380 那一版交接帧已经是「遮罩 0.22 / 界面 0.91」，
+   也就是动作基本白做了；拉开之后遮罩让开时界面才走到一半左右。
+
+   ⚠️ **只给这两个元素加 transform，别给 `.app`**：`.app` 里有两个 `position: fixed`
+   的直接子元素（`.app-top-edge`、`.toasts`），父级一有 transform 它们就不再贴着视口。
+   这两个元素里面没有 fixed 后代，安全。动画结尾是 `transform: none`，不会留下包含块。 */
+html[data-boot='out'] .app-sidebar,
+html[data-boot='out'] .app-main {
+  animation: app-enter 720ms var(--lg-ease-out) both;
+}
+@keyframes app-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-boot='out'] .app-sidebar,
+  html[data-boot='out'] .app-main {
+    animation: none;
+  }
+}
+
 /* ── 顶栏：**本身没有底**，玻璃在里面的控件上 ──────────────────
    库的 `GlassToolbar` 注释：「工具栏本身不携带背景 —— 它是一行**分组**，玻璃是每一组」。
    以前这里是一整块玻璃，于是要么「玻璃叠玻璃」（控件再叠一层），

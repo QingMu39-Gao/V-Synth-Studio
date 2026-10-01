@@ -72,7 +72,7 @@
     place-items: center;
     background: #0b0d12;
     color: #eef1f6;
-    transition: opacity 0.38s ease, visibility 0.38s ease;
+    transition: opacity 0.3s ease, visibility 0.3s ease;
   }
   html[data-theme='light'] .boot {
     background: #f3f4f6;
@@ -81,6 +81,18 @@
   .boot[data-out='true'] {
     opacity: 0;
     visibility: hidden;
+  }
+  /* 卡片**先自己往上收一点**再随遮罩一起消失 —— 收尾有点动作，交接才不显得是「被切断」。
+     用字面量的缓动：这段样式在库的 CSS 之前就要生效，不能依赖 --lg-* 令牌。 */
+  .boot[data-out='true'] .boot-card {
+    transform: translateY(-10px) scale(1.035);
+    opacity: 0;
+    transition: transform 0.34s cubic-bezier(0.32, 0.72, 0, 1), opacity 0.26s ease;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .boot[data-out='true'] .boot-card {
+      transition: none;
+    }
   }
   .boot-card {
     display: flex;
