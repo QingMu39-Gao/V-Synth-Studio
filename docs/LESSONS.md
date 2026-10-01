@@ -270,3 +270,35 @@ getComputedStyle(document.querySelector('.app-sidebar')).getPropertyValue('corne
 
 ⚠️ 遗留：`light.jpg` 是 1600×1200（4:3），窗口通常 16:10/16:9，`cover` 必然上下裁 15~25%。
 **这是素材问题** —— 要整张可见只能换一张横向的浅色底图。
+
+---
+
+### 内容层的卡片**不能画不透明的底**（资源库页「材质切不动」的真因）
+
+**症状**（用户原话）：「资源库那一页还是不能正确的切换材质」。
+
+**实际量到的**（`tests/manual/` 里的临时探针，逐档对比 `[data-material]`）：
+那一页在档 1 与档 2 完全一样、档 3 与档 4 也几乎一样 —— 因为**内容层压根不是玻璃面**：
+
+- 资源条目用的是库的 `Card`，它自带 `background: var(--lg-bg-grouped-2)`（亮色下就是
+  `rgb(252,252,253)` 的近白实色）。**玻璃面板上画一块不透明的白卡，等于在材质上凿了个洞** ——
+  切哪一档，看上去都是「一堆白卡」，能变的只有侧栏和按钮。
+- 分组块是裸的 `List`/`ListSection`，没有用 `Panel`，所以档 4「全液态」时别页的内容层
+  都折射了，这一页还是平的。
+
+**改法**：分组整块包进 `Panel`（跟总览页的段落一致，档 1~3 是 `MaterialView`、档 4 变玻璃面）；
+条目卡的底改成 `var(--lg-fill-quaternary)`（跟 `.quick` / `.choice` 一样的半透明填充）。
+改完实测：档 1 → 32 个 `regular` + 5 个 `MaterialView`；档 4 → 36 个 `clear` + **0 个 MaterialView**，
+不刷新拖滑块切换也即时生效。
+
+**两条顺带记下的库行为**（都是读上游源码确认的，别照猜的改）：
+
+1. **`GlassDialog` 的材质是写死的**：上游 `src/react/overlays/dialog.tsx` 里是
+   `{ ...surface, material: 'regular', size: 'large' }` —— 传 `material` 进去会被它盖掉。
+   弹窗按设计系统就是「大面 = 毛玻璃」，液液态档下它仍是毛玻璃**是库的行为，不是页面没切**。
+2. **`Banner` 认 `material`**：它不会自己盖掉，所以液态档下要显式传
+   `material={level === 4 ? 'clear' : 'regular'}`，否则整页只有它还是毛玻璃。
+
+⚠️ **查这类问题的正确方法**：别看源码猜，**逐档量 `[data-material]` 的分布**
+（`material` / `size` / 有没有 `.lg-material-view`），一眼就能看出哪一层没跟着走。
+只看截图很容易把「内容层是实色」误判成「库没生效」。

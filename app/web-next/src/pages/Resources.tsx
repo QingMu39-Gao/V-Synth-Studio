@@ -10,6 +10,7 @@ import {
 } from '@ttqtt/liquid-glass-react'
 import { api, type ResourceItem } from '@/lib/api'
 import { useJob } from '@/lib/useJob'
+import { useMaterial } from '@/lib/useGlass'
 import { Button } from '@/components/Button'
 import { Icon } from '@/components/Icon'
 import { Chip, Panel, Stat } from '@/components/Panel'
@@ -121,6 +122,8 @@ function verdictOf(c: CheckInfo): 'ok' | 'warn' | 'dead' {
 /* ══════════════════════════════════════════════════════════════════ 页面 ══ */
 
 export function Resources({ onToast }: PageProps) {
+  /* 档位派生的材质：给库那些「自带 regular 默认值」的大玻璃用（Banner / Dialog） */
+  const { material } = useMaterial()
   const [groups, setGroups] = useState<{ id: string; name: string; description: string; icon: string; items: ResourceItem[] }[]>([])
   const [notice, setNotice] = useState('')
   const [updatedAt, setUpdatedAt] = useState('')
@@ -354,7 +357,18 @@ export function Resources({ onToast }: PageProps) {
       </div>
 
       {/* ── 顶部声明：不收录学习版 / 破解版（文案来自 resources.json）── */}
-      <Banner tone="warning" title="先看这条：别从网盘下「整合包」" message={notice || DEFAULT_NOTICE} />
+      {/*
+        ⚠️ 库的 `Banner` / `GlassDialog` 是**大玻璃**，它们自带 `regular` 默认值，
+        不跟 `GlassProvider` 的 policy 走（设计系统里「大面=毛玻璃」）。于是液态档下
+        整页都是折射、只有这两块还是毛玻璃 —— 看着就是「这页材质没切」。
+        这里显式把档位派生的材质传下去，让它跟页面一致。
+      */}
+      <Banner
+        tone="warning"
+        title="先看这条：别从网盘下「整合包」"
+        message={notice || DEFAULT_NOTICE}
+        material={material === 'liquid' ? 'clear' : 'regular'}
+      />
 
       {/* ── 上次校验的汇总 ── */}
       {summary && (
@@ -463,6 +477,10 @@ export function Resources({ onToast }: PageProps) {
                 const peek = isOpen ? items : items.slice(0, PEEK)
                 return (
                   <section key={group.id} data-group={group.id}>
+                    {/* 分组**整块**是一个面板：档 1~3 是 MaterialView、档 4 变玻璃面，
+                        跟总览页的段落一致。以前这里只有裸的 List，条目永远是平的白卡，
+                        于是「切材质」在这一页看不出变化。 */}
+                    <Panel padded={false}>
                     <ListSection
                       header={
                         <div className="res-head">
@@ -510,6 +528,7 @@ export function Resources({ onToast }: PageProps) {
                         ))}
                       </div>
                     </ListSection>
+                    </Panel>
                   </section>
                 )
               })}
@@ -532,6 +551,14 @@ function CopyDialog({
   value: { url: string; reason: string } | null
   onClose: () => void
 }) {
+  /*
+   * ⚠️ 这里**故意不传 `material`**：库的 `GlassDialog` 内部是写死的
+   *   `{ ...surface, material: 'regular', size: 'large' }`
+   * （上游 `src/react/overlays/dialog.tsx`），传进去也会被它盖掉 —— 弹窗按设计
+   * 系统就是「大面 = 毛玻璃」。实测：档 4 下整页都是折射，只有这个**模态框**仍是
+   * 毛玻璃，那是库的行为，不是这一页没切材质。Banner 不同，它认 `material`，所以
+   * 那边显式传了档位派生的值。
+   */
   const inputRef = useRef<HTMLInputElement>(null)
   useEffect(() => {
     if (value) inputRef.current?.select()
