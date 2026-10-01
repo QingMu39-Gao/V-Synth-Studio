@@ -422,6 +422,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | `backdrop-filter` 降级 | 无该特性环境的降级方案没做视觉验证 |
 | `audio.rs` 顶部注释 | 写着「ffmpeg 不随程序分发」，与事实相反（注释是旧的） |
 | Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
+| **工程转换** | **没修好**：音高默认档会丢音高、选项键是自造的、5/16 撞上游导出崩溃。见 `docs/CONVERT-HANDOFF.md` |
 
 ### 打包卡在哪（这是本次的核心遗留问题）
 
@@ -586,6 +587,13 @@ git log --all -- app/data/resources.json
 
 ### 待办，按优先级
 
+0. **工程转换没修好 —— 先读 `docs/CONVERT-HANDOFF.md`。**
+   2026-10-02 的实测基线：16 个真 `.svp` **成功 10 / 失败 6**（5 个撞 LibreSVIP 自己的
+   `AttributeError: vsqx_name` 导出崩溃、1 个源工程音符重叠）；能转的那批**音高与 SynthV 里画的
+   不一致**（默认走了官方 `音高信息输入模式=PLAIN`）。**当前后端的选项系统是自造键 +
+   逐题回答交互提问，偏离了 LibreSVIP 设计的机器接口（`rpc server` + `input_options`/
+   `output_options` JSON）** —— 权威选项名、失败矩阵、复现命令、正确做法都在那份文档里。
+   复跑基线：`node tests\manual\convert-samples.mjs 8891`。
 1. **`resolve_paths()` 改用 `resource_dir()`** —— 修掉 MSI、修掉 macOS bundle，
    省掉构建脚本里复制 exe 那步。跟前端选型无关。
 2. **把剩下几处手写控件换成库的**：`Button`（已是 `GlassButton`）和 `List`/`Dialog`/`Slider`/
