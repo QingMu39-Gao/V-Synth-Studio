@@ -3,6 +3,14 @@
 **先读这一份，再动手。** 这里写的是「看代码看不出来」的东西：架构为什么长这样、
 踩过哪些坑、下一步该往哪走。`README.md` 只讲产品与使用。
 
+> ### ⚠️ 手上有一个**未解决问题**，动转换之前先读它
+>
+> **工程转换没修好**：16 个真工程只成功 10 个（5 个撞 LibreSVIP 自己的导出崩溃），
+> 且能转的那批**音高与 SynthV 里画的不一致**。原因、权威选项表、复现命令、
+> 正确做法（换成 LibreSVIP 官方的 RPC + JSON 选项接口）全在
+> **[`docs/CONVERT-HANDOFF.md`](docs/CONVERT-HANDOFF.md)**。
+> 复跑基线：`node tests\manual\convert-samples.mjs 8891`。
+
 ---
 
 ## 一、这是什么
