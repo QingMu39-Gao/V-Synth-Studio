@@ -38,11 +38,6 @@
       "status": 200,
       "bytes": 2896
     },
-    "voices": {
-      "path": "/api/voices",
-      "status": 200,
-      "bytes": 4638
-    },
     "fs-list-c": {
       "path": "/api/fs/list?path=C%3A%5C%5C",
       "status": 200,

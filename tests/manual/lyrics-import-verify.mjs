@@ -4,7 +4,7 @@
  *   node tests/manual/lyrics-import-verify.mjs [port]
  *
  * 起一个测试实例（和契约测试一样用 --serve，不动窗口那套）：
- *   app\desktop\target\debug\qingmu-workstation.exe --serve --port=8891
+ *   v-synth-studio.exe --serve --port=8891
  *
  * 验的是三件事：
  *   1. 编码：UTF-8 照读，GBK 自动转（国内老歌词很多是 GBK，硬按 UTF-8 读就是乱码）

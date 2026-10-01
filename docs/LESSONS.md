@@ -1,8 +1,8 @@
-﻿# 踩坑史与取舍（`AGENTS.md` 第六节的外移部分）
+# 踩坑史与取舍（`AGENTS.md` 第六节的外移部分）
 
 > 这份记的是**为什么**：当时是什么症状、怎么定位的、改了什么、还留下什么。
 > AGENTS.md 第六节只保留结论速查；要动相关代码之前，来这里看细节。
-> 玻璃材质本身的规范在 docs/GLASS-HANDOFF.md；新前端约定在 docs/NEXT-UI.md。
+> 玻璃材质本身的规范在 docs/GLASS-HANDOFF.md；前端约定在 docs/FRONTEND.md。
 
 ---
 
@@ -41,7 +41,7 @@ $used | Where-Object { $defined -notcontains $_ }
 | 前端 | 令牌与取值 | 说明 |
 |---|---|---|
 | 旧前端 `/` | `--ease: cubic-bezier(0.32, 0.72, 0, 1)`<br>`--ease-out: cubic-bezier(0.16, 1, 0.3, 1)`<br>`--spring: cubic-bezier(0.34, 1.56, 0.64, 1)` | 定义在 `app/web/css/base.css:129-131`，**唯一一处** |
-| 新前端 `/next/` | **没有自己的缓动令牌** | 曲线来自库：`--lg-duration-spring: 520ms` + `--lg-spring`（一条 `linear()` 弹簧采样），`--lg-duration-press/release/layout` 分级。写在库的 `dist/tokens.css`，改不了也不用改 |
+| React 前端（根路径 `/`） | **没有自己的缓动令牌** | 曲线来自库：`--lg-duration-spring: 520ms` + `--lg-spring`（一条 `linear()` 弹簧采样），`--lg-duration-press/release/layout` 分级。写在库的 `dist/tokens.css`，改不了也不用改 |
 
 ⚠️ **本节此前那两版取值都是错的**（`(.4,0,.2,1)` / `(0.2,0.9,0.25,1)` / `--spring: 1.28`
 这些数字**在代码里一个都不存在**）：那是新前端换库之前的手写玻璃时代的令牌，
@@ -238,7 +238,7 @@ getComputedStyle(document.querySelector('.app-sidebar')).getPropertyValue('corne
 | 前端 | 背景在哪 | 状态 |
 |---|---|---|
 | 旧前端 `/` | `app/web/css/base.css` 的 `&lt;html&gt;::before`（`--bg-image` / `--bg-blur` / `--bg-veil`） | 已修 |
-| 新前端 `/next/` | `app/web-next/src/index.css` 的 `.bg-layer::before`（同名令牌） | 已修 |
+| React 前端（根路径 `/`） | `app/web-next/src/index.css` 的 `.bg-layer::before`（同名令牌） | 已修 |
 
 ⚠️ 新前端第一版**只铺了纯 CSS 渐变、根本没放图**，于是 `backdrop-filter` 明明生效却
 看不出毛玻璃（纯色底上模糊与不模糊一模一样）。修旧前端时漏了新前端，用户又报了一次。

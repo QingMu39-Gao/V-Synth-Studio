@@ -1,10 +1,10 @@
-﻿# FEATURES.md —— 功能实现文档（给后续维护者）
+# FEATURES.md —— 功能实现文档（给后续维护者）
 
 **这份文档回答一件事**：每一项功能，从界面上点下去到后端做完，中间发生了什么、代码在哪个文件、有哪些不能踩的约束。
 
 - 项目全貌、构建方式、已知坑的**结论** → `AGENTS.md`（不在这里重复）。
-- 新前端的目录约定、库组件清单、页面写法 → `docs/NEXT-UI.md`。
-- 玻璃材质规范 → `docs/GLASS-HANDOFF.md`；旧前端契约 → `docs/LEGACY-UI.md`。
+- 前端的目录约定、库组件清单、页面写法 → `docs/FRONTEND.md`。
+- 玻璃材质规范 → `docs/GLASS-HANDOFF.md`（旧前端已整体退役，`docs/LEGACY-UI.md` 已删除）。
 - **本文所有结论都来自源码与 `tests/contract/fixtures/` 的阅读**（写文档时按任务要求没有启动任何实例，运行时行为未实测）。拿不准的地方标了「未核实」。
 
 ---
@@ -15,8 +15,8 @@
 
 ```
 WebView2 窗口（Tauri 2）
-  └─ 加载 http://127.0.0.1:<port>{/ 或 /next/}/     ← main.rs: WebviewUrl::External(url)
-       │  fetch('/api/...')                        ← 新前端 lib/api.ts / 旧前端 js/api.js
+  └─ 加载 http://127.0.0.1:<port>/                    ← main.rs: WebviewUrl::External(url)
+       │  fetch('/api/...')                        ← 前端 lib/api.ts（**绝对路径**）
        ▼
   同进程 axum 服务（server/mod.rs::router，绑 127.0.0.1）
        ├─ /api/*  → server/{simple,convert,media,lyrics,tools}.rs 的处理器
@@ -36,23 +36,25 @@ WebView2 窗口（Tauri 2）
 |---|---|---|
 | 端口 | 固定 17878；被占用才退随机（`note!` 会写日志） | `main.rs::PICK_PORT/pick_port` |
 | 服务形态 | 进程内 tokio 任务，**没有 sidecar 子进程** | `main.rs::serve` |
-| 界面切换 | 只是 URL 前缀（`--ui=next|old`），不重新编译 | `main.rs` 的 `ui_path` 段 |
+| 界面 | **只有一套**（React），固定在根路径 `/`；改前端不用重新编译（每请求从磁盘读） | `main.rs` 开窗口那几行 |
 | 静态文件 | 每次 `fs::read` + `Cache-Control: no-store`；目录回退到其下 `index.html` | `simple.rs::static_files` |
 | 错误形状 | `{ok:false, error, code:null}`；`media.rs` 的错误**故意用 500**（照抄 Node） | `simple.rs::ApiError`、`media.rs` 头注释 |
 | 日志 | `<可写目录>/app.log`（无控制台窗口，不看 stdout） | `main.rs::log_line` |
 
-### 两套前端
+### 前端（只有一套）
 
-| | 旧前端 | 新前端 |
-|---|---|---|
-| URL / 源码 | `/` ← `app/web/`（零构建） | `/next/` ← `app/web-next/`（Vite 产物落 `app/web/next/`） |
-| 入口 | `app/web/js/main.js` | `app/web-next/src/main.tsx` → `App.tsx` |
-| 状态来源 | main.js 里一个**全局 `state` 对象** + `refreshState()`（调 `api.state()`） | `App.tsx` 用 `useState` 拿一次 `api.state()`，通过 `PageProps` 往下传 |
-| 路由 | hash 视图表（`js/views/*.js`） | hash `#/<id>`，页表在 `App.tsx` 的 `PAGES` + `pageViews` |
-| 主题 | `js/theme.js`（唯一入口） | `App.tsx` 的 `THEME_KEY='qingmu.theme'` → `GlassProvider theme` |
-| 玻璃 | `css/*.css` 手写 | 库 `@ttqtt/liquid-glass-react`；等级在 `lib/useGlass.ts`（键 `qingmu.glassLevel`） |
+| | 事实 |
+|---|---|
+| 源码 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4） |
+| 产物 | `app/web/`（`index.html` + `assets/`）；同目录的 `vendor/`、`img/` 是随包静态资源，**不是产物** |
+| 入口 | `app/web-next/src/main.tsx` → `App.tsx` |
+| 状态来源 | `App.tsx` 用 `useState` 拿一次 `api.state()`，通过 `PageProps` 往下传（约定见 `docs/FRONTEND.md` §3.1） |
+| 路由 | hash `#/<id>`，页表在 `App.tsx` 的 `PAGES` + `pageViews` |
+| 主题 | `App.tsx` 的 `THEME_KEY='qingmu.theme'` → `GlassProvider theme` |
+| 玻璃 | 库 `@ttqtt/liquid-glass-react`；等级在 `lib/useGlass.ts`（键 `qingmu.glassLevel`） |
 
-`exe` 自身默认仍是旧前端（`main.rs` 里 `default => ""`），**这是刻意的逃生口**，属验收动作，别顺手改。
+> 旧的手写前端（`app/web/js` + `css` + 手写 `index.html`）、`--ui=next|old` 与启动器的
+> `--old` 已于 2026-10-05 一起删除。exe 与启动器现在都加载根路径 `/`。
 
 **页面偏好放哪**（都不进 `config.json`，除 Cookie / 路径 / 工具路径）：
 
@@ -60,12 +62,14 @@ WebView2 窗口（Tauri 2）
 |---|---|
 | `qingmu.theme` | 主题（`App.tsx`） |
 | `qingmu.glassLevel` | 玻璃等级 1~4（`lib/useGlass.ts`） |
-| `qingmu.globalGlass` | 等级之前的旧键，`readLevel()` 里做兼容迁移 |
-| `fandiao.video.settings` | 视频页参数（`Video.tsx`，与旧前端共用） |
+| `qingmu.glass` | 更早的**材质**键（`components/Glass.tsx`），`readMaterial()` 只读不写，为老用户兼容 |
+| `qingmu.globalGlass` | 更早的「全局玻璃开关」键，`readLevel()` 里做兼容迁移（只读） |
+| `fandiao.video.settings` | 视频页参数（`Video.tsx`） |
 | `fandiao.audio.settings` | 音频页参数（`Audio.tsx`） |
-| `qingmu.pv.lyrics` / `qingmu.pv.sent` | 歌词 → 文字 PV 的交接（`Lyrics.tsx` 写、`Pv.tsx` 读） |
+| `fandiao.convert.settings` | 转换页选项（`Convert.tsx:830`） |
+| `qingmu.pv.lyrics` / `qingmu.pv.sent` | 歌词 → 文字 PV 的交接（`Lyrics.tsx` 写；`Pv.tsx` 读，并且**两个键的读写都在 Pv.tsx**） |
 
-> ⚠️ `Settings.tsx` 的 `reload()` **自己又调了一次 `api.state()`**（不只是用 App 传下来的那份）——与 `NEXT-UI.md` §3.1「不要自己去 `api.state()`」有出入，已核实存在。
+> ⚠️ `Settings.tsx` 的 `reload()` **自己又调了一次 `api.state()`**（不只是用 App 传下来的那份）——与 `docs/FRONTEND.md` §3.1「不要自己去 `api.state()`」有出入，已核实存在。
 
 ---
 
@@ -142,7 +146,7 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 **关键约束 / 坑**：
 
-- `collect` 要 `{dirs}`（旧前端发 `{dir}` → 永远 0 个文件，见 `NEXT-UI.md` §5）；`preview` 要 `{inputs,toFormat}`；`inspect` 用 `inputPath`。
+- `collect` 要 `{dirs}`（**旧前端**发 `{dir}` → 永远 0 个文件，那套前端 2026-10-05 已删；坑的来历见 `docs/FRONTEND.md` §5）；`preview` 要 `{inputs,toFormat}`；`inspect` 用 `inputPath`。
 - LibreSVIP CLI 位置由 `libresvip::cli_path` 四个候选决定（`tools/libresvip/libresvip-cli/…exe` 等），找不到就报「没有找到 LibreSVIP CLI」。
 - 任务日志行首时间戳用 `convert.rs::clock()`，实现是 `秒 % 86400` ——**实际是 UTC**，与它注释里写的「本地时间」不符（已核实）。
 - 任务 id 不是随机的：`format!("{:06x}", seq * 0x9e3779b9 % 0xffffff)`（`convert.rs::new_job`）。
@@ -500,7 +504,7 @@ resources.json
 | 3 | props 只用 `PageProps`（`pages/types.ts`）；**不要在页面里自己 `api.state()`**（历史例外：`Settings.tsx`） |
 | 4 | 任务进度用 `useJob()` + `<JobProgress>`；目录选择用 `<DirectoryInput>` / `<DirPicker>` |
 | 5 | 失败一律 `onToast(err.message, 'err')`，不许静默吞；缺外部依赖要说清怎么恢复，不引导下载 |
-| 6 | `npm run build`（用 `H:\node\npm.cmd`）→ 刷新 `/next/#/<id>`；再跑契约 + 两个冒烟 |
+| 6 | `npm run build`（用 `H:\node\npm.cmd`）→ 刷新 `#/<id>`；再跑契约 + 逐页冒烟 |
 
 ### 改接口契约（**冻结**）
 
@@ -518,10 +522,10 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 
 | 改什么 | 先看 |
 |---|---|
-| 页面文案 | `next-smoke.mjs`（新前端逐页断言）与 `ui-smoke.ps1`（旧前端 8 页关键字）会变红 |
-| `main.rs` 的 `ui_path` 默认值 | **是验收动作**，必须等用户明确点头；改它等于把没验收的界面推给所有直接跑 exe 的人 |
+| 页面文案 | `next-smoke.mjs`（8 页逐页关键字断言）会变红 |
+| `app/web-next/src/App.tsx` 的 `PAGES` / `pageViews` | 两处都要加，只加一处会渲染成空白（占位兜底已随旧前端一起删除） |
 | `app/desktop/src/platform.rs` | 平台相关代码**只放这里**（移植 macOS 主要改这一个文件）；`tools.rs` 的路径表是数据不是逻辑 |
-| `app/web/js/**`（旧前端） | 读 `docs/LEGACY-UI.md` |
+| `app/web/**` | `index.html` + `assets/` 是 Vite 产物，会被构建覆盖；`vendor/` + `img/` 是随包资源，**别让构建清掉**（`emptyOutDir` 必须 `false`） |
 | `.ps1` / `.bat` | 编码与行尾要求见 `AGENTS.md` 第三节（BOM / CRLF / 逻辑块只用 ASCII） |
 | 玻璃相关 | 先读 `docs/GLASS-HANDOFF.md`；`vite.config.ts` 里那个 `restoreStandardBackdropFilter` 插件**别删** |
 | 前端构建 | 唯一入口是 `app/desktop/build.ps1`（前端 + 后端）；单独改前端用 `npm run build` / `npm run watch` |
@@ -530,9 +534,9 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 
 ## 5. 验证清单
 
-工具与管什么**照 `docs/NEXT-UI.md` 第 6 节的表**（契约 / 旧前端冒烟 / 玻璃探针 / PV 交接探针），这里只补两条：
+工具与管什么**照 `docs/FRONTEND.md` 第 6 节的表**（契约 / 逐页冒烟 / 玻璃探针 / PV 交接探针），这里只补两条：
 
-- 新前端逐页冒烟：`tests/manual/next-smoke.mjs`（控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8）；只在 `/next/` 一侧生效。
+- 逐页冒烟：`tests/manual/next-smoke.mjs`（控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8）。
 - Rust 单测：`cd app\desktop; cargo test --bins`（现有单测覆盖 SRT 时间戳、AVC 优先选流、ffmpeg 进度解析、LRC 时间戳与双语拆分、WBI 签名等）。
 
 **启动测试实例一律用 8891**，跑完必须停实例 + 清无头 Edge（命令见 `AGENTS.md`「进程卫生」）。机器上常驻一个 8891 实例时**不要**再去抢它。
@@ -544,16 +548,16 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 写这份文档时按任务要求**没有启动任何实例、没有发任何网络请求、没有跑构建与测试**。以下条目是「读代码得出的判断」，或「我不确定的」：
 
 1. **运行时行为全部未实测** —— 所有请求链、回包形状、错误码都来自源码与 17 个契约夹具的阅读。
-2. ⚠️ **`/api/fs/open` 不接受 `{url}`**（`simple.rs::fs_open` 只读 `body["path"]` 且要求路径存在）。新前端有三处按 `{url}` 调用：`Resources.tsx:293`（打开资源链接）、`Video.tsx:775`（打开网页）、`Audio.tsx:1917`（打开 MVSEP）。**按代码它们会 400「路径不存在：」**；未运行验证，也没有在旧前端里找到 `fs/open` 的调用可比对。
+2. ~~⚠️ **`/api/fs/open` 不接受 `{url}`**~~ **已修（2026-10-05 复核）**：`simple.rs::fs_open` 现在 `path` 与 `url` 都收（`url` 走 `platform::looks_like_url` → 系统默认程序，不做存在性检查，带单测）。前端三处按 `{url}` 调用 —— `Resources.tsx:293`、`Video.tsx:775`、`Audio.tsx:1917` —— 现在是对的。
 3. **`/api/tools/detect?force=1` 的参数被忽略**（handler 无 Query 提取器）；前端仍会传，判定为无副作用 —— 未运行验证。
 4. **`convert.rs::clock()` 的注释与实现不符**：注释写「本地时间」，实现是 `secs % 86400`（UTC）。日志时间戳会与本地时间差时区（未实测差值）。
 5. **两处页面注释已过期**：`Lyrics.tsx` 头注释说 `api.ts` 的歌词类型是 `{items:[{title,artist}]}`、`Video.tsx` 头注释说 `api.ts` 把 `currentPage` 写成数字 —— 现在 `api.ts` 已经是 `songs:[{name,artists}]` 与 `currentPage` 对象（已逐行核实）。
-6. **`/api/convert/preview-upload` 与 `/api/convert/run-upload` 没有任何前端调用者**（`lib/api.ts` 未包、页面未用），我只读了实现，未验证端到端可用。
+6. ~~**`/api/convert/preview-upload` 与 `/api/convert/run-upload` 没有任何前端调用者**~~ **已复核（2026-10-05）**：它们在 `lib/api.ts` 里没有包装，但页面**裸 fetch** 在用 —— `Convert.tsx:195`、`Convert.tsx:321`（拖入的文件没有磁盘路径时走上传版）。同一类「不在 api.ts 里但活着」的还有 `/api/fs/raw`（`Audio.tsx:1195` 的波形与试听）与 `/api/pv/save`（`Pv.tsx:277` 分块写 MP4）。**只查 `api.ts` 会把它们误判成死路由。**
 7. **`/api/resources/check` 的真实实现不存在**（固定返回 `{results:[],pending:true}`）；`lib/api.ts::checkLinks` 却声明回 `{jobId}` —— 哪一边会先改未核实；`Resources.tsx` 里的「等后端接上」分支是按现状写的。
 8. **`AGENTS.md` 第八节与 `tauri.conf.json` 互相矛盾**：前者写 `bundle.resources` 是空的、`resource_dir()` 那一步从没生效；后者**有 4 条映射**（`app/web`、两个 data JSON、`tools`）。我按文件本身写（§3.8），但**不知道哪一边是当前意图**，也没有打包实测。
 9. **资源库 `verdict` 的前端兜底推断**（`Resources.tsx::verdictOf`）已逐行核实并写进 §3.6，但它与 `AGENTS.md` 第七节的三态定义是否处处等价（例如「其它 5xx」），未做逐条比对。
-10. **死配置键**（grep 全仓）：`voiceDirs` 无任何读取方；`perfMode` 只有默认值；`customPrograms` 只被 `/api/tools/launch` 的 `{id}` 分支与旧前端设置页使用（新前端无管理入口）。`{id}` 这条 launch 分支当前**新旧前端都不传**（grep 核实），是否有意保留未核实。
+10. ~~**死配置键**~~ **已于 2026-10-05 处理**：`lastSourceFormat`、`voiceDirs`、`perfMode`、`customPrograms` 四个只写不读的键从 `server/simple.rs::default_config()` 里删掉了（连带 `/api/tools/launch` 的 `{id}` 分支与夹具同步更新）。只留 `defaultTargetFormat` —— 它**没有写入方**是事实，但 `Convert.tsx:57` 在读（目标格式的初值），所以不是死键，改默认值只能改那一行。
 11. **`docs/GLASS-HANDOFF.md` 我只读了 `AGENTS.md` 对它的引用**，本文里的小节号（§2.2 / §3.1 / §4.1）按那份引用标注，**没有逐节核对正文**。
 12. **平台相关分支只有 Windows 走过**：macOS 的 `open -R` / `$HOME/Downloads`、非 Windows 的 GBK 分支（`gbk_to_string` 直接返回 `None`）都只读了代码。
 13. **外部站点的线上行为未验证**：B 站 WBI / 番剧 / durl、网易云明文接口、QQ 音乐手机 UA 搜索、yt-dlp 各站点 —— 写文档期间没有发任何请求。
-14. **并发改动的风险**：写这份文档期间仓库里还有别的改动（`main.rs` / `server/simple.rs` / `docs/NEXT-UI.md` / `tests/manual/*` 都有未提交修改）。本文按**我读到的那一版工作区**写；如果这些文件随后又变了，请以代码为准。
+14. **并发改动的风险**：写这份文档期间仓库里还有别的改动（`main.rs` / `server/simple.rs` / `tests/manual/*` 都有未提交修改）。本文按**我读到的那一版工作区**写；如果这些文件随后又变了，请以代码为准。（其中 `docs/NEXT-UI.md` 已于 2026-10-05 改名为 `docs/FRONTEND.md`。）

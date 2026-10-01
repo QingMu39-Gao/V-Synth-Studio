@@ -1,7 +1,10 @@
 //! HTTP 服务端
 //!
-//! 实现和原 Node 后端**完全相同的 31 个路由**，所以前端（app/web/，7048 行）一行都不用改。
-//! 响应形状以 `tests/contract/fixtures/` 里的真实抓包为准。
+//! 实现和原 Node 后端**完全相同的路由**（现 39 条），响应形状以
+//! `tests/contract/fixtures/` 里的真实抓包为准。
+//!
+//! 前端是 `app/web-next/` 的 Vite 产物（伺服自 `app/web/`），已不是 Node 后端
+//! 时代的 `app/web/js`（那套已于 2026-10-05 删除）。
 //!
 //! 模块划分：
 //!   mod.rs      路由表 + 共享状态
@@ -138,7 +141,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/video/download", post(media::video_download))
         .route("/api/audio/probe", post(media::audio_probe))
         .route("/api/audio/run", post(media::audio_run))
-        // ── 歌词（新增，不动上面 31 个路由）───────────────
+        // ── 歌词（新增的歌词路由，与上面那批非歌词路由分开）──
         .route("/api/lyrics/search", post(lyrics::search))
         .route("/api/lyrics/get", post(lyrics::get))
         .route("/api/lyrics/parse-link", post(lyrics::parse_link))

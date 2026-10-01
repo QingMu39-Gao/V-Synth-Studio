@@ -2503,24 +2503,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "qingmu-workstation"
-version = "1.1.0"
-dependencies = [
- "axum",
- "flate2",
- "futures-util",
- "libc",
- "reqwest 0.12.28",
- "serde",
- "serde_json",
- "tauri",
- "tauri-build",
- "tokio",
- "tower-http",
- "windows-sys 0.59.0",
-]
-
-[[package]]
 name = "quick-xml"
 version = "0.42.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4053,6 +4035,24 @@ dependencies = [
  "js-sys",
  "serde_core",
  "wasm-bindgen",
+]
+
+[[package]]
+name = "v-synth-studio"
+version = "1.1.0"
+dependencies = [
+ "axum",
+ "flate2",
+ "futures-util",
+ "libc",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "tauri",
+ "tauri-build",
+ "tokio",
+ "tower-http",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]

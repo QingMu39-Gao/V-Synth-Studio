@@ -32,6 +32,16 @@
 *.woff2 binary
 *.woff binary
 *.ttf binary
+# 图片与媒体同理：这不是理论风险，仓库里已经有一个 wav（tests/samples/tone-1s.wav）
+# 和两张 jpg 背景图（app/web/img/bg/）长期处于「未标记」状态。
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.wav binary
+*.mp3 binary
+*.mp4 binary
+*.icns binary
 *.ust binary
 *.vsqx binary
 *.vpr binary

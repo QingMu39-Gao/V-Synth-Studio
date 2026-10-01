@@ -1,7 +1,5 @@
-﻿import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useSyncExternalStore } from 'react'
 import { readMaterial, type GlassMaterial } from '@/components/Glass'
-
-export type { GlassMaterial }
 
 /**
  * **玻璃等级 1~4** —— 一个滑块管住原来三个开关：
@@ -53,7 +51,7 @@ export function levelTransparency(level: GlassLevel): 'opaque' | 'system' {
 }
 
 /** 等级 → 内容区的面板要不要玻璃面（**只有最高的 4 级要**） */
-export function levelGlobalGlass(level: GlassLevel): boolean {
+function levelGlobalGlass(level: GlassLevel): boolean {
   return level >= 4
 }
 

@@ -1,5 +1,5 @@
 /**
- * 新前端（/next/）玻璃材质的实测探针
+ * 前端（/）玻璃材质的实测探针
  *
  *   node tests/manual/glass-probe.mjs [port] [theme] [material]
  *   node tests/manual/glass-probe.mjs 8891 light liquid
@@ -278,7 +278,7 @@ try {
   })
 
   // 先落到同源的一个真实页面，再写 localStorage —— about:blank 上写的是另一个源。
-  await cdp.send('Page.navigate', { url: `${BASE}/next/` })
+  await cdp.send('Page.navigate', { url: `${BASE}/` })
   await sleep(1200)
   await cdp.evalJs(`(() => {
     localStorage.setItem('qingmu.theme', ${JSON.stringify(THEME)});

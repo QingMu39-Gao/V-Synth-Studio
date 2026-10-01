@@ -21,7 +21,7 @@ import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
-const EXE = join(__dirname, '..', '..', '清沐的虚拟歌姬工作站.exe')
+const EXE = join(__dirname, '..', '..', 'v-synth-studio.exe')
 const CDP_PORT = 9222
 const PROBE_KEY = 'qingmu.port-probe'
 const PROBE_VALUE = 'still-here'

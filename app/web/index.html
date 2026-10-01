@@ -1,120 +1,75 @@
-<!DOCTYPE html>
+﻿<!doctype html>
 <html lang="zh-CN" data-theme="dark">
 <head>
-    <!-- 清沐的虚拟歌姬工作站 · QingMu39 -->
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>清沐的虚拟歌姬工作站</title>
+<title>V-Synth-Studio</title>
 <script>
-/* 明暗主题必须在**首次绘制前**定下来，否则会闪一下相反的配色。
-   所以这一段内联、同步、不依赖任何模块（模块是异步加载的，来不及）。
-   取值：用户手动选过就用它，没选过跟随系统。real 值与 config.theme 的同步见 js/theme.js。 */
+/* 主题与性能模式必须在**首次绘制前**定下来，否则会先闪一下相反的配色 / 毛玻璃。
+   所以这一段内联、同步、不依赖任何模块 —— 模块是异步加载的，来不及。
+
+   取值规则和旧前端一致（见 theme.js / perf.js 的注释）：
+   localStorage 是同步的，是**主存**；后端 config 只在本地什么都没存过时兜底。 */
 (function () {
-  var t = null
-  try { t = localStorage.getItem('qingmu.theme') } catch (e) { /* 隐私模式读不到，按系统走 */ }
-  if (t !== 'light' && t !== 'dark') {
-    t = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark'
+  var d = document.documentElement
+  try {
+    var t = localStorage.getItem('qingmu.theme')
+    // 默认**暗色**，不跟随系统。
+    // 旧前端原来是从系统偏好起手的，但那是它自己的选择；新前端的视觉基线是暗色下的
+    // 玻璃层次（背景层做了额外的环境光晕），而且毛玻璃在深底上才看得出来。
+    // 用户手动选过就听用户的，'system' 仍然有效（走下面那条分支）。
+    if (t !== 'light' && t !== 'dark' && t !== 'system') {
+      t = 'dark'
+    }
+    d.dataset.theme = t === 'system'
+      ? ((window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark')
+      : t
+    // 性能模式：开启后全局取消高斯模糊（backdrop-filter 在低端机 / 远控 / 集显上很贵）
+    d.dataset.perf = localStorage.getItem('qingmu.perf') === 'on' ? 'on' : 'off'
+  } catch (e) {
+    d.dataset.theme = 'dark'
+    d.dataset.perf = 'off'
   }
-  document.documentElement.dataset.theme = t
 })()
 </script>
-<link rel="stylesheet" href="/css/base.css">
-<link rel="stylesheet" href="/css/components.css">
-<link rel="stylesheet" href="/css/views.css">
-<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%2339c5bb'/%3E%3Cpath d='M11 21V11l10 5-10 5z' fill='%2306131a'/%3E%3C/svg%3E">
+  <script type="module" crossorigin src="/assets/index-CPiIzaD1.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-DKvnFtQ2.css">
 </head>
 <body>
+<!--
+  启动加载画面。**静态存在**，模块还没跑起来时它就在屏幕上 ——
+  否则「等 JS 下载解析 + 等 /api/state 探测完 ffmpeg/yt-dlp（2~3 秒）」这段时间是白屏。
 
-<!-- 启动加载画面：**静态存在**，JS 跑起来之前它就在屏幕上（否则模块加载那段时间是白屏）。
-     背景是应用界面本身 + 高斯模糊，中间一个转圈的环形进度条。
-     加载完由 js/main.js 揭开并播放 Q 弹展开；兜底见文件末尾的内联脚本与 base.css 的 bootGiveUp。 -->
-<div class="boot" id="boot">
+  三条规矩（和旧前端 `app/web/index.html` 的 `#boot` 对齐）：
+   1. 样式**内联在这一段**，不能等 CSS 包 —— 等它就没意义了。
+   2. 颜色用字面量，不能用库的 `--lg-*`：那些 token 挂在 `[data-lg-theme]` 下，
+      而那是 `GlassProvider` 运行后才写的。这里只认上面那段内联脚本写的 `data-theme`。
+   3. **必须有兜底**：谁都不该被永久卡在加载页。12 秒没揭开就显示「重新载入」，
+      揭开由 `src/lib/boot.ts` 的 `hideBoot()` 负责（App 在首次 /api/state 落定后调）。
+-->
+<div class="boot" id="boot" role="status" aria-live="polite">
   <div class="boot-card">
-    <div class="boot-mark">沐</div>
-    <div class="boot-title">清沐的虚拟歌姬工作站</div>
-    <div class="boot-ring" aria-hidden="true"></div>
-    <div class="boot-status" id="boot-status">正在载入工作台…</div>
-    <button class="btn btn-sm boot-retry" id="boot-retry" type="button" onclick="location.reload()">重新载入</button>
+    <div class="boot-mark">
+      <img src="/img/logo.png" alt="" width="76" height="76">
+      <span class="boot-sweep" aria-hidden="true"></span>
+    </div>
+    <div class="boot-title">V-Synth-Studio</div>
+    <div class="boot-sub">正在载入工作台…</div>
+    <div class="boot-sub boot-stuck">本地服务没有响应。可以点下面重新载入。</div>
+    <div class="boot-bar" aria-hidden="true"><span></span></div>
+    <button class="boot-retry" type="button" onclick="location.reload()">重新载入</button>
   </div>
 </div>
 
-<div id="app">
-  <!-- 侧边栏 -->
-  <aside class="sidebar">
-    <div class="brand">
-      <div class="brand-mark">沐</div>
-      <div class="brand-text">
-        <div class="brand-title">清沐的虚拟歌姬工作站</div>
-        <div class="brand-sub">QingMu's Vocal Workstation</div>
-      </div>
-    </div>
-
-    <nav class="nav" id="nav"></nav>
-
-    <div class="sidebar-foot">
-      <div class="row small">
-        <span class="status-dot" id="status-dot"></span>
-        <span class="muted" id="status-text">正在连接…</span>
-      </div>
-      <div class="tiny dim" id="version-text"></div>
-    </div>
-  </aside>
-
-  <!-- 主区域 -->
-  <main class="main">
-    <header class="header">
-      <div class="header-title">
-        <h1 id="view-title">总览</h1>
-        <div class="sub" id="view-sub"></div>
-      </div>
-      <div class="header-actions" id="header-actions"></div>
-      <!-- 固定工具区：不随视图切换被清空。两枚图标按 html[data-theme] 显隐，不用 JS 换图标 -->
-      <div class="header-tools" id="header-tools">
-        <button class="btn btn-ghost btn-icon theme-toggle" id="theme-toggle" type="button"
-                title="切换明亮 / 黑暗模式" aria-label="切换明亮 / 黑暗模式">
-          <svg class="icon-sun" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><circle cx="12" cy="12" r="4.2"/><path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"/></svg>
-          <svg class="icon-moon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" width="17" height="17"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
-        </button>
-      </div>
-    </header>
-    <div class="view" id="view"></div>
-  </main>
-</div>
-
-<div class="toaster" id="toaster"></div>
-<div id="modal-root"></div>
-
-<script type="module" src="/js/main.js"></script>
-
+<style>html,body{margin:0}.boot{z-index:9999;color:#eef1f6;background:#0b0d12;place-items:center;transition:opacity .3s,visibility .3s;display:grid;position:fixed;inset:0}html[data-theme=light] .boot{color:#1b2027;background:#f3f4f6}.boot[data-out=true]{opacity:0;visibility:hidden}.boot[data-out=true] .boot-card{opacity:0;transition:transform .34s cubic-bezier(.32,.72,0,1),opacity .26s;transform:translateY(-10px)scale(1.035)}@media (prefers-reduced-motion:reduce){.boot[data-out=true] .boot-card{transition:none}}.boot-card{flex-direction:column;align-items:center;gap:14px;animation:.5s cubic-bezier(.16,1,.3,1) both boot-in;display:flex}@keyframes boot-in{0%{opacity:0;transform:translateY(8px)scale(.98)}to{opacity:1;transform:none}}.boot-mark{width:76px;height:76px;margin-bottom:6px;position:relative}.boot-mark img{border-radius:20px;width:76px;height:76px;animation:2.6s ease-in-out infinite boot-breathe}@keyframes boot-breathe{0%,to{opacity:.9;transform:scale(1)}50%{opacity:1;transform:scale(1.04)}}.boot-sweep{background:conic-gradient(from 0deg, transparent 0 62%, #39c5bb 94%, transparent 100%);border-radius:50%;animation:1.5s linear infinite boot-spin;position:absolute;inset:-11px;-webkit-mask:radial-gradient(farthest-side,#0000 calc(100% - 2px),#000 calc(100% - 2px));mask:radial-gradient(farthest-side,#0000 calc(100% - 2px),#000 calc(100% - 2px))}@keyframes boot-spin{to{transform:rotate(1turn)}}.boot-title{letter-spacing:-.02em;font-family:system-ui,Microsoft YaHei,sans-serif;font-size:17px;font-weight:600}.boot-sub{opacity:.62;font-family:system-ui,Microsoft YaHei,sans-serif;font-size:13px}.boot-stuck{display:none}.boot-bar{background:color-mix(in srgb, currentColor 18%, transparent);border-radius:999px;width:168px;height:3px;overflow:hidden}.boot-bar span{border-radius:inherit;background:#39c5bb;width:40%;height:100%;animation:1.25s cubic-bezier(.4,0,.2,1) infinite boot-slide;display:block}@keyframes boot-slide{0%{transform:translate(-110%)}to{transform:translate(310%)}}.boot-retry{color:#04231f;font:inherit;cursor:pointer;background:#39c5bb;border:0;border-radius:10px;margin-top:2px;padding:7px 16px;font-family:system-ui,Microsoft YaHei,sans-serif;font-size:13px;font-weight:600;display:none}.boot[data-stuck=true] .boot-sub:not(.boot-stuck){display:none}.boot[data-stuck=true] .boot-stuck{display:block}.boot[data-stuck=true] .boot-bar{display:none}.boot[data-stuck=true] .boot-retry{display:inline-flex}@media (prefers-reduced-motion:reduce){.boot-card,.boot-mark img,.boot-sweep,.boot-bar span{animation:none}}</style>
 <script>
-/* 启动遮罩的兜底。用户被永久卡在加载页是最糟的结果，所以：
-   ① 模块脚本没加载出来（资源错误在捕获阶段能收到）→ 立刻报错；
-   ② 12 秒还没就绪 → 撤掉模糊、把界面让出来、显示错误与「重新载入」；
-   ③ 连这段内联脚本都没跑到的话，base.css 里还有一道 15 秒的纯 CSS 兜底。 */
-(function () {
-  var boot = document.getElementById('boot')
-  if (!boot) return
-  var status = document.getElementById('boot-status')
-  var dead = false
-  function fail(msg) {
-    if (dead || !boot.isConnected) return
-    dead = true
-    status.textContent = msg
-    status.classList.add('err')
-    boot.classList.add('stuck')
-  }
-  window.addEventListener('error', function (e) {
-    if (window.__qmReady) return
-    if (e && e.target && e.target.tagName === 'SCRIPT') fail('前端脚本没有加载成功，请重新打开工作站')
-    else if (e && e.message) fail('前端出错：' + e.message)
-  }, true)
-  window.addEventListener('unhandledrejection', function () {
-    if (!window.__qmReady) fail('前端初始化出错，可点「重新载入」再试一次')
-  })
+  /* 揭开由 src/lib/boot.ts 负责；这里只管兜底 */
   setTimeout(function () {
-    if (!window.__qmReady) fail('载入超时：本地服务可能没有响应')
+    var b = document.getElementById('boot')
+    if (b && b.dataset.out !== 'true') b.dataset.stuck = 'true'
   }, 12000)
-})()
 </script>
+
+<div id="root"></div>
 </body>
 </html>

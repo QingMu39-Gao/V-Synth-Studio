@@ -27,13 +27,12 @@ import { Icon, type IconName } from '@/components/Icon'
  * `controlSize` 管视觉高度（`GlassSurfaceOptions.size` 管的是**玻璃厚度**，两件事别混）。
  */
 
-type Variant = 'default' | 'primary' | 'glass' | 'ghost' | 'danger'
+type Variant = 'default' | 'primary' | 'ghost' | 'danger'
 type Size = 'sm' | 'md' | 'lg'
 
 const VARIANT: Record<Variant, GlassButtonVariant> = {
   default: 'glass',
   primary: 'glassProminent',
-  glass: 'glass',
   ghost: 'plain',
   danger: 'destructive',
 }
@@ -45,7 +44,6 @@ interface Props extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'children'
   variant?: Variant
   size?: Size
   icon?: IconName
-  trailingIcon?: IconName
   loading?: boolean
 }
 
@@ -54,7 +52,6 @@ export function Button({
   variant = 'default',
   size = 'md',
   icon,
-  trailingIcon,
   loading = false,
   className = '',
   disabled,
@@ -71,7 +68,6 @@ export function Button({
       controlSize={SIZE[size]}
       className={className}
       icon={icon && <Icon name={icon} size={glyph} />}
-      trailingIcon={trailingIcon && <Icon name={trailingIcon} size={glyph} />}
     >
       {children}
     </GlassButton>
@@ -86,7 +82,7 @@ export function IconButton({
   variant = 'default',
   className = '',
   ...rest
-}: Omit<Props, 'children' | 'icon' | 'trailingIcon'> & { label: string; icon: IconName }) {
+}: Omit<Props, 'children' | 'icon'> & { label: string; icon: IconName }) {
   return (
     <GlassIconButton
       type="button"
@@ -99,15 +95,4 @@ export function IconButton({
       icon={<Icon name={icon} size={size === 'sm' ? 14 : 16} />}
     />
   )
-}
-
-/** 按钮排成一行 */
-export function ButtonRow({
-  children,
-  className = '',
-}: {
-  children: ReactNode
-  className?: string
-}) {
-  return <div className={`btn-row ${className}`}>{children}</div>
 }

@@ -9,7 +9,6 @@
    ══════════════════════════════════════════════════════════════════════════ */
 
 .lyrics-cols {
-  --lg-line: 1.5; /* 歌词行的行高，原文与译文要对齐 */
   display: grid;
   gap: var(--lg-space-4);
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
@@ -150,12 +149,7 @@
 }
 
 /* ── 登录 ────────────────────────────────────────────────────── */
-/* 登录状态徽章：颜色来自令牌（旧前端的 .chip.ok 在新前端没有对应规则） */
-.lyrics-chip-ok {
-  color: var(--lg-accent);
-  border-color: color-mix(in srgb, var(--lg-accent) 35%, transparent);
-}
-/* 一条提示只改内容：失败留在页面上，别只弹个 toast 就没了（旧前端的做法） */
+/* 一条提示只改内容：失败留在页面上，别只弹个 toast 就没了 */
 .lyrics-login-msg {
   margin: 0;
   font-size: 12.5px;
@@ -222,12 +216,6 @@
 }
 
 /* ── 保存那一组 ──────────────────────────────────────────────── */
-.lyrics-save-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lg-space-3);
-  flex-wrap: wrap;
-}
 .lyrics-saved {
   margin: 0;
   font-size: 12.5px;

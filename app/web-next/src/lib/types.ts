@@ -31,7 +31,7 @@ export interface ToolInfo {
   kind?: string
 }
 
-export interface ToolsMap {
+interface ToolsMap {
   ffmpeg?: ToolInfo
   ytdlp?: ToolInfo
   python?: ToolInfo

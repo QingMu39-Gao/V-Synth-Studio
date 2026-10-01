@@ -23,11 +23,11 @@ import type { PageProps } from './types'
 import './Audio.css'
 
 /**
- * 音频工具 —— 旧前端 `app/web/js/views/audio.js` 的搬家版（功能清单与文案来源）。
+ * 音频工具 —— 从旧前端（已退役）搬过来的（功能清单与文案来源）。
  *
  * 六种操作全部在本机由 ffmpeg 完成（`api.audioRun` → `useJob` + `<JobProgress>`）：
  * 格式转换 / 提取音频 / 变调 / 变速 / 裁剪片段 / 响度标准化。
- * 参数名**照旧文件**（`format` `sampleRate` `channels` `semitones` `ratio`
+ * 参数名**照旧界面**（`format` `sampleRate` `channels` `semitones` `ratio`
  * `startSec` `endSec` `targetLufs`），后端 `audio_run` 是把 `options` 摊平读的。
  *
  * 右边的「人声分离」两条路照旧：在线 MVSEP 走 `api.fsOpen({ url })`（在系统浏览器里开，
@@ -42,7 +42,7 @@ import './Audio.css'
 
 /* ══════════════════════════════════════════════════════════ 常量与设置 ══ */
 
-/** 设置持久化的键 —— **沿用旧前端的键**，用户之前选过的参数不丢 */
+/** 设置持久化的键 —— **沿用旧界面的键**，用户之前选过的参数不丢 */
 const LS_KEY = 'fandiao.audio.settings'
 const MVSEP_URL = 'https://mvsep.com/zh'
 
@@ -228,9 +228,9 @@ function channelsText(n: number | undefined): string {
   return `${c} 声道`
 }
 
-/* ── 时间码：`app/web/js/timecode.js` 的两个函数 ────────────────────────
-   新前端的 `lib/format.ts` 里那个 `formatTime` 是**时钟时间**（HH:MM:SS），
-   和这里要的「秒 ↔ 分:秒.毫秒」不是一回事，所以照旧实现一份（只这一页用）。 */
+/* ── 时间码：秒 ↔ `1:23.456` ──────────────────────────────────────────
+   这不是时钟时间（HH:MM:SS），也不是任务进度那种时长格式，
+   所以这一页自己实现这两个函数（只这一页用）。 */
 
 /** 秒 → `1:23.456`。非法 / 负数一律当 0（输入框里放 NaN 没有意义） */
 function formatTimecode(sec: number): string {
@@ -1268,7 +1268,7 @@ function palette(): Record<string, string> {
 }
 
 /**
- * 波形编辑器 —— 旧前端 `components/waveEditor.js` 的**简化版**。
+ * 波形编辑器 —— 旧界面那个波形编辑器的**简化版**。
  *
  * ## 简化了什么（有意，不是漏做）
  *

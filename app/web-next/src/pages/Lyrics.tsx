@@ -12,7 +12,7 @@ import './Lyrics.css'
 /**
  * 歌词：从网易云 / QQ 音乐搜歌 → 取歌词 → 导出 LRC / SRT / 封面 → 带去「文字 PV」。
  *
- * 旧实现是 `app/web/js/views/lyrics.js`（功能清单与文案来源，**功能与文案没有丢**）。
+ * 功能清单与文案来自已退役的旧前端（**功能与文案没有丢**）。
  * 三条路取词，之后共用同一套预览 / 保存 / 带去 PV：
  *
  *   1. 搜索（`lyricsSearch` → 点一条 → `lyricsGet`）
@@ -52,16 +52,15 @@ const MODES = [
 ]
 
 /**
- * 后端真实的响应形状（`server/lyrics.rs` + `lyrics.rs`）。
+ * 本页自己攒的「这首歌」形状（**后端真实回包见 `lib/api.ts` 的 `LyricsDoc` / `LyricsHit`**）。
  *
- * 形状：搜索回 `{ songs: [{id, name, artists, album, cover, durationSec}] }`，
- * 取词 / 导入回 `{ song: {...}, lyric, trans }`（歌曲信息嵌在 `song` 里，不是平铺）。
+ * 三条取词路最后都并成这一个形状：搜索结果（有 `id`）、接口取词（`id` 在外层，`song` 里没有）、
+ * 本地导入（`id` 是完整路径）。留一份本地声明是因为要的是「界面自己拼出来的」类型，
+ * 而 `api.ts` 那两个类型文件私有（只服务于它自己的方法签名）。
  *
- * ⚠️ 这里为什么还留着一份本地声明：搬的时候 `lib/api.ts` 的类型是错的（写的是
- * `{items:[{title,artist}]}`），页面只能在调用点 `as unknown as` 断言。
- * **后来 `api.ts` 已经按后端改成正确形状**（`LyricsHit` / `LyricsDoc`），
- * 本地这份就成了重复定义 —— 下次动这一页时可以直接用 `api.ts` 的类型，
- * 把那几处 `as unknown as` 删掉。**别照着这两份中的任何一份去改后端。**
+ * ⚠️ 调用点**已经不需要 `as unknown as` 断言了**：`api.ts` 的回包类型现在与后端源码一致
+ * （`lyrics.rs` 的 `fetch` / `import_file`、`server/lyrics.rs` 的各路由），直接用返回值即可。
+ * 要改形状就改 `api.ts`，别照着这里的类型去改后端。
  */
 interface LyricSong {
   /** 只在搜索结果里有；取词响应里的 `song` 不带 id */
@@ -79,9 +78,6 @@ interface LyricFile {
   lyric?: string
   trans?: string
   encoding?: string
-}
-interface SearchRes {
-  songs?: LyricSong[]
 }
 
 /** 当前这首歌 —— 三条取词路最后都落成这一个形状 */
@@ -223,7 +219,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
 
   const errText = (e: unknown) => (e instanceof Error ? e.message : String(e))
 
-  /** 一条提示只改内容：错误留在页面上，别只弹个 toast 就没了（旧前端的做法） */
+  /** 一条提示只改内容：错误留在页面上，别只弹个 toast 就没了 */
   const setMsg = (text: string, tone: ToastTone = 'warn') => {
     setLoginMsg(text)
     setLoginTone(tone)
@@ -240,7 +236,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     setSearching(true)
     setSearchErr(null)
     try {
-      const res = (await api.lyricsSearch({ source: source as 'netease' | 'qq', keyword: kw })) as unknown as SearchRes
+      const res = await api.lyricsSearch({ source: source as 'netease' | 'qq', keyword: kw })
       const list = res.songs ?? []
       setHits(list)
       if (!list.length) onToast('没有搜到结果', 'warn')
@@ -259,7 +255,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
   const loadLyric = async (id: string | number, src: string) => {
     setPreviewErr(null)
     try {
-      const res = (await api.lyricsGet({ source: src as 'netease' | 'qq', id })) as unknown as LyricFile
+      const res = await api.lyricsGet({ source: src as 'netease' | 'qq', id })
       setDoc(res)
       setCurrent({ ...res, id, source: src })
       // 文件名跟着歌名走，但**别踩掉用户已经填过的名字**
@@ -300,7 +296,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     setImporting(true)
     setPreviewErr(null)
     try {
-      const res = (await api.lyricsImport({ path })) as unknown as LyricFile
+      const res = await api.lyricsImport({ path })
       const id = res.id ?? path
       setDoc(res)
       setCurrent({ ...res, id, source: res.source ?? 'file' })
@@ -337,7 +333,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
         bilingual,
         outDir,
         name: name.trim(),
-      })) as unknown as { path: string; name?: string }
+      }))
       onToast(`已保存 ${res.name ?? baseName(res.path)}`, 'ok')
       setSaved(res.path)
     } catch (e) {
@@ -359,7 +355,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
         url: cover,
         outDir,
         name: name.trim() || current?.song?.name || 'cover',
-      })) as unknown as { path: string }
+      }))
       onToast(`封面已保存 ${baseName(res.path)}`, 'ok')
       setSaved(res.path)
     } catch (e) {
@@ -444,7 +440,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     setBusy(true)
     setMsg('登录中…', 'info')
     try {
-      const res = (await api.lyricsCellphone(p, captcha.trim())) as unknown as { nickname?: string }
+      const res = await api.lyricsCellphone(p, captcha.trim())
       setCaptcha('')
       setNickname(res.nickname ?? '')
       setMsg(

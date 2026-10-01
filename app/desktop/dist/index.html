@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="UTF-8">
-<title>清沐的虚拟歌姬工作站</title>
+<title>V-Synth-Studio</title>
 <style>
   :root { color-scheme: dark; }
   body {
@@ -39,8 +39,7 @@
       document.getElementById('box').innerHTML = `
         <h1>没能启动本地服务</h1>
         <p>${reason.replace(/[<>&]/g, (c) => ({ '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]))}</p>
-        <p class="muted">详细信息写在 <code>data\\desktop-error.log</code>。</p>
-        <p class="muted">常见原因：没有安装 Node.js 20 以上版本（<code>nodejs.org</code>）。</p>
+        <p class="muted">绿色版：请把整个目录一起解压，不要只拷 exe。</p>
       `
     }
   </script>

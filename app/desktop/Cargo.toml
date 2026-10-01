@@ -1,7 +1,7 @@
 [package]
-name = "qingmu-workstation"
+name = "v-synth-studio"
 version = "1.1.0"
-description = "清沐的虚拟歌姬工作站"
+description = "V-Synth-Studio"
 authors = ["QingMu"]
 edition = "2021"
 rust-version = "1.77"
@@ -14,7 +14,7 @@ tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# HTTP 服务：实现和 Node 后端完全相同的 31 个路由，前端零改动
+# HTTP 服务：实现和 Node 后端完全相同的 39 个路由，前端零改动
 axum = { version = "0.8", features = ["json", "query"] }
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "process", "time", "sync", "io-util"] }
 tower-http = { version = "0.6", features = ["fs", "cors", "trace"] }
@@ -35,17 +35,13 @@ flate2 = "1"
 libc = "0.2"
 
 [target.'cfg(windows)'.dependencies]
-# Windows 注册表（读 VOCALOID 声库）与进程管理
+# 系统「下载」目录（读注册表 KNOWNFOLDERID，见 platform.rs）
 # Win32_Globalization 只有一个用处：导入歌词时用 MultiByteToWideChar 把 GBK 转成
 # UTF-8（国内老 LRC 有相当一部分是 GBK）。同一份 kernel32 绑定，不引编码库、不加体积。
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_System_Registry",
-    "Win32_System_Threading",
-    "Win32_System_JobObjects",
-    "Win32_System_Diagnostics_ToolHelp",
-    "Win32_UI_Shell",
 ] }
 
 [profile.release]

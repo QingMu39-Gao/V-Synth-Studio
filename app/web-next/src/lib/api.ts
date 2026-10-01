@@ -1,9 +1,9 @@
 /**
- * 后端调用 —— 旧前端 `app/web/js/api.js` 的 1:1 移植（**只改类型，不改契约**）。
+ * 后端调用 —— 从退役的旧界面 1:1 移植过来（**只改类型，不改契约**）。
  *
- * ⚠️ 新前端挂在 `/next/` 下，而后端 API 在**根路径**的 `/api/*`。
- * 所以这里绝不能写相对路径 './api/state'（那会变成 /next/api/state，404）。
- * 统一走下面的 `request()`，它拼的是绝对路径 `/api/...`。
+ * ⚠️ 后端 API 在**根路径**的 `/api/*`。界面就在根路径，但这里仍然**必须**用绝对路径
+ * `/api/...`：相对路径跟着「当前文档所在目录」走，前缀一改就会静默变成
+ * `/<前缀>/api/state` → 404。统一走下面的 `request()`，它拼的是绝对路径 `/api/...`。
  *
  * ⚠️ **迁移页面时不要随便改这里的路径或请求体**：后端 39 条路由是既定的，
  * 契约夹具（`tests/contract/fixtures/`）盯着它们。要改先跑 `node tests/contract/verify.mjs 8891`。
@@ -11,13 +11,13 @@
 
 import type { AppState, HealthInfo, ToolInfo, Job } from './types'
 
-export interface ApiError extends Error {
+interface ApiError extends Error {
   code?: string
   status?: number
 }
 
 /**
- * 统一请求。三件事和旧前端对齐：
+ * 统一请求。三件事沿袭旧界面的约定：
  *  - `data.ok === false` 也算失败（后端固定回 `{ ok, error?, code? }`）
  *  - **超时**：默认 120s；解析/下载这类长请求单独放宽
  *  - 非 JSON 响应给一句人话，而不是把 JSON 解析错误抛给用户
@@ -85,14 +85,14 @@ export const api = {
    * 常用位置（盘符 + 桌面/下载/文档…）。
    *
    * ⚠️ 字段是 **`name`**（不是 `label`）—— 冻结夹具 `fs-roots.json` 里就是
-   * `{ name, path, type, parent? }`。第一版照旧前端的叫法写成 `label`，
+   * `{ name, path, type, parent? }`。第一版照旧界面的叫法写成 `label`，
    * 结果目录选择器的「常用位置」一片空白（`undefined` 渲染成空字符串，不报错）。
    */
   fsRoots: () => request<{ roots: { name: string; path: string; type?: string; parent?: string }[] }>('/api/fs/roots'),
   /**
    * 列一个目录。
    *
-   * ⚠️ 后端回的是 **`{ dirs: [...], files: [...] }`**（旧前端 `components/dirPicker.js` 读的就是这两个
+   * ⚠️ 后端回的是 **`{ dirs: [...], files: [...] }`**（旧界面读的就是这两个
    * 字段，冻结夹具 `fs-list-c.json` 也是这个形状），这里归一成 `entries`（靠 `FsEntry.dir` 区分）。
    * **不做这一步 `components/DirPicker.tsx` 就永远是空列表** —— 它读的是 `data.entries`，
    * 后端从来不发这个字段，于是目录选择器只显示「（没有子目录）」。
@@ -113,7 +113,7 @@ export const api = {
   /**
    * 递归收集一个目录里的工程文件（本地路径数组）。
    *
-   * ⚠️ 后端读的是 **`dirs`（数组）**，不是 `dir` —— 旧前端 `api.js` 发的是 `{dir, recursive}`，
+   * ⚠️ 后端读的是 **`dirs`（数组）**，不是 `dir` —— 旧界面发的是 `{dir, recursive}`，
    * Rust 后端整个忽略它、永远回 `files: []`（8891 实测：发 `{dir}` 得 `count: 0`，
    * 发 `{dirs}` 才进扫描；源码 `server/convert.rs:23`）。这里按后端契约发。
    */
@@ -129,7 +129,7 @@ export const api = {
    * 转换前预检：`{inputs, toFormat}` → `findings`（info/warn/err）。
    *
    * ⚠️ 后端**只分析 `inputs[0]`**，批量要逐个文件调（源码 `server/convert.rs:119`）。
-   * 旧前端发的是 `{toFormat, inputPath, options}`，后端读不到 `inputs` 直接 400
+   * 旧界面发的是 `{toFormat, inputPath, options}`，后端读不到 `inputs` 直接 400
    * 「没有选择要转换的文件」—— 这一页的价值就在预检，所以按后端契约发。
    */
   preview: (payload: { inputs: string[]; toFormat: string }) =>
@@ -153,19 +153,29 @@ export const api = {
   lyricsSearch: (payload: { source: LyricsSource; keyword: string }) =>
     /* ⚠️ 真实回包是 `{ source, keyword, songs: [...] }`，字段名是 **name / artists / album / cover**，
        不是 `title / artist`（源码 `server/lyrics.rs` 的 `json!({ "source", "keyword", "songs" })`
-       + `lyrics.rs` 里建歌曲对象那几行）。这里照实声明 —— 第一版照旧前端猜的形状是错的。 */
+       + `lyrics.rs` 里建歌曲对象那几行）。这里照实声明 —— 第一版照旧界面猜的形状是错的。 */
     post<{ source: LyricsSource; keyword: string; songs: LyricsHit[] }>('/api/lyrics/search', payload),
   lyricsGet: (payload: { source: LyricsSource; id: string | number }) => post<LyricsDoc>('/api/lyrics/get', payload),
   /** ⚠️ 后端先判 QQ songmid 再判网易云 id=，顺序不能反 —— 这里只负责原样传 */
   lyricsParseLink: (payload: { url: string }) => post<{ source: LyricsSource; id: string }>('/api/lyrics/parse-link', payload),
-  /** 回包是 { song, lyric, trans, encoding }（与 get 同形，另加 encoding: utf-8 | gbk） */
+  /** 回包是 { source, id, song, lyric, trans, encoding }（与 get 同形，另加 encoding: utf-8 | gbk） */
   lyricsImport: (payload: { path: string }) => post<LyricsDoc & { encoding?: string }>('/api/lyrics/import', payload),
-  lyricsSave: (payload: Record<string, unknown>) => post<{ path: string; files: string[] }>('/api/lyrics/save', payload),
+  /* ⚠️ 保存的回包是 `{ path, name, format, size }`（`server/lyrics.rs:168-173`）。
+     这里原来写的是 `{ path, files }` —— 后端**从来没有** `files` 字段，而页面一直在用的
+     `name`（文件名）真实存在。是声明写错了，不是页面多读了字段。 */
+  lyricsSave: (payload: Record<string, unknown>) =>
+    post<{ ok: true; path: string; name: string; format: string; size: number }>('/api/lyrics/save', payload),
   lyricsCover: (payload: { url: string; outDir: string; name?: string }) =>
     post<{ path: string }>('/api/lyrics/cover', payload),
   lyricsSms: (phone: string) => post<{ ok: true }>('/api/lyrics/login/sms', { phone }, 30000),
+  /* ⚠️ 登录成功回的是 `{ loggedIn, phone, nickname }`（`server/lyrics.rs:406`），不只是 `ok`
+     —— 页面要拿 `nickname` 显示「登录成功：xxx」，那个字段是真有的。 */
   lyricsCellphone: (phone: string, captcha: string) =>
-    post<{ ok: true }>('/api/lyrics/login/cellphone', { phone, captcha }, 30000),
+    post<{ ok: true; loggedIn: boolean; phone: string; nickname: string }>(
+      '/api/lyrics/login/cellphone',
+      { phone, captcha },
+      30000,
+    ),
   lyricsLogout: (source: LyricsSource) => post<{ ok: true }>('/api/lyrics/logout', { source }),
 
   /* ── 任务 ─────────────────────────────────────────────── */
@@ -209,7 +219,7 @@ export interface Finding {
   message: string
 }
 
-export interface ConvertInspect {
+interface ConvertInspect {
   ok: true
   /** 概览：轨道数 / 音符数 */
   stats?: { trackCount?: number; noteCount?: number }
@@ -221,14 +231,20 @@ export interface ConvertInspect {
 }
 
 /**
- * `video/parse` 的回包 —— **照冻结夹具 `tests/contract/fixtures/video-parse-bili.json` 声明**。
+ * `video/parse` 的回包 —— **照后端源码（`server/media.rs`、`bili.rs`、`ytdlp.rs`）与冻结夹具
+ * `tests/contract/fixtures/video-parse-bili.json` 声明**。
  *
- * ⚠️ 第一版这里的类型是猜的，错得挺多，搬页面的同学只能各自在页内重写一份：
+ * ⚠️ 第一版这里的类型是猜的，错得挺多（`currentPage` 写成页码数字、`streams` 写死非空、
+ * 缺 `videoAvc`/`videoHevc`/`acceptQuality`），当时搬页面的同学只能在页内重写一份；
+ * 现在这份是对的形状，`pages/Video.tsx` 直接用这里的类型，**页内那份已删**。
  *   - `currentPage` 是**对象**（`{cid,page,title,durationSec,width,height}`），不是页码数字；
  *   - 流对象带 `kind / url / backupUrls / mimeType`；
  *   - `streams` 还有 `acceptQuality / acceptDescription / videoAvc / videoHevc / durationMs / isPreview`
  *     （分编码列出，页面就是靠这个做「AVC 优先」和 HEVC 兼容性提示的）；
- *   - yt-dlp 来源**没有 `streams`**（是 `null` 或缺字段），番剧多一个 `info.episodes`。
+ *   - durl 回退是 `mode:'durl'` + `streams[]`（分段，带 `index/size/lengthMs`），没有 `video`/`audio`；
+ *   - 解析失败时 `streams` 是 `{ error }` —— **这种回包没有 `mode`**，所以 `mode` 是可选的；
+ *   - yt-dlp 来源**没有 `streams`**（是缺字段，不是 `null`），`info` 走 yt-dlp 那套字段；
+ *   - 番剧多一个 `info.episodes`，且**没有 `currentPage`**。
  */
 export interface VideoParse {
   ok: true
@@ -253,13 +269,29 @@ export interface VideoInfo {
   publishDate?: string
   uploader?: string
   uploaderMid?: number
-  view?: number | string
-  like?: number | string
+  /* 播放量 / 点赞：后端是把 B 站的 stat.view / stat.like 原样拷过来（bili.rs:495-496、:500-501），
+     取不到就补 0 —— 都是 JSON 数字。原来写 `number | string` 是防御性猜测，
+     会与 `formatNumber(info.view)`（lib/format.ts 只接受数字）冲突。 */
+  view?: number
+  like?: number
   pages?: VideoPage[]
   /** 番剧剧集（`kind === 'bangumi'` 时）；普通视频是 `null` */
   episodes?: VideoEpisode[]
   season?: { title?: string; episodes?: VideoEpisode[] } | null
+  /** 番剧：当前这一集的 epId（剧集行靠它高亮） */
+  epId?: number
   url?: string
+  /* ── 以下是 yt-dlp 来源专有，B 站那份 info 不发这些字段 ── */
+  id?: string
+  thumbnail?: string
+  description?: string
+  uploadDate?: string
+  viewCount?: number
+  extractor?: string
+  webpageUrl?: string
+  /** 字幕**语言键**数组（`ytdlp.rs` 只取 key）；没有字幕时是 `[]` */
+  subtitles?: string[]
+  formats?: VideoFormat[]
 }
 
 export interface VideoPage {
@@ -275,13 +307,16 @@ export interface VideoEpisode {
   /** 番剧用 epId 定位，不是 cid */
   epId?: number
   id?: number
+  bvid?: string
   title?: string
+  /** 番剧的长标题（`title` 为空时页面拿它兜底） */
+  longTitle?: string
   durationSec?: number
   cover?: string
 }
 
 export interface VideoStream {
-  kind?: 'video' | 'audio'
+  kind?: 'video' | 'audio' | 'segment'
   id: number
   qualityName: string
   url?: string
@@ -292,10 +327,15 @@ export interface VideoStream {
   width?: number
   height?: number
   frameRate?: string
+  /* ── 只有 durl 的分段（`kind: 'segment'`）有这三个 ── */
+  index?: number
+  size?: number
+  lengthMs?: number
 }
 
 export interface VideoStreams {
-  mode: 'dash' | 'durl' | 'other'
+  /** ⚠️ 出错时后端只发 `{ error }`，没有 `mode` —— 所以是可选的 */
+  mode?: 'dash' | 'durl'
   acceptQuality?: number[]
   acceptDescription?: string[]
   video?: VideoStream[]
@@ -303,11 +343,25 @@ export interface VideoStreams {
   videoAvc?: VideoStream[]
   videoHevc?: VideoStream[]
   audio?: VideoStream[]
+  /** durl 回退：整段流的各分段（没有 `video`/`audio`） */
+  streams?: VideoStream[]
   durationMs?: number
   isPreview?: boolean
   error?: string
 }
-export interface AudioProbe {
+
+/** yt-dlp 的一条可下载格式（`ytdlp.rs` 归一化后的形状） */
+export interface VideoFormat {
+  formatId?: string
+  ext?: string
+  resolution?: string
+  fps?: number
+  vcodec?: string
+  acodec?: string
+  filesize?: number
+  isVideo?: boolean
+}
+interface AudioProbe {
   ok: true
   info: {
     durationSec: number
@@ -316,7 +370,7 @@ export interface AudioProbe {
   }
 }
 
-export interface Resources {
+interface Resources {
   ok: true
   version: number
   updatedAt: string
@@ -345,10 +399,10 @@ export interface ResourceItem {
   verified?: { verdict: 'ok' | 'warn' | 'dead'; status?: number; checkedAt?: string }
 }
 
-export type LyricsSource = 'netease' | 'qq'
+type LyricsSource = 'netease' | 'qq'
 
 /** 搜索结果里的一条（字段名以后端为准：`name` / `artists`，不是 `title` / `artist`） */
-export interface LyricsHit {
+interface LyricsHit {
   /** 网易云是数字串，QQ 是 songmid 串 —— 统一按字符串传回去 */
   id: string
   name: string
@@ -358,15 +412,25 @@ export interface LyricsHit {
   durationSec?: number
 }
 
+/** `lyrics/get` / `lyrics/import` 里那个 `song`：与搜索结果同形，但**没有 `id`**（id 在外层） */
+type LyricsSongInfo = Omit<LyricsHit, 'id'>
+
 /**
  * `lyrics/get` 与 `lyrics/import` 的回包。
  *
- * ⚠️ 歌曲信息**嵌在 `song` 里**，`lyric` / `trans` 在外层平铺 —— 不是全平铺。
- * 实测（8891 + 网易云）：`{ song: { id, name, artists, album, cover, durationSec }, lyric, trans }`。
+ * ⚠️ 歌曲信息**嵌在 `song` 里**，`source` / `id` / `lyric` / `trans` 在外层平铺 —— 不是全平铺。
+ * 源码（`lyrics.rs:347-359` 网易云、`:395-408` QQ、`:1022-1037` 导入）三个来源都是这个形状：
+ * `{ source: 'netease' | 'qq' | 'file', id, song: { name, artists, album, cover, durationSec },
+ *    lyric, trans, encoding? }` —— **`song` 里那个 `id` 不存在**（这一条以前写反了），
+ * 而外层的 `source` / `id` 一直都在（页面拿它们显示来源、打开所在目录）。
  */
-export interface LyricsDoc {
+interface LyricsDoc {
   ok: true
-  song?: LyricsHit
+  /** netease / qq（取词）/ file（本地导入） */
+  source: string
+  /** 网易云是数字串、QQ 是 songmid、导入是完整路径 */
+  id: string
+  song?: LyricsSongInfo
   /** 原文 LRC */
   lyric?: string
   /** 译文（可能没有） */

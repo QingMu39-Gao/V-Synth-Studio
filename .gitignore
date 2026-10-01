@@ -8,7 +8,6 @@
 # 这几个目录只在仓库根目录，所以必须用 / 锚定。
 /data/
 /downloads/
-/output/
 
 # ── 外部工具（体积大，各自单独下载，不进仓库）───────────────
 # tools/ 里是 ffmpeg（约 200MB）、yt-dlp、LibreSVIP CLI（约 70MB）。
@@ -31,15 +30,36 @@ node_modules/
 # 源码在 app/desktop/{Cargo.toml,tauri.conf.json,build.rs,src/,icons/,dist/}。
 # 图标（icons/）和起始页（dist/）是源码的一部分，要入库 —— 所以只忽略 target。
 app/desktop/target/
+# gen/ 是 tauri-build 每次编译重写的 schema（capabilities / ACL / windows 三份），
+# 一个字节都不是手写的。以前误当源码入了库，于是每次编译都制造一堆假改动。
+app/desktop/gen/
 # Cargo.lock 对可执行程序应当入库，锁定依赖版本以保证可复现构建
 !app/desktop/Cargo.lock
 
 # ── 真实工程样本（版权原因不入库）───────────────────────────
 # tests/samples/ 下这些是真实歌曲工程（白石溪、呐呐呐等）与用户自己的
 # OpenUtau 备份，属于有版权的作品数据，不要随源码分发。
-# 说明见 tests/samples/README.md。合成出来的 sample-* 夹具仍然入库。
+# 合成出来的 sample-* 夹具仍然入库。
 tests/samples/real-sample-*
 tests/samples/openutau-*
+
+# ── 前端构建（app/web-next）────────────────────────────────
+# Vite 的**产物**（app/web/：index.html + assets/，含带哈希的文件名）要入库 ——
+# 后端运行时伺服它，属于「随包分发的东西」。⚠️ 别把它当成可再生成的构建垃圾忽略掉：
+# 没有 assets/ 的话 fresh clone 打开就是白屏（index.html 引用的是哈希文件名）。
+# 代价是每次前端构建都会改 index.html + 两个哈希文件，这是刻意的取舍。
+# 但依赖与增量编译缓存不进库：
+app/web-next/node_modules/
+*.tsbuildinfo
+# ∧ 补充（2026-10-05）：assets/ 里是**带内容哈希**的产物，`emptyOutDir:false`
+# 让每次构建都往里加新文件、旧的也不会自动删。入库的话每构建一次就多两个永不
+# 被引用的文件，且「旧版本」会在历史里越堆越多 —— 只保留 index.html 这一个
+# 入口（它同时也是 resolve_paths() 判定程序根目录的哨兵）。
+app/web/assets/
+
+# ── 探针输出（tests/manual/*.mjs 写的截图与 JSON）────────────
+# 只是给人看的中间产物，不是夹具，不入库。
+tests/manual/out/
 
 # ── 临时与调试文件 ──────────────────────────────────────────
 tmp-*/

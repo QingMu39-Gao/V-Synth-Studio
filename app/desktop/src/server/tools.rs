@@ -37,36 +37,17 @@ pub async fn launch(
     State(st): State<Arc<AppState>>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    // 两种调用方式，前端都在用：
-    //   { path }        —— 已经有确切路径（设置页选的文件、音频页记下的 UVR 路径）
-    //   { id }          —— 只知道 id，需要去设置里的自定义程序列表查
-    // 早先只实现了 { id }，导致传 path 的调用点全部报「缺少 id」。
-    let target = match body.get("path").and_then(|v| v.as_str()) {
-        Some(p) if !p.is_empty() => Some(p.to_string()),
-        _ => {
-            let id = body.get("id").and_then(|v| v.as_str()).unwrap_or("");
-            if id.is_empty() {
-                return Err(ApiError::bad_request("缺少程序路径或 id"));
-            }
-            // 自定义程序：配置里存的是 [{ id, name, path }]
-            st.config_snapshot()
-                .get("customPrograms")
-                .and_then(|v| v.as_array())
-                .and_then(|arr| {
-                    arr.iter()
-                        .find(|p| p.get("id").and_then(|v| v.as_str()) == Some(id))
-                        .and_then(|p| p.get("path").and_then(|v| v.as_str()))
-                        .map(String::from)
-                })
-        }
-    };
-
-    let target = target.ok_or_else(|| {
-        ApiError::bad_request(format!(
-            "没有找到可启动的程序：{}",
-            body.get("id").and_then(|v| v.as_str()).unwrap_or("(未指定)")
-        ))
-    })?;
+    // 只收 { path }：调用方都已经有确切路径（设置页选的文件、音频页记下的 UVR 路径）。
+    //
+    // 历史上还有一条 `{ id }` 的回落分支，去 config.customPrograms 里查路径 ——
+    // 那个「自定义程序列表」前端从来没有管理入口，2026-10-05 连配置键一起删了。
+    // 所以这里不再接受 { id }：给了也只会报「缺少程序路径」，这是对的。
+    let target = body
+        .get("path")
+        .and_then(|v| v.as_str())
+        .filter(|p| !p.is_empty())
+        .map(String::from)
+        .ok_or_else(|| ApiError::bad_request("缺少程序路径"))?;
 
     if !std::path::Path::new(&target).is_file() {
         return Err(ApiError::bad_request(format!("程序不存在或已被移动：{target}")));

@@ -78,7 +78,11 @@ function restoreStandardBackdropFilter(): Plugin {
 }
 
 export default defineConfig({
-  base: '/next/',
+  /*
+   * 根路径。旧前端（`app/web/index.html` + `js/` + `css/`）已在 2026-10-05 整体退役，
+   * 现在是**唯一**的界面 —— exe 加载 `http://127.0.0.1:<port>/`，直接就是这里。
+   */
+  base: '/',
   plugins: [react(), tailwindcss(), restoreStandardBackdropFilter()],
   resolve: {
     alias: {
@@ -86,8 +90,16 @@ export default defineConfig({
     },
   },
   build: {
-    outDir: '../web/next',
-    emptyOutDir: true,
+    /*
+     * 产物直接落 `app/web/`（Rust 后端伺服的目录，见 server/simple.rs::web_dir）。
+     * 产物只占 `index.html` + `assets/`，目录里另有 `vendor/`（JIZURA，PV 页 iframe 用）
+     * 与 `img/`（logo 与两张背景图）是**随包分发的静态资源、不是构建产物**：
+     *
+     *   ⚠️ 所以 `emptyOutDir` 必须是 false —— 打开它 Vite 会把 vendor/ 和 img/
+     *      一起清掉，PV 页和背景图当场失效，而且因为构建「成功」了，很难往这上面想。
+     */
+    outDir: '../web',
+    emptyOutDir: false,
     // 内嵌 WebView 场景，体积比极致拆包更重要 —— 目标机器全离线，
     // 少文件少请求比多 chunk 划算。
     chunkSizeWarningLimit: 1500,

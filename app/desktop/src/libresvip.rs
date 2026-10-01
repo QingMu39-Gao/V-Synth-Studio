@@ -698,9 +698,14 @@ mod prompt_tests {
     }
 
     /// 有选项就用选项（bool → y/n），否则照抄默认值
+    ///
+    /// ⚠️ 键名必须是 `RULES` 里那些**官方选项名**（中文），不能用旧的自造键
+    /// （`import.pitch` / `export.vsqxVersion` / `import.breathMode` 已在
+    /// LibreSVIP 2.9.0 那轮改名时作废）。用旧键测试会「通过得莫名其妙」：
+    /// 键查不到 → 走默认值分支 → 断言照样成立，于是改名后没有任何测试报警。
     #[test]
     fn option_wins_over_default() {
-        let opts = json!({ "import.pitch": false, "export.vsqxVersion": "3" });
+        let opts = json!({ "导入音高曲线": false, "VSQX文件版本": "3" });
         assert_eq!(answer_for("3. 导入音高曲线 [y/n] (y):", &opts), "n");
         assert_eq!(answer_for("1. VSQX文件版本 [3/4] (4):", &opts), "3");
         // 没给过的题 → 默认值
@@ -712,11 +717,12 @@ mod prompt_tests {
     /// 认题靠中文关键词，而提示是 GBK —— 这条测试同时证明 GBK 解码链路是通的
     #[test]
     fn matches_chinese_keywords_from_gbk_bytes() {
-        // "1. 导入音量包络 [y/n] (y):" 的 GBK 字节
+        // 下面这串提示的 GBK 字节
         let gbk = utf8_to_gbk("9. 换气音符处理方式 [ignore/keep/convert] (convert):");
         let prompt = gbk_to_utf8(&gbk);
         assert!(prompt.contains("换气音符"), "GBK 往返丢了字：{prompt}");
-        let opts = json!({ "import.breathMode": "keep" });
+        // 键名同 `RULES`（官方选项名），见上面 option_wins_over_default 的说明
+        let opts = json!({ "换气音符处理方式": "keep" });
         assert_eq!(answer_for(&prompt, &opts), "keep");
     }
 

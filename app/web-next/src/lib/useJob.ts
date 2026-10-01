@@ -3,7 +3,7 @@ import { api } from './api'
 import type { Job } from './types'
 
 /**
- * 订阅一个后端任务的进度 —— 旧前端 `api.js` 的 `watchJob`，改成 React 钩子。
+ * 订阅一个后端任务的进度 —— 旧界面的 `watchJob`，改成 React 钩子。
  *
  * 契约**照旧不变**：优先 SSE（`/api/jobs/<id>/stream`，推的是完整快照），
  * 连接断了自动退回 700ms 轮询；`done | error | canceled` 三个状态是终态，
@@ -12,7 +12,7 @@ import type { Job } from './types'
  * ⚠️ **页面卸载时要停订阅**：钩子里在 `useEffect` 的清理函数里做了，
  * 但**手动 `start()` 第二个任务前也要 `stop()`** —— 否则两个 SSE 同时刷同一份 state。
  */
-export interface JobHandlers {
+interface JobHandlers {
   onUpdate?: (job: Job) => void
   onDone?: (job: Job) => void
   onError?: (err: Error, job: Job) => void

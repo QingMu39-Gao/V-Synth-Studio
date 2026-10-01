@@ -9,7 +9,7 @@
  *
  * 只用 Node 自带的 WebSocket（Node ≥22），不装任何包。
  * 需要先起一个测试实例：
- *   清沐的虚拟歌姬工作站.exe --serve --port=8891
+ *    v-synth-studio.exe --serve --port=8891
  */
 
 const PORT = Number(process.argv[2] ?? 0) || 8891

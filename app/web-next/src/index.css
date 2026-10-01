@@ -28,8 +28,9 @@
   --shell-max: 1360px;
   --sidebar-w: 228px;
 
-  /* 背景图。⚠️ 必须用**绝对路径** —— 新前端挂在 `/next/` 下，
-     相对路径 `img/bg/light.jpg` 会解析成 `/next/img/...` → 404（实测过）。
+  /* 背景图。⚠️ 必须用**绝对路径** —— 界面就在根路径，但仍然不能用相对路径：
+     相对路径 `img/bg/light.jpg` 跟着「当前文档所在目录」走，前缀一改就会
+     静默解析成 `/<前缀>/img/...` → 404（实测过）。
      图在 `app/web/img/bg/`，由后端从根路径伺服。 */
   --bg-image-dark: url('/img/bg/dark.jpg');
   --bg-image-light: url('/img/bg/light.jpg');
@@ -370,13 +371,8 @@ html[data-boot='out'] .app-main {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.nav-row-tag {
-  font-size: 11px;
-  color: var(--lg-label-secondary);
-}
-.nav-row[aria-current='page'] .nav-row-tag {
+.nav-row[aria-current='page'] .nav-row-label {
   color: inherit;
-  opacity: 0.75;
 }
 /* 内容层自己撑满玻璃面。这一步必须在**内容层**上做，不能写在外层 ——
    外层的盒高由内容决定，写 height:100% 反而是循环依赖。 */
@@ -735,19 +731,6 @@ html[data-boot='out'] .app-main {
 .textarea:focus-visible {
   outline: 2px solid var(--lg-accent);
   outline-offset: 1px;
-}
-.toggle-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lg-space-3);
-  min-height: 40px;
-  font-size: 14px;
-  cursor: pointer;
-}
-.toggle-row input {
-  width: 18px;
-  height: 18px;
-  accent-color: var(--lg-accent);
 }
 
 /* ── 设置页：左分节 + 右内容 ─────────────────────────────────── */

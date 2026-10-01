@@ -54,14 +54,6 @@ export function readMaterial(): GlassMaterial {
   return DEFAULT_MATERIAL
 }
 
-export function writeMaterial(m: GlassMaterial) {
-  try {
-    localStorage.setItem(STORAGE_KEY, m)
-  } catch {
-    /* 隐私模式：本次会话仍然生效 */
-  }
-}
-
 /** 材质 → 库的参数的映射。这是「两种材质」的唯一定义处。 */
 export function materialOptions(m: GlassMaterial): GlassSurfaceOptions {
   return m === 'frosted'
@@ -160,15 +152,3 @@ export function GlassContent({
   )
 }
 
-/**
- * 内联玻璃面：**不要新框**，就用祖先那层玻璃。
- *
- * 用于放在玻璃栏**里面**的控件。库对「玻璃叠玻璃」有内置处理（小玻璃在共享面上
- * 自动画成平面），但那需要同一条 `GlassSurface` 树；这里的做法更直接：什么都不画。
- * 库的规矩（`docs/design-system.md` 第 1 节第 2 条）：
- *
- * > 放在玻璃上的元素用填充、透明度和 vibrancy，**不再叠一层玻璃**。
- */
-export function GlassInline({ children, className }: { children: React.ReactNode; className?: string }) {
-  return <div className={`glass-inline ${className ?? ''}`}>{children}</div>
-}

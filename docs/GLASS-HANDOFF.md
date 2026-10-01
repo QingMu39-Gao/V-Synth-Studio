@@ -1,4 +1,4 @@
-﻿# 交接文档 —— 新前端（`app/web-next`）玻璃材质
+# 交接文档 —— 新前端（`app/web-next`）玻璃材质
 
 > **给新会话的接手者。** 这份只讲「看代码看不出来」的东西：现在卡在哪、
 > 哪些路已经试过并且**走不通**、下一步从哪下手。
@@ -73,7 +73,7 @@ npm 包里只有 `dist/`，判断行为只能靠猜；这里有：
 上一版这一节写的是「都没修」+ 一组参数猜测。**实测下来根因不是参数，是三件配置错误**
 （都违反库自己 `docs/design-system.md` 的明文规定），另外有一件是结构性误判。
 
-### 实测到的旧状态（1440×900，`/next/`，明亮模式，液态玻璃）
+### 实测到的旧状态（1440×900，明亮模式，液态玻璃）
 
 | 项 | 实测值 | 判定 |
 |---|---|---|
@@ -341,11 +341,11 @@ CSS.supports('-webkit-backdrop-filter','blur(1px)') → false
 ```powershell
 # 起测试实例（端口 8891，别和用户正开的 17878 打架）
 $p = Start-Process -FilePath 'H:\工作站\v-synth-studio.exe' `
-     -ArgumentList '--serve','--port=8891','--ui=next' -PassThru -WindowStyle Hidden
+     -ArgumentList '--serve','--port=8891' -PassThru -WindowStyle Hidden
 Start-Sleep -Seconds 8
 
 node tests\contract\verify.mjs 8891                                   # 应 17/17
-powershell -ExecutionPolicy Bypass -File tests\manual\ui-smoke.ps1 -BaseUrl http://127.0.0.1:8891  # 应 8/8（测的是旧前端）
+node tests\manual\next-smoke.mjs 8891                                 # 应 8/8（8 页渲染 + 文案断言）
 
 # 玻璃材质专项：取计算值 + 截图 + 高亮块的逐帧/首帧采样
 node tests\manual\glass-probe.mjs 8891 light frosted
@@ -373,7 +373,7 @@ await send('Emulation.setDeviceMetricsOverride', {width:1440, height:900, device
 
 ### ⚠️ 别用 `--disable-gpu` 截图
 
-带着它 `backdrop-filter` 会糊成一片空白。`ui-smoke.ps1` 里带了它没关系 ——
+带着它 `backdrop-filter` 会糊成一片空白。`next-smoke.mjs` 里带了它没关系 ——
 那条路只 dump DOM，不看画面。
 
 ### CDP 端口会随机被拒
@@ -446,10 +446,10 @@ localStorage 改了、DOM 不动，看着就是「切材质没有任何用」。
    最该先换 —— 它们本来就是分段控件。
    **换完之后再判断 shadcn 还需不需要**：库已经提供了 66 个控件，
    `AGENTS.md` 第十一节里「接 shadcn/ui」这条待办可能是多余的。
-2. **一页页搬页面到 React**：`resources` → `dashboard` → `settings` → `lyrics` →
-   `video`/`audio`。旧前端在 `/` 一直可用，每搬完一页跑 `ui-smoke.ps1`。
-3. **`ui-smoke.ps1` 覆盖 `/next/`**：现在只有 `glass-probe.mjs` 探玻璃，
-   新前端的 8 页没有自动化冒烟。
+2. ~~**一页页搬页面到 React**~~ **已完成（2026-10-02）**：8 页全部搬完，
+   旧前端与 `ui-smoke.ps1` 已于 2026-10-05 一起删除。
+3. ~~**给新前端补冒烟**~~ **已完成**：`tests/manual/next-smoke.mjs` 覆盖 8 页
+   （控制台报错 / 占位页 / 玻璃面 / 该页文案），跑法见上面第五节。
 4. **`resolve_paths()` 改用 `resource_dir()`**（`AGENTS.md` 第八节的核心遗留问题，
    修掉 MSI 与 macOS bundle 都靠它）。
 5. **侧栏的形态要不要换？** 库的 `TabBar` 自带透镜、拖拽换页、窄屏自动变成底部胶囊栏，

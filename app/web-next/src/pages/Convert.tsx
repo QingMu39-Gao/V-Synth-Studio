@@ -24,7 +24,7 @@ import type { PageProps } from './types'
 import './Convert.css'
 
 /**
- * 工程格式互转（40 种）—— 旧前端 `app/web/js/views/convert.js` 的搬家版。
+ * 工程格式互转（40 种）—— 从旧前端（已退役）搬过来的。
  *
  * ## 加文件只有两种操作
  *
@@ -107,7 +107,7 @@ export function Convert({ state, onToast }: PageProps) {
     })
   }, [writable, cfgTarget])
 
-  /* 转换选项记住（键沿用旧前端的，字段挪进 `options`；老数据没有它就整份用默认值） */
+  /* 转换选项记住（键沿用旧界面的，字段挪进 `options`；老数据没有它就整份用默认值） */
   useEffect(() => {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify({ options }))
@@ -826,7 +826,7 @@ const DEFAULTS: ConvertOptions = {
   '默认语言': '4',
 }
 
-/** 沿用旧前端的键（老数据里是另一套平铺字段、没有 `options`，那就整份用默认值） */
+/** 沿用旧界面的键（老数据里是另一套平铺字段、没有 `options`，那就整份用默认值） */
 const LS_KEY = 'fandiao.convert.settings'
 
 const IMPORT_SWITCHES: [KeyOf<boolean>, string, string][] = [
@@ -1146,7 +1146,7 @@ const toBase64 = (file: File) =>
  * 上传版接口直接 `fetch`（`/api/convert/run-upload`、`/api/convert/preview-upload`）。
  *
  * `lib/api.ts` 里没有包这两条，本轮也不动公共库 —— 上传版就是 JSON + base64，
- * 就地发一次比为一个页面改公共库省事。拼的是绝对路径 `/api/...`（页面在 `/next/` 下）。
+ * 就地发一次比为一个页面改公共库省事。拼的是绝对路径 `/api/...`。
  */
 async function postUpload<T>(path: string, body: unknown): Promise<T> {
   const res = await fetch(path, {

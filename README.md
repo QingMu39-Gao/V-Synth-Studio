@@ -1,7 +1,9 @@
-# 清沐的虚拟歌姬工作站
+# V-Synth-Studio
 
 翻调 P 主的本地工作台。**完全离线运行，工程文件不出本机。**
 
+> 原名「清沐的虚拟歌姬工作站」，2026-09 更名为 V-Synth-Studio。
+>
 > **要改代码？读 [`AGENTS.md`](AGENTS.md)。**
 > 那份写的是看代码看不出来的东西：架构为什么长这样、踩过哪些坑、怎么编译怎么验证。
 > 这份 README 只讲这是什么、怎么用。
@@ -35,12 +37,30 @@ app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒�
 | 依赖 | 用户需要吗 | 依据 |
 |---|---|---|
 | VC++ 运行库 | **不需要** | 已静态链接，导入表里没有 `VCRUNTIME140.dll` |
-| Node.js | **不需要** | 后端是 Rust（只有跑测试的开发机需要） |
+| Node.js | **不需要** | 见下方说明 |
 | Python | **不需要** | LibreSVIP 自带运行时 |
 | WebView2 | **需要** | 唯一的硬依赖 |
 
 外部工具（ffmpeg / LibreSVIP / yt-dlp，共约 390 MB）**随包分发**在 `tools/` 里，
 不需要联网下载 —— 主要在国内用，让用户自己去 GitHub 下 ffmpeg 基本下不动。
+
+### Node.js 到底在哪一步出现
+
+界面用 React 写，构建要过 Vite，**Vite 是 Node 工具**。所以：
+
+| 环节 | 需要 Node 吗 |
+|---|---|
+| 用户双击启动器运行 | **不需要** —— 打包出去的是静态 HTML/JS/CSS，exe 是 Rust |
+| 后端运行时 | **不需要** —— 39 条路由全在 Rust 里，`node.exe` 进程数为 0 |
+| **编译前端**（`build.ps1` 第一步） | **需要** |
+
+也就是说 Node 只在**开发者编译时**跑一次，不随包分发、不驻留、不产生子进程。
+`app/web-next/node_modules/` 有 90 多 MB，但它**不进安装包**——
+`tauri.conf.json` 的 `resources` 只映射 `app/web`，而 Vite 产物里不含依赖。
+
+> **历史说明**：这个项目早期的后端是 Node（约 19,000 行），后来整体重写成 Rust，
+> 目的是消掉"两个进程要同步生死"的架构问题。**那些好处一条没丢**——
+> 去掉的是*运行时*的 Node，不是*构建时*的。
 
 ---
 
@@ -119,7 +139,7 @@ JIZURA 本地部署，歌词一键带入，导出 MP4 / PNG 序列。字体已�
 | 路径 | 说明 |
 |---|---|
 | `app/desktop/` | Tauri 外壳 + 内嵌 Rust 后端 |
-| `app/web/` | 界面（纯 HTML/CSS/JS） |
+| `app/web/` | 前端构建产物（React + Vite：`index.html` + `assets/` + `vendor/` + `img/`） |
 | `app/data/` | 配置、资源库、拼音词典 |
 | `tools/` | 随包分发的 ffmpeg / LibreSVIP / yt-dlp |
 | `tests/` | 契约测试、冒烟测试、样本 |

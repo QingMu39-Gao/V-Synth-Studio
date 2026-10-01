@@ -1,4 +1,4 @@
-﻿//! 平台相关：Windows 特有的是注册表、explorer、回收站；其余走标准库。
+//! 平台相关：Windows 特有的是注册表、explorer、回收站；其余走标准库。
 //!
 //! 这一层是**唯一**放平台代码的地方 —— 移植 macOS 时只需要在这里加一个 cfg 分支，
 //! 上层业务代码一行都不用改。（对照 docs/PLATFORM-PORT.md）
@@ -287,7 +287,7 @@ mod url_tests {
     fn detects_urls_case_insensitively() {
         assert!(looks_like_url("https://example.com/a"));
         assert!(looks_like_url("HTTPS://EXAMPLE.COM"));
-        assert!(looks_like_url("  http://127.0.0.1:17878/next/  "));
+        assert!(looks_like_url("  http://127.0.0.1:17878/api/state  "));
         assert!(looks_like_url("mailto:someone@example.com"));
         assert!(!looks_like_url(""));
         assert!(!looks_like_url("C:\\Music\\a.wav"));

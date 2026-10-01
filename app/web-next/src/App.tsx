@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { api } from '@/lib/api'
 import type { AppState } from '@/lib/types'
 import { Icon, type IconName } from '@/components/Icon'
@@ -16,7 +16,6 @@ import { hideBoot } from '@/lib/boot'
 import { materialOptions } from '@/components/Glass'
 import { Dashboard } from '@/pages/Dashboard'
 import { Settings } from '@/pages/Settings'
-import { Placeholder } from '@/pages/Placeholder'
 import { Resources } from '@/pages/Resources'
 import { Convert } from '@/pages/Convert'
 import { Video } from '@/pages/Video'
@@ -48,29 +47,38 @@ import { Pv } from '@/pages/Pv'
  * 两个写入方（我写 `data-theme`、它写 `data-lg-theme`）就会互相打架。
  */
 
-const PAGES: {
+/** 侧栏一行。`icon` 必须是 `Icon.tsx` 那张表里有的名字。 */
+interface PageDef {
   id: string
   title: string
   sub: string
   icon: IconName
   group: string
-  ported?: boolean
-}[] = [
-  { id: 'dashboard', title: '总览', sub: '环境检测与常用入口', icon: 'home', group: '工作台', ported: true },
-  { id: 'convert', title: '工程转换', sub: '离线把工程转到另一个编辑器', icon: 'swap', group: '工作台' , ported: true },
-  { id: 'video', title: '视频解析', sub: 'B 站 / YouTube 等平台的 MV 下载', icon: 'video', group: '素材获取' , ported: true },
-  { id: 'audio', title: '音频工具', sub: '人声分离 / 格式转换 / 变调变速', icon: 'wave', group: '素材获取' , ported: true },
-  { id: 'lyrics', title: '歌词', sub: '网易云 / QQ 音乐搜词，导出 LRC · SRT', icon: 'music', group: '素材获取' , ported: true },
-  { id: 'pv', title: '文字 PV', sub: '把歌词做成动态歌词视频（JIZURA）', icon: 'video', group: '素材获取' , ported: true },
-  { id: 'resources', title: '资源库', sub: '立绘、声库、插件、音源站（仅链接）', icon: 'library', group: '素材获取' , ported: true },
-  { id: 'settings', title: '设置', sub: '外观、路径、外部工具', icon: 'gear', group: '系统', ported: true },
-]
+}
+
+/**
+ * 页面表。⚠️ **`as const` 不能去掉** —— 下面的 `PageId` 靠它取到**字面量联合**，
+ * `pageViews` 才能把「加了一页却忘了配视图」变成编译错误。
+ */
+const PAGES = [
+  { id: 'dashboard', title: '总览', sub: '环境检测与常用入口', icon: 'home', group: '工作台' },
+  { id: 'convert', title: '工程转换', sub: '离线把工程转到另一个编辑器', icon: 'swap', group: '工作台' },
+  { id: 'video', title: '视频解析', sub: 'B 站 / YouTube 等平台的 MV 下载', icon: 'video', group: '素材获取' },
+  { id: 'audio', title: '音频工具', sub: '人声分离 / 格式转换 / 变调变速', icon: 'wave', group: '素材获取' },
+  { id: 'lyrics', title: '歌词', sub: '网易云 / QQ 音乐搜词，导出 LRC · SRT', icon: 'music', group: '素材获取' },
+  { id: 'pv', title: '文字 PV', sub: '把歌词做成动态歌词视频（JIZURA）', icon: 'video', group: '素材获取' },
+  { id: 'resources', title: '资源库', sub: '立绘、声库、插件、音源站（仅链接）', icon: 'library', group: '素材获取' },
+  { id: 'settings', title: '设置', sub: '外观、路径、外部工具', icon: 'gear', group: '系统' },
+] as const satisfies readonly PageDef[]
+
+/** 所有页面 id 的联合（从 `PAGES` 推出来，加一页就自动多一个成员） */
+type PageId = (typeof PAGES)[number]['id']
 
 export type ThemeMode = 'system' | 'light' | 'dark'
 
 const THEME_KEY = 'qingmu.theme'
 
-export function readTheme(): ThemeMode {
+function readTheme(): ThemeMode {
   try {
     const v = localStorage.getItem(THEME_KEY)
     if (v === 'light' || v === 'dark' || v === 'system') return v
@@ -81,9 +89,9 @@ export function readTheme(): ThemeMode {
 }
 
 export default function App() {
-  const [active, setActive] = useState<string>(() => {
+  const [active, setActive] = useState<PageId>(() => {
     const m = location.hash.match(/^#\/(\w+)/)
-    return m && PAGES.some((p) => p.id === m[1]) ? m[1] : 'dashboard'
+    return PAGES.find((p) => p.id === m?.[1])?.id ?? 'dashboard'
   })
   const [theme, setTheme] = useState<ThemeMode>(readTheme)
   const [state, setState] = useState<AppState | null>(null)
@@ -122,15 +130,17 @@ export default function App() {
   }, [refreshing])
 
   const navigate = useCallback((id: string) => {
-    if (!PAGES.some((p) => p.id === id)) return
-    setActive(id)
-    location.hash = `#/${id}`
+    const page = PAGES.find((p) => p.id === id)
+    if (!page) return
+    setActive(page.id)
+    location.hash = `#/${page.id}`
   }, [])
 
   useEffect(() => {
     const onHash = () => {
       const m = location.hash.match(/^#\/(\w+)/)
-      if (m && PAGES.some((p) => p.id === m[1])) setActive(m[1])
+      const page = PAGES.find((p) => p.id === m?.[1])
+      if (page) setActive(page.id)
     }
     window.addEventListener('hashchange', onHash)
     return () => window.removeEventListener('hashchange', onHash)
@@ -153,7 +163,7 @@ export default function App() {
    * ⚠️ 用固定顺序写，别用对象字面量的插入顺序去依赖什么 —— 这里只是查表。
    */
   const pageProps = { state, onNavigate: navigate, onRefreshState: refreshState, onToast: toast }
-  const pageViews: Record<string, ReactNode> = {
+  const pageViews: Record<PageId, ReactNode> = {
     dashboard: <Dashboard {...pageProps} refreshing={refreshing} />,
     settings: <Settings {...pageProps} theme={theme} onThemeChange={changeTheme} />,
     resources: <Resources {...pageProps} />,
@@ -243,7 +253,6 @@ export default function App() {
                     >
                       <Icon name={p.icon} size={17} />
                       <span className="nav-row-label">{p.title}</span>
-                      {!p.ported && <span className="nav-row-tag">待迁</span>}
                     </button>
                   </div>
                 ))}
@@ -273,8 +282,8 @@ export default function App() {
                     </div>
                   </Panel>
                 ) : (
-                  /* 页面表：加一页 = 在 PAGES 里加一行 + 这里加一行。三元链到 8 页已经读不动了。 */
-                  (pageViews[active] ?? <Placeholder title={current.title} />)
+                  /* 页面表：加一页 = 在 PAGES 里加一行 + 这里加一行（漏了这里 `tsc` 会报错）。 */
+                  pageViews[active]
                 )}
               </div>
             </main>
@@ -298,8 +307,8 @@ export default function App() {
 /**
  * 让选中项外面那块高亮**滑**过去。
  *
- * 位置必须**实测**（`offsetTop` / `offsetHeight`），不能按数据算 —— 分组标题、行高、
- * 「待迁」标签都会影响它。库自己的 `useSelectionLens`（`controls/segmented.tsx`）就是
+ * 位置必须**实测**（`offsetTop` / `offsetHeight`），不能按数据算 —— 分组标题、行高
+ * 都会影响它。库自己的 `useSelectionLens`（`controls/segmented.tsx`）就是
  * 这么做的，而且注释里写明「the same lens has to follow a row of segments and
  * **a vertical column of sidebar rows**」—— 正是这个场景。但它**没有从包里导出**，
  * 所以这里只重写「量位置」这十来行；**外观、弹簧曲线、阴影全部复用库的

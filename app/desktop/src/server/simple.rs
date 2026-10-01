@@ -1,4 +1,4 @@
-﻿//! 阶段 1：基础路由
+//! 阶段 1：基础路由
 //!
 //! health / state / config / fs/* / jobs/* / resources / 静态文件
 //!
@@ -68,8 +68,16 @@ fn now_millis() -> u64 {
 
 /* ══════════════════════════════════ 配置 ══════════════════════════════════ */
 
-/// 配置默认值，和 Node 版的 DEFAULT_CONFIG 逐字段对齐
-pub fn default_config(root: &Path) -> Value {
+/// 配置默认值，和 Node 版的 DEFAULT_CONFIG 逐字段对齐。
+///
+/// ⚠️ **改这里就是改接口契约**：`tests/contract/fixtures/{config,state}.json` 是冻结的基准，
+/// 增删键都要同步那份夹具，否则 `tests/contract/verify.mjs` 会红。
+///
+/// 2026-10-05 删掉了 4 个「只写不读」的键 —— 它们从 Node 版继承下来，从来没有读写方：
+///   `lastSourceFormat` / `voiceDirs` / `perfMode` / `customPrograms`
+/// 其中 `perfMode` 早就是前端 localStorage 的事，`customPrograms` 只被
+/// `/api/tools/launch` 的 `{id}` 分支读过（那条分支也一并删了）。
+pub fn default_config() -> Value {
     let downloads = crate::platform::downloads_dir();
     json!({
         "bilibiliCookie": "",
@@ -79,19 +87,13 @@ pub fn default_config(root: &Path) -> Value {
         "proxy": "",
         "outputDir": downloads.clone(),
         "downloadDir": downloads,
+        // 转换页「目标格式」的初值（`Convert.tsx` 读）。**没有写入方** ——
+        // 界面上改目标格式是当次的事，不回写配置；要改默认值只能改这一行。
         "defaultTargetFormat": "vsqx",
         "nameTemplate": "{name}_converted",
         "threads": 4,
-        "lastSourceFormat": "auto",
-        "customPrograms": [],
-        "voiceDirs": [],
         "quality": 0,
         "audioQuality": 0,
-        // 性能模式：关掉全部高斯模糊（backdrop-filter 很贵，低端机 / 远控 / 集显上会掉帧）。
-        // 开关在「设置 → 外观」；前端主存 localStorage，这里只做备份。
-        "perfMode": false,
-        // 只是为了让 root 参与签名，避免未使用参数告警
-        "_root": root.to_string_lossy(),
     })
 }
 
@@ -104,20 +106,32 @@ fn config_path(writable: &Path) -> PathBuf {
 }
 
 /// 读配置。文件不存在就用默认值（和 Node 版行为一致）。
+///
+/// ⚠️ 文件存在但**解析失败**时会记一行日志再回落默认值（2026-10-05 补）。
+/// 以前这一步是纯静默的：`config.json` 里多一个花括号，用户改了设置却「没生效」，
+/// 翻遍界面也看不出原因 —— 实际是整份配置被默认值顶掉了。
 pub fn load_config(writable: &Path) -> Value {
-    let mut base = default_config(writable);
+    let mut base = default_config();
     if let Ok(text) = fs::read_to_string(config_path(writable)) {
-        if let Ok(saved) = serde_json::from_str::<Value>(&text) {
-            if let (Some(base_map), Some(saved_map)) = (base.as_object_mut(), saved.as_object()) {
-                for (k, v) in saved_map {
-                    base_map.insert(k.clone(), v.clone());
+        match serde_json::from_str::<Value>(&text) {
+            Ok(saved) => {
+                if let (Some(base_map), Some(saved_map)) = (base.as_object_mut(), saved.as_object()) {
+                    for (k, v) in saved_map {
+                        // 只认默认值里有的键：配置文件可能留着历史键
+                        // （`perfMode` / `voiceDirs` / `customPrograms` / 更早的 `_root`），
+                        // 它们不该出现在 `/api/state` 的 config 里 —— 这正是契约夹具的形状。
+                        // 下次 `save_config` 整份回写时，文件里的历史键自然被清掉。
+                        if base_map.contains_key(k) {
+                            base_map.insert(k.clone(), v.clone());
+                        }
+                    }
                 }
             }
+            Err(e) => crate::log_line(&format!(
+                "配置读取失败，已回落默认值：{} —— {e}。请检查这个文件是不是合法 JSON。",
+                config_path(writable).display()
+            )),
         }
-    }
-    // _root 是内部用的，不外泄
-    if let Some(m) = base.as_object_mut() {
-        m.remove("_root");
     }
     // 迁移：旧默认输出目录（程序目录下的 output/）改成系统下载目录
     migrate_legacy_dirs(&mut base, writable);
@@ -442,8 +456,8 @@ pub async fn fs_delete(Json(body): Json<Value>) -> Result<Json<Value>, ApiError>
  *
  * ⚠️ 这里以前只读 `path` 且要求路径存在，于是前端传 `{url}` 的调用**必然 400**
  * （`body["path"]` 是空串 → 「路径不存在：」）—— 界面上「在浏览器打开」这类按钮
- * 一直是坏的，而且**旧前端也在传 `{url}`**（`views/resources.js`、`views/settings.js`、
- * `views/video.js`、`views/audio.js` 都有），属于两个前端共有的老 bug。
+ * 一直是坏的。旧前端（`app/web/js/views/` 下那几套，2026-10-05 已删）也全在传 `{url}`；
+ * 现在的新前端有三处：`pages/Resources.tsx`、`pages/Video.tsx`、`pages/Audio.tsx`。
  *
  * 现在两种都收：`path`（要求存在）与 `url`（交给系统默认程序，不做存在性检查）。
  */
@@ -945,9 +959,9 @@ pub async fn static_files(State(st): State<Arc<AppState>>, req: axum::extract::R
 
     // 目录要回退到它下面的 index.html。
     //
-    // 原来只处理了「空路径 → index.html（根）」这一种情况，因为旧前端只有一个入口。
-    // 新前端挂在 /next/ 子目录下，请求 `/next/` 时 rel 是 "next/"，直接 fs::read 一个
-    // 目录会失败 —— 表现就是 404。这里补上目录回退，顺带对 `/next`（无斜杠）也成立。
+    // 界面只有一个入口（`/`，由 `rel.is_empty()` 那条兜住），但静态资源目录不止一个：
+    // `/vendor/jizura/` 之类带尾斜杠的请求，rel 是 "vendor/jizura/"，直接 fs::read 一个
+    // 目录会失败 —— 表现就是 404。这里补上目录回退，顺带对无尾斜杠的写法也成立。
     if target.is_dir() {
         target = target.join("index.html");
     }
@@ -987,6 +1001,10 @@ pub async fn static_files(State(st): State<Arc<AppState>>, req: axum::extract::R
 }
 
 fn mime_of(p: &Path) -> &'static str {
+    // 表里没有的扩展名会落到 `application/octet-stream`。这不会让请求失败，
+    // 但浏览器要嗅探内容才肯用（图片尤其）：实测两张背景图 `/img/bg/*.jpg`
+    // 就是这样回的 octet-stream。凡是 `app/web/` 里真实存在的类型都补齐，
+    // 现在那里的扩展名只有 woff2 / css / html / jpg / png / js 六种。
     match p.extension().and_then(|e| e.to_str()).unwrap_or("") {
         "html" => "text/html; charset=utf-8",
         "js" | "mjs" => "text/javascript; charset=utf-8",
@@ -994,8 +1012,18 @@ fn mime_of(p: &Path) -> &'static str {
         "json" => "application/json; charset=utf-8",
         "svg" => "image/svg+xml",
         "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "webp" => "image/webp",
+        "gif" => "image/gif",
         "ico" => "image/x-icon",
         "woff2" => "font/woff2",
+        "woff" => "font/woff",
+        "ttf" => "font/ttf",
+        "mp3" => "audio/mpeg",
+        "wav" => "audio/wav",
+        "mp4" => "video/mp4",
+        "txt" => "text/plain; charset=utf-8",
+        "map" => "application/json; charset=utf-8",
         _ => "application/octet-stream",
     }
 }

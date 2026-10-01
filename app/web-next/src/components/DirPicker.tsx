@@ -1,10 +1,10 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { GlassDialog, PathBar, List, ListSection, ListRow } from '@ttqtt/liquid-glass-react'
 import { Button } from '@/components/Button'
 import { api, type FsEntry } from '@/lib/api'
 
 /**
- * 目录选择器 —— 旧前端 `components/dirPicker.js` 的对应物，但**建在库的组件上**：
+ * 目录选择器 —— 旧界面那个目录选择器的替代品，但**建在库的组件上**：
  * `GlassDialog`（真正的 `<dialog>`，自带 Esc/焦点陷阱）+ `PathBar`（面包屑）+ `List`。
  *
  * 用法（受控）：

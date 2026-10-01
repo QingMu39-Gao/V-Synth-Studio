@@ -68,7 +68,7 @@ app/
     tauri.conf.json   窗口、打包、resources
     build.ps1         唯一的构建入口（见下文）
   web-next/           前端**源码**（React + Vite + TS + Tailwind）—— 8 页已全部搬完
-    vite.config.ts    base '/next/'，outDir '../web/next'
+    vite.config.ts    base '/'，outDir '../web'（emptyOutDir **必须是 false**，见下）
                       ⚠️ 含 restoreStandardBackdropFilter 插件（lightningcss 会删标准
                       backdrop-filter），别删，见 docs/GLASS-HANDOFF.md §3.1
     src/
@@ -84,15 +84,15 @@ app/
         Job.tsx       任务进度（库的 GlassProgress + 取消 + 日志）
         DirPicker.tsx 目录选择（库的 GlassDialog + PathBar + List）/ DirectoryInput
       lib/
-        api.ts        后端调用（39 条路由；API 在根路径 /api/*，不是 /next/api/*）
+        api.ts        后端调用（39 条路由；API 在根路径 /api/*，**必须写绝对路径**）
         types.ts      后端数据结构（照 tests/contract/fixtures 定义）
-        format.ts     formatBytes / Duration / Speed / Number / Time / timeAgo
+        format.ts     formatBytes / formatDuration / formatNumber
         useJob.ts     任务订阅：SSE + 轮询兜底（旧 watchJob 的 React 版）
         useGlass.ts   玻璃等级 1~4（材质 / 透明度 / 面板要不要玻璃全由它派生）
         useNavLens.ts 侧栏与小节导航的滑动高亮块
         boot.ts       揭开启动加载画面
       pages/          8 页：Dashboard / Convert / Video / Audio / Lyrics / Pv / Resources / Settings
-                      （每页自带一个同名 .css；页面约定与库组件清单见 docs/NEXT-UI.md）
+                      （每页自带一个同名 .css；页面约定与库组件清单见 docs/FRONTEND.md）
 ```
 
 > **启动加载画面**：`index.html` 的 `#boot`（样式内联、12 秒兜底）+ `lib/boot.ts` 揭开，规范见 `GLASS-HANDOFF` §4。
@@ -101,22 +101,14 @@ app/
 > 主题与「降低透明度」现在都在 `App.tsx` 里，直接喂给库的 `GlassProvider`
 > （`theme` / `transparency` 两个 prop）。`perfMode` 这个 config 字段后端有，
 > **新前端还没接**。详见 `docs/GLASS-HANDOFF.md`。
-  web/                前端**产物 + 旧前端**（后端伺服的就是这个目录）
-    next/             ← 新前端的构建产物（Vite 输出 app/web/next/），浏览器访问 /next/
-    index.html        旧前端入口（访问 /）
-    css/  base.css（设计令牌 + 外壳）/ components.css / views.css
-    js/
-      main.js         路由、导航、状态、启动画面揭开
-      theme.js        主题唯一入口
-      api.js          所有后端调用
-      ui.js           组件工厂（h/mount/button/card/chip/modal/toast…）
-      timecode.js
-      components/     dirPicker / waveEditor / jobDock
-      views/          dashboard convert video audio lyrics pv resources settings
-    vendor/jizura/    JIZURA 文字 PV（上游构建产物 + 2335 个字体）
-    img/bg/           桌面背景图（明亮/黑暗）
+  web/                前端**产物 + 随包静态资源**（后端伺服的就是这个目录）
+    index.html        ← Vite 产物（index.html + assets/ 都归它，**刷新即生效**）
+    assets/           ← Vite 产物（带内容哈希，每次构建新增；emptyOutDir:false 所以旧的不自动删）
+    vendor/jizura/    JIZURA 文字 PV（上游构建产物 + 2335 个字体）—— **不是产物，别让构建清掉**
+    img/bg/           桌面背景图（明亮/黑暗）—— 同上，被 index.css 以 url() 引用
     img/logo.png      顶栏图标（源 app/desktop/icons/128x128.png，拷进来才伺服得到）
   data/                只读数据：resources.json / pinyin.json（schema 见第七节）
+                      绿色版的可写 config.json 也落在这里（安装版在 %APPDATA%）
 tools/                 随包分发：ffmpeg / yt-dlp / LibreSVIP（约 390 MB）
 tests/
   contract/            接口契约（对冻结的夹具）
@@ -142,7 +134,7 @@ docs/                  THIRD-PARTY-NOTICES.md
 **判断依据是「能不能写」，不是「装没装」。** 曾经因为 `resource_dir()` 在绿色版
 也返回 exe 目录，导致绿色版被误判成安装版、配置写到 `%APPDATA%` 去了。
 
-> ⚠️ **`find_app_root()` 这套「往上找」的逻辑已经出问题了**，见第八节。
+> ⚠️ **`resolve_paths()` 这套「往上找」的逻辑已经出问题了**，见第八节。
 
 ---
 
@@ -153,7 +145,7 @@ docs/                  THIRD-PARTY-NOTICES.md
 | 编译 | **只能** `powershell -ExecutionPolicy Bypass -File app\desktop\build.ps1` |
 | | 直接 `cargo build` **不会**把 exe 复制到根目录，你跑的还是旧的，会以为改动没生效 |
 | `-Release` / `-Bundle` | 可选参数；`-Bundle` 打 MSI（见第八节） |
-| `-SkipWeb` | 只编后端（改 Rust 时省几秒，但 `/next/` 会是旧产物） |
+| `-SkipWeb` | 只编后端（改 Rust 时省几秒，但 `app/web/` 里会是旧产物） |
 | 工具链 | Rust 在 `H:\DevTools\cargo`、MSVC 在 `H:\VSBuildTools`（build.ps1 会加载 vcvars） |
 | | **前端还要 Node + npm**（见下）—— 这是新前端引入的**构建期**依赖 |
 
@@ -173,31 +165,24 @@ docs/                  THIRD-PARTY-NOTICES.md
 
 启动器/CI 里任何"这台机器没有 Node"的假设都已失效 —— 编译机必须有。
 
-### 切换界面（旧前端 / 新前端）
-
-窗口加载的是**一个 URL 前缀**，所以切界面不用重新编译（前端每请求从磁盘读）。
+### 界面只有一套（2026-10-05 切换完成）
 
 | 启动方式 | 界面 |
 |---|---|
-| `启动工作站.bat` | **新前端**（React，`/next/`）—— 启动器默认 |
-| `启动工作站.bat --old` | 旧前端（`/`） |
-| 直接双击 `v-synth-studio.exe` | 旧前端（**exe 自身的默认**，是刻意的兜底逃生口） |
-| `v-synth-studio.exe --ui=next` \| `--ui=old` | 显式指定 |
+| `启动工作站.bat` | React 前端（URL 前缀 `/`） |
+| 直接双击 `v-synth-studio.exe` | **同一个** React 前端 |
+| `v-synth-studio.exe --serve --port=<端口>` | 只起服务不开窗（给测试用；浏览器开 `http://127.0.0.1:<端口>/`） |
 
-也可以不起窗口，浏览器开 `http://127.0.0.1:17878/next/`。
+**`--ui=next|old` 与启动器的 `--old` 已经删除**，现在写它们不会有任何效果（参数被忽略）。
+旧的手写前端（`app/web/js/`、`app/web/css/`、手写 `index.html`）已整体删除，
+`docs/LEGACY-UI.md` 一并退役。
 
-**启动器默认新前端、exe 默认旧前端** —— 这是故意的：命令行/快捷方式直接跑 exe 的人
-（和打包后的正常用户）拿到功能完整的旧界面，而开发时双击启动器就进新界面。
-
-> **新前端 8 页已全部搬完（2026-10-02）**，但 **exe 的默认界面还没切** —— 见下面那条。
+> 这一节以前叫「切换界面（旧前端 / 新前端）」，记着「启动器默认新前端、exe 默认旧前端」那套
+> 双界面机制。**那套机制已经不存在了，别再照它推理。** 切换发生在 2026-10-05：
+> 用户验收通过后，`main.rs` 里那段 `--ui=` 选择逻辑整体删掉，窗口固定加载根路径 `/`。
 >
-> **`启动工作站.bat` = 更新预览入口。** 换界面不用重新编译（前端每请求从磁盘读），
-> 所以新前端改完只要 `npm run build`（或 `npm run watch`）+ 刷新，双击这个 bat 就能看。
-> **exe 自身的默认界面在用户确认验收之前不动** —— 那是「切换」这个动作，
-> 不是开发动作；改它等于把还没验收的界面推给用户。
-
-**两套界面同时都在**，互不影响。等 8 页搬完、验收通过，改 `main.rs` 里 `ui_path`
-那段的默认值，exe 的默认也就跟着换了，一处改动完成切换。
+> **改前端不用重新编译**（`app/web/` 仍是每请求从磁盘读）：`npm run build` 或
+> `npm run watch` + 刷新即可，只有改 Rust 才需要 `build.ps1`。
 
 ### 文件编码
 
@@ -248,7 +233,7 @@ $t.Contains("`r`n")                                      # 要 True
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File app\desktop\build.ps1
-#   → ① npm run build（app\web-next → app\web\next）
+#   → ① npm run build（app\web-next → app\web）
 #   → ② cargo build  + 复制 exe 到根目录
 ```
 
@@ -257,11 +242,11 @@ powershell -ExecutionPolicy Bypass -File app\desktop\build.ps1
 ```powershell
 cd app\web-next
 npm install     # 首次
-npm run build   # tsc -b && vite build → 产物落 ../web/next/
+npm run build   # tsc -b && vite build → 产物落 ../web/
 npm run watch   # 开发时推荐：改完自动重建，浏览器刷新即可
 ```
 
-`-SkipWeb` 只编后端（改 Rust 时省几秒，但 `/next/` 会是旧产物）。
+`-SkipWeb` 只编后端（改 Rust 时省几秒，但 `app/web/` 会是上次的旧产物）。
 
 ⚠️ **npm 的选取有讲究**：`build.ps1` 优先用 `H:\node\npm.cmd`（自装 Node），
 其次 `%ProgramFiles%\nodejs`，最后才退回 PATH 搜索。**不要改成直接取 PATH 里第一个** ——
@@ -282,14 +267,20 @@ npm run watch   # 开发时推荐：改完自动重建，浏览器刷新即可
 
 ---
 
-## 四、旧前端（`app/web/js`）—— 正在退役
+## 四、前端（`app/web-next` → `app/web`）
 
-**在用户确认切换之前，`/` 仍是 exe 的默认界面**，所以它还能用、也还要能改。
-它的视图契约、可用模块、CSS 类表、双主题规则、状态字段、文字 PV 交接细节
-**整节搬到了 `docs/LEGACY-UI.md`** —— 改 `app/web/js/` 之前读那份。
+**只有一套界面了。** 旧的手写前端（`app/web/js` + `app/web/css` + 手写 `index.html`）
+已于 2026-10-05 整体删除，`docs/LEGACY-UI.md` 一并退役 —— 别再去 `app/web/js/` 找东西。
 
-新前端（`app/web-next`，`/next/`）才是后续维护的重点，规范见 `docs/NEXT-UI.md`。
-两套界面的取舍、以及踩过的坑，见 `docs/LESSONS.md`。
+前端规范、页面约定、库组件清单、接口契约坑、验证工具与人工验收清单
+**全在 `docs/FRONTEND.md`** —— 动前端之前读那份。
+界面上的历史取舍与踩过的坑见 `docs/LESSONS.md`。
+
+⚠️ **`app/web/` 里有两类东西，别搞混**：`index.html` 与 `assets/` 是 Vite 产物
+（会被构建覆盖）；`vendor/`（JIZURA）与 `img/` 是**随包静态资源**，被产物引用但**不产出**。
+所以 `vite.config.ts` 的 `emptyOutDir` **必须是 `false`** —— 设成 `true` 会把 vendor 和 img
+一起清掉（PV 页与全部背景图失效），而构建还报成功。`build.ps1` 为此加了防线，
+改动它之前先读那里的注释。
 
 ---
 
@@ -305,7 +296,7 @@ Start-Sleep -Seconds 8
 node tests\contract\verify.mjs 8891
 
 # 2) 八个页面渲染 + 关键字断言 —— 应 8/8
-powershell -ExecutionPolicy Bypass -File tests\manual\ui-smoke.ps1 -BaseUrl http://127.0.0.1:8891
+node tests\manual\next-smoke.mjs 8891
 
 # 3) Rust 单测
 cd app\desktop; cargo test --bins      # 应全绿
@@ -314,7 +305,7 @@ cd app\desktop; cargo test --bins      # 应全绿
 - 契约夹具在 `tests/contract/fixtures/`（17 个），是 Node 后端还在时抓的真实响应，
   **永久基准**。`verify.mjs` 逐字段 diff，并把「有意差异」列在 `INTENDED` 白名单里 ——
   **加条目要写清理由，它很容易变成掩盖问题的垃圾桶**。
-- `ui-smoke.ps1` 会断言每页的关键字（如总览要有「欢迎回来」「格式支持」）。
+- `next-smoke.mjs` 会断言每页的关键字（如总览要有「欢迎回来」「格式支持」）。
   **改页面文案会让它红**，改文案前先看它断言了什么。
 - `--serve` 模式只跑服务不开窗口，专门给测试用。
 
@@ -323,7 +314,7 @@ cd app\desktop; cargo test --bins      # 应全绿
 | 坑 | 说明 |
 |---|---|
 | 无头模式 | 必须 `--headless=old`（本机 `--headless=new` 报 Multiple targets 起不来） |
-| `--disable-gpu` | **只对截图有害**：带着它 `backdrop-filter` 会糊成一片空白。<br>`ui-smoke.ps1` 里带了它没关系 —— 那条路只 dump DOM，不看画面对不对 |
+| `--disable-gpu` | **只对截图有害**：带着它 `backdrop-filter` 会糊成一片空白。<br>`next-smoke.mjs` 里带了它没关系 —— 那条路只 dump DOM，不看画面对不对 |
 | `--dump-dom` 看不到 iframe 内部 | 要验 iframe 里的东西必须用 CDP（`--remote-debugging-port` + Node 自带 WebSocket，不要装包）。参考 `tests/manual/pv-verify.mjs` |
 | 端口 | 正式启动是 17878，**测试用 8891** |
 
@@ -345,25 +336,25 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 ## 六、踩过的坑（结论速查）
 
 > **细节与来龙去脉都在 `docs/LESSONS.md`** —— 这一节只留「别再犯」的结论。
-> 玻璃相关的另外两份：`docs/GLASS-HANDOFF.md`（材质规范）、`docs/NEXT-UI.md`（新前端约定）。
+> 玻璃相关的另外两份：`docs/GLASS-HANDOFF.md`（材质规范）、`docs/FRONTEND.md`（前端约定）。
 
 | 症状 / 场景 | 结论 |
 |---|---|
 | `/api/fs/open` 收两种参数 | `path`（本地路径，**要求存在**）或 `url`（http/https/ftp/mailto，走系统默认程序、不做存在性检查）。**2026-10-02 之前它只读 `path`**，于是所有传 `{url}` 的调用必然 400 —— 两个前端的「在浏览器打开」都是坏的，已修（`platform::open_url` + `looks_like_url`，带单测） |
-| 接口「发了没反应 / 永远空列表」 | **先对后端源码与夹具**，别信旧前端的调用姿势：`collect` 要 `{dirs:[…]}`（旧前端发 `{dir}` → 永远 0 个文件）、`preview` 要 `{inputs,toFormat}`、`fs/list` 空 `path` **必须整个省略**（发 `path=` → 400）、`fs/roots` 字段是 `name` 不是 `label`。四处都是搬页面时实测翻出来的，见 `docs/NEXT-UI.md` 第 5 节 |
+| 接口「发了没反应 / 永远空列表」 | **先对后端源码与夹具**，别信旧前端的调用姿势：`collect` 要 `{dirs:[…]}`（旧前端发 `{dir}` → 永远 0 个文件）、`preview` 要 `{inputs,toFormat}`、`fs/list` 空 `path` **必须整个省略**（发 `path=` → 400）、`fs/roots` 字段是 `name` 不是 `label`。四处都是搬页面时实测翻出来的，见 `docs/FRONTEND.md` 第 5 节 |
 | 「改了界面但用户看不到变化」 | **先怀疑缓存**：静态文件必须发 Cache-Control: no-store（simple.rs 已加）。测试每次开全新浏览器，永远命中不了缓存，只有用户常驻的 WebView2 拿着旧文件 |
 | 端口不能随机 | 固定 17878；**localStorage 按 origin 隔离**，端口一变 = 全新存储（JIZURA 标记、界面设置、PV 工程自动保存全丢） |
 | 悬停/过渡「生硬地闪一下」 | 多半是 `var(--x)` **没定义** → 整条 `transition` 静默失效。先跑 `LESSONS.md` 里那段查未定义变量的脚本 |
-| 过渡曲线 | `--ease` 管微交互、--ease-out 管入场、--spring 只给大位移；**两套前端各有一套，别互相套用**（表在 `LESSONS.md`） |
+| 过渡曲线 | `--ease` 管微交互、--ease-out 管入场、--spring 只给大位移；取值表在 `LESSONS.md`（它记的是旧前端那套，搬页面时逐个对照过） |
 | 侧栏/导航 | **一个框 + 一个滑动高亮块**（库的 .lg-selection-lens），行本身零描边零底色；首帧不能滑、用 offsetTop 量位置（lib/useNavLens.ts）。⚠️ 高亮块**不是玻璃面**，库的 `--lg-lens-bg` 只按主题分档（亮色故意不透明）；要玻璃得自己在 `.nav-lens` 上改半透明 + 消费 `--lg-backdrop`。⚠️ 侧栏 `position: sticky` 的 `top` **必须等于初始位置**（含让开顶栏那 44px），否则一滚就先跳 44px —— 看着就是「侧栏跟着滚轮走」（细节在 `LESSONS.md`） |
 | 玻璃 | 用现成的库，**永远别自己写**；材质写在 GlassProvider 上；背景自身模糊要小（3~5px）；栏本身不画底。三条教训的细节在 GLASS-HANDOFF.md §2.2 |
 | 苹果式圆角 | corner-shape: squircle + @supports 兜底；**别用在玻璃面上**（库的位移贴图是受限几何） |
 | 自定义 CSS 与工具类 | 新前端目前是纯手写 CSS（没用 Tailwind 工具类）。哪天开始用工具类，自定义类必须进 @layer components，否则会静默盖掉工具类 |
 | 亮色主题 | 次要文字色不能太浅（对比度 4.5:1 以上）；背景图参数与新前端的取值见 LESSONS.md |
-| 背景图「压根不显示」 | 触发过两次（两个前端各一次）；改一个记得改另一个 |
+| 背景图「压根不显示」 | 触发过两次（旧前端一次、新前端一次）。图在 `app/web/img/bg/`，被 `index.css` 以 `url()` 引用 —— 别让构建把它当成产物清掉（`emptyOutDir` 必须是 `false`） |
 | 网络 | GitHub / Google 要走代理（curl -x http://127.0.0.1:7890）；网易云、QQ 音乐直连；**测试短信接口绝不用真实手机号** |
 | 磁盘 | C 盘很紧，临时大文件放 H:\工作站\tmp-* 并即时删 |
-| 图标 | 新前端 components/Icon.tsx 是手写 SVG path 表；旧前端在 ui.js 的 ICON_PATHS。**没有图标库**（要离线），加图标往表里加 |
+| 图标 | `components/Icon.tsx` 是一张手写 SVG path 表。**没有图标库**（要离线），加图标往表里加 |
 
 ---
 
@@ -419,7 +410,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | **打包 MSI** | **打出来跑不起来** —— 见下 |
 | UTAU Shift-JIS | 纯 Rust 侧不生成 Shift-JIS，默认写 UTF-8 |
 | YouTube | 境内不可达，相关功能要走代理（设置页可配） |
-| `mime_of` | 不认 `.jpg`，返回 `application/octet-stream`（能渲染，但不规范） |
+| `mime_of` | 已补齐（2026-10-05）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
 | `backdrop-filter` 降级 | 无该特性环境的降级方案没做视觉验证 |
 | `audio.rs` 顶部注释 | 写着「ffmpeg 不随程序分发」，与事实相反（注释是旧的） |
 | Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
@@ -427,7 +418,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 ### 打包卡在哪（这是本次的核心遗留问题）
 
-程序靠 `main.rs::find_app_root()` **往上找 `app/web/index.html`** 定位根目录，
+程序靠 `main.rs::resolve_paths()` **往上找 `app/web/index.html`** 定位根目录，
 它假定的是「绿色版」布局：
 
 ```
@@ -451,7 +442,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 >
 > 也就是说 `resource_dir()`（第 1 步）**可能已经能定位到** `<安装目录>/resources/app/web`，
 > 只是**没打过包、没人实测过**。第一次打 MSI 时先验这一条，再决定还要不要改
-> `find_app_root()`。
+> `resolve_paths()`。
 
 **这个问题不止影响 MSI。** 同一个「往上找」的假定在别的地方也不成立：
 
@@ -574,7 +565,7 @@ git log --all -- app/data/resources.json
 |---|---|
 | 改名 V-Synth-Studio | 界面可见处全改；exe 变 `v-synth-studio.exe`；存储键与配置目录**刻意不动** |
 | 图标全套 | 由 `图标.png` 生成（Win/macOS/Android/iOS），`cargo tauri icon --fit contain` |
-| 前端脚手架 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4），产物落 `app/web/next/`，访问 `/next/` |
+| 前端脚手架 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4），产物落 `app/web/`，访问 `/` |
 | 主题 + 透明度 | ⚠️ **原表写的 `lib/useTheme.ts` / `lib/usePerfMode.ts` 已不存在**（换库时删了）。现在主题与「降低透明度」是 `App.tsx` 里喂给库 `GlassProvider` 的两个 prop；`perfMode` 字段后端有、前端**还没接** |
 | **玻璃材质修好**（2026-10-01） | 默认改成毛玻璃、侧栏改 `size="large"`、面板降到 `thin`、顶栏（后改为绝对定位）、侧栏高亮块改用库的透镜、补回 `corner-shape: squircle`。见 `docs/GLASS-HANDOFF.md` 第二节 |
 | **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页（今为「玻璃等级」滑块）、重新检测在总览页。顶栏**移出文档流**，内容列上移 76px；⚠️ 顶栏 `inset-inline` 必须写 `var(--lg-margin)` —— 绝对定位的包含块是**内边距盒**，写 0 会偏左 20px |
@@ -583,8 +574,8 @@ git log --all -- app/data/resources.json
 | **启动加载画面 + 交接**（2026-10-02） | `index.html` 的 `#boot` + `lib/boot.ts`；遮罩淡出与界面入场**交叉**（时长必须拉开，见 `GLASS-HANDOFF` §4.1） |
 | **玻璃等级 1~4 滑块** | 材质 / 透明度 / 面板要不要玻璃全由这一档派生（`lib/useGlass.ts`），键 `qingmu.glassLevel` |
 | **设置页小节导航复用主侧栏那套** | `lib/useNavLens.ts` + `.app-nav` / `.nav-row` / `.nav-lens`，两处外框参数逐项相同 |
-| **8 页全部搬到 React**（2026-10-02） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 39 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/NEXT-UI.md` 第 5 节） |
-| **`next-smoke.mjs`** | 新前端逐页冒烟（旧 `ui-smoke.ps1` 只管 `/`）：控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8 全绿 |
+| **8 页全部搬到 React**（2026-10-02） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 39 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/FRONTEND.md` 第 5 节） |
+| **`next-smoke.mjs`** | 8 页逐页冒烟：控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8 全绿（文件名里的 `next-` 是历史遗留） |
 
 ### 待办，按优先级
 
@@ -596,16 +587,12 @@ git log --all -- app/data/resources.json
    `GlassSegmentedControl`（胶囊、可拖、拖动中实时更新选择）。**换的时候注意**：
    库的分段控件是 `<label class="lg-segment"><input type=radio>`，`aria-label` 挂在内层
    `.lg-segmented-track` 上 —— 写自动化测试时别在外层 `.lg-segmented` 上取 `aria-label`（会拿到 null）。
-3. **切换 exe 默认界面**（8 页已搬完，就等这一步）：改 `main.rs` 里 `ui_path` 的默认值，
-   `default` 从 `""`（旧前端）改成 `"next"`。**这是验收动作，必须等用户明确点头** ——
-   改了等于把还没验收的界面推给所有直接跑 exe 的人。切换后再考虑退役旧前端
-   （`app/web/js/`、`docs/LEGACY-UI.md`）。
-4. **给新前端补点击穿透测试** —— `next-smoke.mjs` 只验「渲染 + 文案 + 控制台」，
+3. **给前端补点击穿透测试** —— `next-smoke.mjs` 只验「渲染 + 文案 + 控制台」，
    真实操作链路（选文件 → 预检 → 提交任务）还没有自动化，目前靠人工 + 探针截图。
-5. **侧栏形态要不要换成库的 `TabBar`？** 它自带透镜、拖拽换页、窄屏自动变底部胶囊栏，
+4. **侧栏形态要不要换成库的 `TabBar`？** 它自带透镜、拖拽换页、窄屏自动变底部胶囊栏，
    但它的侧栏形态是 `position: fixed` 的整列贴窗口左边，而且**没有分组标题**
    （现在的「工作台 / 素材获取 / 系统」是手写的）。两条路都成立，**属于要用户拍板的结构选择**。
-6. **CI**：`.github/workflows/build.yml`，matrix `windows-latest` + `macos-latest`。
+5. **CI**：`.github/workflows/build.yml`，matrix `windows-latest` + `macos-latest`。
    注意 Ubuntu 编不出 Windows/macOS 的 GUI 包（见第九节），且 `tools/` 不在 git 里。
 
 ### 关于 Android（已核实，不用再查）
@@ -622,10 +609,10 @@ git log --all -- app/data/resources.json
 
 **上 Vite 时注意**（已想清楚的部分）：
 
-- Vite 的 `outDir` 指向 `app/web/next/`、`base: '/next/'`，**服务端一行不用改** ——
+- Vite 的 `outDir` 指向 `app/web/`、`base: '/'`，**服务端一行不用改** ——
   因为窗口加载的是 `http://127.0.0.1:<port>`，静态文件是每请求从磁盘读的。
-- ⚠️ **新前端里所有 API 调用必须用绝对路径 `/api/...`**。相对路径 `./api/state`
-  在 `/next/` 下会变成 `/next/api/state` → 404。见 `lib/api.ts` 的注释。
+- ⚠️ **前端里所有 API 调用必须用绝对路径 `/api/...`**。相对路径 `./api/state` 在子路径下
+  （比如将来挪到 `/app/`）会变成 `/app/api/state` → 404。见 `lib/api.ts` 的注释。
 - `build.ps1` 是**加一行 `vite build`**，不是废除。它仍是唯一构建入口。
 - 代价两条：① 编译机多一个 Node.js 依赖（**用户那边仍然不用装**）；
   ② 开发时不再「改完刷新就生效」，要跑 `npm run watch` 或 `vite dev`。

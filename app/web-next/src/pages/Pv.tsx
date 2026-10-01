@@ -9,14 +9,14 @@ import type { PageProps } from './types'
 import './Pv.css'
 
 /**
- * 文字 PV：把歌词做成动态歌词视频（JIZURA）—— 旧前端 `app/web/js/views/pv.js` 的搬家版。
+ * 文字 PV：把歌词做成动态歌词视频（JIZURA）—— 从旧前端（已退役）搬过来的。
  *
  * 整页就是一个 iframe，指向 `/vendor/jizura/index.html`：JIZURA
  * （<https://github.com/852wa/JIZURA>，MIT）的**构建产物**随包分发在 `app/web/vendor/jizura/`，
  * 与主界面同源，所以父页面可以直接操作它的 DOM。**它的界面一个字都不改**，
  * 升级就整份替换那个目录 —— 这一页所有的脏活都来自这条约束。
  *
- * 四件事必须照旧（都是踩出来的，细节见 `docs/LEGACY-UI.md`「文字 PV 页的交接」）：
+ * 四件事必须照旧（都是踩出来的）：
  *
  *   1. **歌词走 `localStorage` 交接**（键 `qingmu.pv.lyrics`）：歌词页写、这里读。
  *      填完把同一份写进 `qingmu.pv.sent`，同一份不再重复填 —— 用户手动清空后再切回来，
@@ -94,14 +94,6 @@ interface JizuraWindow extends Window {
     uiApi?: { replan?: () => void; flushSave?: () => void }
     saveFile?: (name: string, data: unknown) => unknown
   }
-}
-
-/** `/api/lyrics/import` 实际回的形状（`server/lyrics.rs`）：`{ song, lyric, trans, encoding }` */
-interface ImportedLrc {
-  song?: { name?: string }
-  lyric?: string
-  trans?: string
-  encoding?: string
 }
 
 /* ══════════════════════════════════════════════════════ iframe 里的事 ══ */
@@ -471,7 +463,7 @@ export function Pv({ state, onNavigate, onToast }: PageProps) {
     setImporting(true)
     setStatus('正在读取歌词文件…')
     try {
-      const res = (await api.lyricsImport({ path })) as unknown as ImportedLrc
+      const res = await api.lyricsImport({ path })
       const lyric = String(res.lyric ?? '').trim()
       if (!lyric) throw new Error('这个文件里没有读到歌词')
 

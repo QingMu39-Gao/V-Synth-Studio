@@ -121,7 +121,7 @@ function typeName(v) {
  */
 const INTENDED = [
   {
-    // 用户要求：产品改名成「清沐的虚拟歌姬工作站」，显示版本改 1.1beta。
+    // 用户要求：产品改名成 V-Synth-Studio（原名「清沐的虚拟歌姬工作站」），显示版本 1.1beta。
     // （打包元数据仍是 1.1.0 —— MSI 只认纯数字版本，所以两者刻意分开，
     //   显示走 APP_VERSION 常量，打包走 Cargo.toml。）
     match: /^health\.(name|version):/,
@@ -195,6 +195,10 @@ const INTENDED = [
      * 它只被 /api/voices 和 /api/state 用来「显示」，而**转换路径从头到尾没调用过它**
      * —— 也就是说换声库跟这个检测毫无关系。为它维护注册表读取、目录扫描、
      * 简繁转换、别名推导、匹配打分，只为了列一个清单，不值得。
+     *
+     * `/api/voices` 路由与 `fixtures/_index.json` 里那条索引也一并删了（2026-10-05）：
+     * 路由表里已经没有这条，夹具目录里也从来没有 voices.json，映射永远不触发。
+     * 这条规则留着是给 state.json 里残留的 voices 字段兜底。
      */
     match: /voices/i,
     why: '声库探测已整体移除（纯展示功能，转换路径不依赖）',
@@ -213,6 +217,22 @@ const INTENDED = [
      */
     match: /^resources\.(updatedAt|notice|groups)/,
     why: '资源库内容是可编辑的索引数据；契约只保证响应形状，不保证收录了哪些条目',
+  },
+  {
+    /*
+     * 配置里三个**只写不读**的历史键被删掉了（2026-10-05 清死代码）：
+     *
+     *   lastSourceFormat —— 没有任何读取方（转换页自己存 localStorage）
+     *   voiceDirs        —— 声库探测整体移除后就没有读取方了
+     *   customPrograms   —— 只被「自定义程序」那段死分支读，分支已删
+     *
+     * 这三个键在 Node 版里也只是每次 save_config 原样写回去，改它们不影响任何行为；
+     * 留着只会让后面的人以为「删了会坏」。夹具不动（它记的是 Node 版真实响应），
+     * 在这里登记成有意差异。`defaultTargetFormat` **不在此列** —— 它还在被
+     * Convert.tsx 读（目标格式初值）。
+     */
+    match: /^config\.config\.(lastSourceFormat|customPrograms|voiceDirs):|^state\.config\.(lastSourceFormat|customPrograms|voiceDirs):/,
+    why: '三个只写不读的历史配置键已删（无任何读取方），夹具保留 Node 版原样',
   },
   {
     /*
@@ -240,7 +260,6 @@ const ROUTES = {
   'fs-roots': '/api/fs/roots',
   jobs: '/api/jobs',
   'tools-detect': '/api/tools/detect',
-  voices: '/api/voices',
   'fs-list-c': '/api/fs/list?path=' + encodeURIComponent('C:\\\\'),
   'fs-list-tools': '/api/fs/list?path=' + encodeURIComponent(process.cwd()),
 }
@@ -272,7 +291,7 @@ async function main() {
   } catch (err) {
     console.error(`连不上 ${BASE}：${err.message}`)
     console.error('请先用 --serve 模式启动 Rust 后端：')
-    console.error('  app\\desktop\\target\\debug\\qingmu-workstation.exe --serve --port=8788')
+    console.error('  v-synth-studio.exe --serve --port=8891')
     process.exitCode = 1
     return
   }
@@ -332,7 +351,8 @@ async function main() {
 
   console.log(`\n═══ 对照结果：一致 ${pass} / 有差异 ${fail} ═══`)
   if (fail) {
-    console.log('提示：阶段 3/4 未实现的路由（tools/voices）出现差异是预期的。')
+    console.log('提示：夹具是 Node 后端时代的抓包，「有意差异」都列在上面的 INTENDED 里；')
+    console.log('      对不上的先看是不是响应形状真的变了（改夹具要先想清楚）。')
   }
   if (fail) process.exitCode = 1
 }

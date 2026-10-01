@@ -36,7 +36,9 @@ mod server;
 /// 也不会因为关掉窗口就丢了。
 ///
 /// 刻意不引日志库：这里只有十来行输出，一个 `OpenOptions::append` 就够。
-fn log_line(msg: &str) {
+///
+/// `pub(crate)`：`server` 模块里也有需要记一行的地方（见 `server/simple.rs` 读配置那处）。
+pub(crate) fn log_line(msg: &str) {
     use std::io::Write;
 
     // 启动早期路径还没解析出来，退回临时目录，保证日志不丢
@@ -85,33 +87,20 @@ const STARTUP_TIMEOUT_SECS: u64 = 30;
 fn main() {
     let args: Vec<String> = std::env::args().collect();
 
-    // ── 选界面：旧前端（默认）还是新 React 前端 ──────────────────
+    // ── 界面：只有一个，就在根路径 ──────────────────────────────
     //
-    //   v-synth-studio.exe                 → 旧前端（app/web/index.html）
-    //   v-synth-studio.exe --ui=next       → 新前端（app/web/next/，React + Vite）
+    //   v-synth-studio.exe   →   http://127.0.0.1:<port>/   （React + Vite，产物在 app/web/）
     //
-    // 前端是**每请求从磁盘读**的，所以切换界面不需要重新编译 —— 只要改这个 URL 前缀。
-    // 这也是并行迁移能落地的前提：两套界面同时在，谁都没被破坏。
+    // 2026-10-05：旧前端（`app/web/js` + `css` + 那个手写 `index.html`）整体退役。
+    // 在那之前这里是一段 `--ui=next|old` 的选择逻辑，窗口 URL 取 `/next/` 或 `/`；
+    // 两套界面并存是为了并行搬迁（谁都没被破坏），8 页搬完后就没必要了 ——
+    // **一个界面就不该有「选哪个界面」这层机制**。`--ui=` 与启动器的 `--old` 一并撤掉。
     //
-    // 默认仍是旧前端：新前端还在逐页搬迁中（见 AGENTS.md 第十一节），
-    // 等 8 页搬完、验收通过，把 default 改成 "next" 即可，一处改动完成切换。
-    let ui_path = match args.iter().find_map(|a| a.strip_prefix("--ui=")) {
-        Some("next") => "next",
-        Some("old") => "",
-        Some(other) => {
-            note!("警告：--ui={other} 不认识（只认 next / old），按旧前端启动");
-            ""
-        }
-        None => "",
-    };
-    let base_path = if ui_path.is_empty() {
-        String::new()
-    } else {
-        format!("/{ui_path}")
-    };
-    // 把选中的界面记进日志 —— 用户说「还是旧的」时，先看这行确认参数有没有生效，
-    // 不然只能靠猜（切界面不重新编译，所以这一步很容易被忽略）。
-    note!("界面：{}（URL 前缀 '{}'）", if ui_path.is_empty() { "旧前端" } else { "新前端 next" }, if base_path.is_empty() { "/" } else { &base_path });
+    // 前端是**每请求从磁盘读**的（server/simple.rs::static_files），
+    // 所以改前端仍然不需要重新编译 exe：跑 `npm run build` 刷新即可。
+    // 记一行启动路径。出问题时（窗口白屏 / 404）先看这行，能立刻分清是
+    // 「服务没起来」还是「起来的不是想跑的那份」，不用猜。
+    note!("界面：React 前端（URL 前缀 '/'）");
 
     // ── 纯服务模式（开发与对照测试用）──────────────────────────
     if args.iter().any(|a| a == "--serve") {
@@ -119,12 +108,18 @@ fn main() {
             .iter()
             .find_map(|a| a.strip_prefix("--port="))
             .and_then(|p| p.parse::<u16>().ok())
-            .unwrap_or(8787);
+            .unwrap_or(8891);
 
         let paths = match resolve_paths(None) {
             Some(p) => p,
             None => {
-                note!("错误：找不到程序文件（应该包含 app/web/index.html）");
+                // 这个哨兵文件是**前端构建产物**（Vite 的 outDir 就是 app\web\）。
+                // 它不见了的典型原因不是「目录少拷了」，而是前端从没构建过、或者被清掉了。
+                note!(
+                    "错误：找不到程序文件（应该包含 app/web/index.html）。\n\
+                     \x20 这个文件是前端产物，也是「程序根目录」的判定依据。\n\
+                     \x20 先跑一次构建：powershell -ExecutionPolicy Bypass -File app\\desktop\\build.ps1"
+                );
                 std::process::exit(1);
             }
         };
@@ -140,7 +135,6 @@ fn main() {
     }
 
     // ── 正常模式：Tauri 窗口 + 内嵌服务 ────────────────────────
-    // `move` 是必需的：setup 闭包要活到 'static，得把 base_path 的所有权交进去。
     tauri::Builder::default()
         .setup(move |app| {
             let handle = app.handle().clone();
@@ -153,6 +147,7 @@ fn main() {
                     show_error(
                         &handle,
                         "找不到程序文件（app/web/index.html）。\n\
+                         这个文件是前端产物，也是「程序根目录」的判定依据。\n\
                          绿色版：请把整个目录一起解压，不要只拷 exe。\n\
                          安装版：安装可能不完整，建议重新安装。",
                     );
@@ -175,13 +170,13 @@ fn main() {
 
             // 等端口真的能连上再开窗口
             if !wait_for_port(port, STARTUP_TIMEOUT_SECS) {
-                show_error(&handle, "内嵌服务 30 秒内没有启动成功。请检查 data/desktop-error.log。");
+                show_error(&handle, "内嵌服务 30 秒内没有启动成功。");
                 return Ok(());
             }
 
-            // 注意末尾的斜杠：/next 少了它，静态文件处理器会先 301 再补，
-            // 直接带上省一次跳转。
-            let url: tauri::Url = format!("http://127.0.0.1:{port}{base_path}/")
+            // 注意末尾的斜杠：少了它，静态文件处理器会先 301 再补，直接带上省一次跳转。
+            // 前缀恒为空 —— 界面只有一套，就挂在根路径 / 上（2026-10-05 旧前端退役）。
+            let url: tauri::Url = format!("http://127.0.0.1:{port}/")
                 .parse()
                 .expect("本地地址一定能解析");
 
@@ -239,6 +234,9 @@ async fn serve(paths: AppPaths, port: u16) -> Result<(), String> {
 /// - **安装版**（MSI/NSIS 装到 Program Files）：界面和工具在 Tauri 的
 ///   resource_dir 下，而**那里是只读的** —— 配置必须写到用户目录，
 ///   否则保存设置会失败（Program Files 需要管理员权限才能写）。
+/// 只读数据目录（`resources.json`、`pinyin.json`，随包分发不改）是
+/// `<root>/app/data/` —— 服务端在 `AppState` 里自己拼（`server/mod.rs:data_dir()`），
+/// 所以这里不需要一个同名的访问器。
 #[derive(Clone)]
 pub struct AppPaths {
     /// 只读资源根目录（含 `app/web/`、`app/data/`、`tools/`）
@@ -247,13 +245,6 @@ pub struct AppPaths {
     pub writable: PathBuf,
     /// 是否安装版 —— 决定出错提示怎么写
     pub installed: bool,
-}
-
-impl AppPaths {
-    /// 只读数据目录（`resources.json`、`pinyin.json`，随包分发不改）
-    pub fn data(&self) -> PathBuf {
-        self.root.join("app").join("data")
-    }
 }
 
 /// 定位程序的路径布局。
@@ -395,7 +386,7 @@ fn free_port() -> u16 {
     std::net::TcpListener::bind(("127.0.0.1", 0))
         .and_then(|l| l.local_addr())
         .map(|a| a.port())
-        .unwrap_or(8787)
+        .unwrap_or(PREFERRED_PORT)
 }
 
 /// 轮询端口直到真的能连上（不靠死等固定秒数）
@@ -413,7 +404,23 @@ fn wait_for_port(port: u16, timeout_secs: u64) -> bool {
 
 /* ────────────────────────────────── 失败提示 ────────────────────────────────── */
 
+/// 出错日志的完整路径，给用户看的。
+///
+/// 日志写在**可写目录**下（绿色版 `<根>\app\data\`，安装版
+/// `%APPDATA%\com.qingmu.vocalworkstation\`），不是固定的 `data\` ——
+/// 文案里写死 `data\desktop-error.log` 对安装版是错的。
+fn error_log_hint() -> String {
+    resolve_paths(None)
+        .map(|p| p.writable.join("desktop-error.log"))
+        .map(|p| crate::platform::clean_path(&p))
+        .unwrap_or_else(|| "程序数据目录下的 desktop-error.log".to_string())
+}
+
 fn show_error(app: &tauri::AppHandle, message: &str) {
+    // 日志路径由这里统一附在提示后面 —— `dist/index.html` 只负责渲染，
+    // 它不知道路径（绿色版与安装版不同），所以那边不要写死。
+    let message = format!("{message}\n详细信息见：{}", error_log_hint());
+    let message = message.as_str();
     // 写日志
     let dir = resolve_paths(None)
         .map(|p| p.writable)

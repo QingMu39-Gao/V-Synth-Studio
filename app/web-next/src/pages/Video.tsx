@@ -9,6 +9,7 @@ import {
   Picker,
 } from '@ttqtt/liquid-glass-react'
 import { api } from '@/lib/api'
+import type { VideoInfo, VideoParse, VideoStreams } from '@/lib/api'
 import { Button, IconButton } from '@/components/Button'
 import { DirectoryInput } from '@/components/DirPicker'
 import { Field, TextInput } from '@/components/Field'
@@ -49,105 +50,13 @@ import './Video.css'
  * 3. **参数化深链没搬**：旧路由的 `params.url` / `autoParse`（从别的页面带链接跳过来）
  *    在新前端的 hash 路由里没有对应物，`App.tsx` 也不传 params。
  *
- * ## 这里为什么有一份本地的解析结果类型
+ * ## 解析结果的类型来自 `lib/api.ts`
  *
- * 搬这一页的时候 `lib/api.ts` 的 `VideoParse` 是错的（`currentPage` 写成 number、
- * `streams` 写死非空、缺 `videoAvc`/`videoHevc`/`acceptQuality`），而那次任务不允许改公共库，
- * 于是按 `server/media.rs` + `bili.rs` + 夹具 `video-parse-bili.json` 在页面里声明了一份，
- * 调用点用 `as unknown as` 断言。
- *
- * ⚠️ **`api.ts` 后来已经改成正确形状了**（`VideoParse` / `VideoInfo` / `VideoStreams` …），
- * 本地这份属于重复定义。下次动这一页时可以直接用 `api.ts` 的类型、删掉断言；
- * **但不要照着这两份中的任何一份去改后端** —— 后端才是权威（夹具是它的快照）。
+ * 搬这一页的时候 `api.ts` 的 `VideoParse` 是错的（`currentPage` 写成 number、`streams` 写死非空、
+ * 缺 `videoAvc`/`videoHevc`/`acceptQuality`），那次任务又不许改公共库，于是页内声明了一份重复的、
+ * 调用点用 `as unknown as` 断言。现在 `api.ts` 那份已经按后端源码与夹具改对了，**页内这份已删**。
+ * 要改形状就改 `api.ts` —— 不要照着前端的类型去改后端，后端才是权威（夹具是它的快照）。
  */
-
-/* ══════════════════════════════════════════════════════════ 后端形状 ══ */
-
-interface Stream {
-  id: number
-  qualityName?: string
-  bandwidth?: number
-  width?: number
-  height?: number
-  codecs?: string
-  /* durl 的整段流 */
-  index?: number
-  size?: number
-  lengthMs?: number
-}
-
-interface BiliPage {
-  page: number
-  title?: string
-  durationSec?: number
-}
-
-interface BiliEpisode {
-  epId?: number
-  bvid?: string
-  title?: string
-  longTitle?: string
-  durationSec?: number
-}
-
-interface YtFormat {
-  formatId?: string
-  ext?: string
-  resolution?: string
-  fps?: number
-  vcodec?: string
-  acodec?: string
-  filesize?: number
-  isVideo?: boolean
-}
-
-interface VideoInfo {
-  title?: string
-  cover?: string
-  thumbnail?: string
-  desc?: string
-  description?: string
-  durationSec?: number
-  uploader?: string
-  publishDate?: string
-  uploadDate?: string
-  view?: number
-  viewCount?: number
-  bvid?: string
-  url?: string
-  epId?: number
-  /* yt-dlp 专有 */
-  id?: string
-  extractor?: string
-  webpageUrl?: string
-  subtitles?: string[]
-  formats?: YtFormat[]
-  /* B 站专有 */
-  pages?: BiliPage[]
-  episodes?: BiliEpisode[]
-  season?: { episodes?: BiliEpisode[] } | null
-}
-
-interface Streams {
-  mode?: 'dash' | 'durl'
-  error?: string
-  durationMs?: number
-  video?: Stream[]
-  audio?: Stream[]
-  /** durl：整段流的各分段 */
-  streams?: Stream[]
-  acceptQuality?: number[]
-  acceptDescription?: string[]
-}
-
-interface Parsed {
-  source?: string
-  kind?: string
-  info?: VideoInfo
-  streams?: Streams | null
-  hasCookie?: boolean
-  currentPage?: { page?: number; title?: string; durationSec?: number; cover?: string }
-}
 
 /* ══════════════════════════════════════════════════════ 设置（同旧页）══ */
 
@@ -252,10 +161,11 @@ function joinPath(dir: string, sub: string): string {
 }
 
 /** 子目录模板：{title} {uploader} {date} {p} {quality}（照旧页面的替换与清洗规则） */
-function renderSubDir(parsed: Parsed | null, qualityName: string, template: string): string {
+function renderSubDir(parsed: VideoParse | null, qualityName: string, template: string): string {
   const t = String(template ?? '').trim()
   if (!t) return ''
-  const info = parsed?.info ?? {}
+  /* 没解析到结果时也要能渲染，所以这里补空对象 —— 类型写成 Partial：读的字段一律当「可能没有」处理 */
+  const info: Partial<VideoInfo> = parsed?.info ?? {}
   const map: Record<string, string> = {
     title: info.title ?? '',
     uploader: info.uploader ?? '',
@@ -272,7 +182,7 @@ function renderSubDir(parsed: Parsed | null, qualityName: string, template: stri
     .trim()
 }
 
-function countItems(d: Parsed | null): number {
+function countItems(d: VideoParse | null): number {
   if (!d) return 0
   if (d.source === 'ytdlp') return (d.info?.formats ?? []).filter((f) => f.isVideo).length
   if (d.kind === 'bangumi') return (d.info?.episodes ?? []).length
@@ -280,7 +190,7 @@ function countItems(d: Parsed | null): number {
 }
 
 /** 默认选：最高画质、同画质优先 AVC/H.264（老编辑器打不开 HEVC）；音频默认 192K */
-function pickDefaults(d: Parsed): Picked {
+function pickDefaults(d: VideoParse): Picked {
   if (d.source === 'ytdlp') {
     const list = (d.info?.formats ?? []).filter((f) => f.isVideo)
     return { quality: null, audio: null, formatId: list[0]?.formatId ?? null }
@@ -299,7 +209,7 @@ function pickDefaults(d: Parsed): Picked {
  * `acceptQuality` / `acceptDescription` 是平行数组：挑出「视频支持、但当前拿不到」的高画质。
  * 没有 `acceptQuality` 时退化成按名字判断（照旧页面）。
  */
-function lockedQualities(streams: Streams | null | undefined): { q: number; name: string }[] {
+function lockedQualities(streams: VideoStreams | null | undefined): { q: number; name: string }[] {
   const videos = streams?.video ?? []
   const qs = streams?.acceptQuality ?? []
   const ds = streams?.acceptDescription ?? []
@@ -326,9 +236,9 @@ interface Item {
   active: boolean
 }
 
-function itemList(parsed: Parsed | null): { pages: Item[]; season: Item[] } {
+function itemList(parsed: VideoParse | null): { pages: Item[]; season: Item[] } {
   if (!parsed) return { pages: [], season: [] }
-  const info = parsed.info ?? {}
+  const info: Partial<VideoInfo> = parsed.info ?? {}
   if (parsed.kind === 'bangumi') {
     return {
       pages: [],
@@ -392,7 +302,7 @@ export function Video({ state, onNavigate, onToast }: PageProps) {
   const [url, setUrl] = useState(() => loadSettings().lastUrl)
 
   const [parsing, setParsing] = useState(false)
-  const [parsed, setParsed] = useState<Parsed | null>(null)
+  const [parsed, setParsed] = useState<VideoParse | null>(null)
   const [parseErr, setParseErr] = useState<string | null>(null)
   const [coverErr, setCoverErr] = useState(false)
 
@@ -455,7 +365,7 @@ export function Video({ state, onNavigate, onToast }: PageProps) {
 
   const isBili = parsed?.source !== 'ytdlp'
   const isBangumi = parsed?.kind === 'bangumi'
-  const info = parsed?.info ?? {}
+  const info: Partial<VideoInfo> = parsed?.info ?? {}
   const streams = parsed?.streams ?? null
   /** 整段流（durl）只能整段下载：仅音频模式在它下面不可用 */
   const durl = !!isBili && streams?.mode === 'durl'
@@ -476,7 +386,12 @@ export function Video({ state, onNavigate, onToast }: PageProps) {
   const selectedHere = list.filter((it) => selection.has(it.key)).length
 
   const ytFormats = (info.formats ?? []).filter((f) => f.isVideo)
-  const cover = info.cover || parsed?.currentPage?.cover || info.thumbnail
+  /* ⚠️ 字段不符（已核实，留原样）：currentPage 就是后端 pages[] 里的一项，而 pages[] 的每个元素
+     只有 cid / page / title / durationSec / width / height（bili.rs:394-419），冻结夹具
+     （tests/contract/fixtures/video-parse-bili.json）里的 currentPage 同样没有 cover。
+     所以这一截回退实际恒为 undefined —— 不崩，但永远不生效。没有删它、也没改运行逻辑，
+     只加了个窄断言让它编译，怎么处理交给知道契约那边的人。 */
+  const cover = info.cover || (parsed?.currentPage as { cover?: string } | undefined)?.cover || info.thumbnail
 
   const runningItem = queue.find((q) => q.status === 'running')
   const doneCount = queue.filter((q) => q.status === 'done').length
@@ -500,10 +415,10 @@ export function Video({ state, onNavigate, onToast }: PageProps) {
       /* Cookie 一般走 config（后端在 body 里没给 cookie 时读 config 里那份）。
          config 回显的是脱敏占位「已设置」，那个值不能当 cookie 发回去 —— 只有拿到真实值才带。 */
       const ck = String(state?.config?.bilibiliCookie ?? '')
-      const data = (await api.parseVideo({
+      const data = await api.parseVideo({
         url: target,
         cookie: ck && ck !== MASKED ? ck : undefined,
-      })) as unknown as Parsed
+      })
       setParsed(data)
       setSelection(new Set())
       setTab('pages')
