@@ -150,7 +150,7 @@ docs/                  THIRD-PARTY-NOTICES.md
 | `-NoCopy` | 编完**不**把 exe 复制到程序根目录（CI 用；本地别加，加了双击启动器跑的还是旧的） |
 | 工具链 | Rust 在 `H:\DevTools\cargo`、MSVC 在 `H:\VSBuildTools`（build.ps1 会加载 vcvars） |
 | | **前端还要 Node + npm**（见下）—— 这是新前端引入的**构建期**依赖 |
-| 打包 | CI 在 `.github/workflows/build-msi.yml`（打 tag `v*` 自动出 MSI 并传 Release） |
+| 打包 | CI 在 `.github/workflows/build-msi.yml`（打**版本 tag** `v1.2.0` 自动出 MSI 并传 Release）。⚠️ 规则是 `v[0-9]*` —— 附件 Release 那个 `assets-v1` 故意不开头，免得建附件就触发一次构建 |
 | 跨平台 | `-Bundle` 只在 Windows 可用（脚本会主动报错），macOS / Android 要另写壳，见第九节 |
 
 ### 仓库只放源码，两大块大件编译前补齐
@@ -177,6 +177,23 @@ powershell -ExecutionPolicy Bypass -File app\desktop\fetch-tools.ps1 -Local 'D:\
 **换 tag 或换托管时改这两处**；想临时换地址用 `$env:VSYNTH_TOOLS_URL` / `$env:VSYNTH_JIZURA_URL`。
 `fetch-tools.ps1` 拿不到存档时会退到三个上游官方地址现下（gyan.dev / yt-dlp release /
 LibreSVIP release）—— 慢，但不用人去别处找。
+
+**这两个附件要仓库主人亲手传一次**（fork 的人不用传，直接用上游的）：
+
+```
+powershell -ExecutionPolicy Bypass -File tools\zip-assets.ps1     # ① 打出资料归档\tools.zip、jizura.zip
+# ② 在网页上建一个 tag 为 assets-v1 的 Release（Releases → Draft a new release → Publish）
+$env:GITHUB_TOKEN = '<只给这一个仓库 Contents 写权限的 token>'
+powershell -ExecutionPolicy Bypass -File tools\upload-assets.ps1  # ③ 传到那个 Release（只传，不建 Release）
+Remove-Item Env:\GITHUB_TOKEN
+```
+
+`upload-assets.ps1` 会先查远端拿 `owner/repo`、再查那个 tag 的 Release，然后流式上传
+（**不用 `Invoke-WebRequest -InFile`**，PS 5.1 传二进制会坏），已存在的同名附件默认跳过、
+`-Force` 才先删再传。token 只走环境变量，**不要写进命令行**（会留在 PSReadLine 历史里）。
+⚠️ **附件那个 Release 的 tag 别用 `v` 开头**：工作流是 `on.push.tags: ['v[0-9]*']`，
+用 `v…` 建它会顺手触发一次没用的构建 —— 现有默认值 `assets-v1` 正是为避开它。
+传完再打版本 tag（`git tag v1.2.0 && git push origin v1.2.0`）就会自动出 MSI。
 
 > ⚠️ 六条实测教训，别再踩：
 > ① **判「齐不齐」必须核对解压后的具体文件**，不能只看目录在不在 —— 半途失败的解压

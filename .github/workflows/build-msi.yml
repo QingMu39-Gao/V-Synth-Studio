@@ -40,14 +40,17 @@ on:
         type: boolean
         default: false
   push:
-    tags: ['v*']
+    # ⚠️ 必须带数字：附件那个 Release 的 tag 是 `assets-v1`，宽泛的 `v*` 会让
+    # 「建附件 Release」这个动作顺手触发一次没用的构建。版本 tag 记得写成 `v1.2.0`。
+    tags: ['v[0-9]*']
 
 permissions:
   contents: write          # tag 触发时要把 MSI 传上 Release，需要写权限
 
 env:
-  # 想换成别的托管（自建、国内镜像）时改这两行，并同步改 app\desktop\fetch-tools.ps1
-  # 里对应那两行的默认值 —— 两处都指同一个附件，别只改一边。
+  # 附件所在 Release 的 tag。换 tag 时改这一行，并同步改 app\desktop\fetch-tools.ps1
+  # 里的 $assetsTag —— 两处都指同一批附件，别只改一边。
+  # ⚠️ 别改成 `v` 开头的（会和版本 tag 撞上，见上面 on.push.tags 的注释）。
   ASSETS_TAG: assets-v1
 
 jobs:

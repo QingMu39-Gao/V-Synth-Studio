@@ -50,8 +50,8 @@ if (-not $Zip) { $Zip = Join-Path $root 'data\.cache' }
 
 # ── 两个存档的位置 ────────────────────────────────────────────────────────────
 #
-# 默认指向本仓库 Release 上的两个附件（tag `assets-v1`）。托管地址**自动从 git 远端推**，
-# 换仓库 / 换托管只改下面这两行 URL（或直接设环境变量）。
+# 默认指向本仓库 Release 上的两个附件（tag 见下面的 $assetsTag）。托管地址**自动从 git 远端推**，
+# 换仓库 / 换托管不用改文件；换 tag 只改 $assetsTag（工作流里那个 ASSETS_TAG 要同步）。
 # 想一次性覆盖（比如临时挂到国内镜像）不必改文件，设环境变量即可：
 #     $env:VSYNTH_TOOLS_URL  /  $env:VSYNTH_JIZURA_URL
 #
@@ -61,7 +61,10 @@ if (-not $Zip) { $Zip = Join-Path $root 'data\.cache' }
 # （所以本机不受影响）。jizura.zip 没有上游兜底，没传就一定失败。
 # 仓库地址取自 `git remote get-url origin`（HTTPS 与 SSH 两种写法都认）；
 # 没有远端时用下面这个备选值，**那时你要把它改成实际地址**。
-$repo = 'QingMu39/V-Synth-Studio'
+$repo      = 'QingMu39/V-Synth-Studio'
+# 附件所在的 Release tag。⚠️ **不能用 `v` 开头的 tag**：工作流是 `on.push.tags: ['v[0-9]*']`，
+# 用 `v…` 建这个附件的 Release 会顺手触发一次没用的 CI 构建（现在叫 assets-v1 就是为避开它）。
+$assetsTag = 'assets-v1'
 do {
     # ⚠️ 必须走 `cmd /c … 2>nul`，不能写 `git … 2>$null`：PowerShell 5.1 里对**原生命令**
     # 的 `2>$null` 不生效，git 的 "fatal: not a git repository" 会变成一条
@@ -79,8 +82,8 @@ do {
     $p = @($u -split '/' | Where-Object { $_ })
     if ($p.Count -ge 2) { $repo = ($p[-2..-1] -join '/') }
 } while ($false)
-$UrlTools  = if ($env:VSYNTH_TOOLS_URL)  { $env:VSYNTH_TOOLS_URL }  else { "https://github.com/$repo/releases/download/assets-v1/tools.zip" }
-$UrlJizura = if ($env:VSYNTH_JIZURA_URL) { $env:VSYNTH_JIZURA_URL } else { "https://github.com/$repo/releases/download/assets-v1/jizura.zip" }
+$UrlTools  = if ($env:VSYNTH_TOOLS_URL)  { $env:VSYNTH_TOOLS_URL }  else { "https://github.com/$repo/releases/download/$assetsTag/tools.zip" }
+$UrlJizura = if ($env:VSYNTH_JIZURA_URL) { $env:VSYNTH_JIZURA_URL } else { "https://github.com/$repo/releases/download/$assetsTag/jizura.zip" }
 
 # ── 上游兜底（只在存档拿不到时用；慢，但至少不用人去别处找）──────────────────
 $upstream = @{
