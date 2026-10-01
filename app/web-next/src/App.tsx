@@ -159,7 +159,9 @@ export default function App() {
         不开的话两种材质的差别只剩模糊半径，名不副实。
         选「毛玻璃」时是纯 CSS，零额外开销。
       */
-      enableSvgAuto={level === 3}
+      /* 折射只在液态档要（3、4 级）—— 按材质判，别再写死某一个等级号：
+         写 `level === 3` 时 4 级反而没有位移贴图（踩过）。 */
+      enableSvgAuto={material === 'liquid'}
     >
       <ToneScope>
         <div className="app">

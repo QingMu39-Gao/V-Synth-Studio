@@ -43,7 +43,7 @@ const BASE = `http://127.0.0.1:${PORT}`
 /** 第 6 个参数：落在哪个视图（dashboard / settings / …），用来截图核对具体页面 */
 const PAGE = process.argv[6] ?? ''
 /** 第 4 个参数是材质名（老叫法），映射到**玻璃等级**：off→1、frosted→2、liquid→3 */
-const LEVEL = MATERIAL === 'liquid' ? '3' : MATERIAL === 'off' || MATERIAL === 'none' ? '1' : '2'
+const LEVEL = MATERIAL === 'liquid' ? '4' : MATERIAL === 'half' ? '3' : MATERIAL === 'off' || MATERIAL === 'none' ? '1' : '2'
 /** 第 7 个参数：额外写进 localStorage 的键值，k=v,k=v。用来验「开关关掉」那一档 */
 const LS = (process.argv[7] ?? '')
   .split(',')
@@ -186,7 +186,7 @@ const PROBE = String.raw`(async () => {
         clear: document.querySelectorAll('[data-material="clear"]').length,
         materialViews: document.querySelectorAll('.lg-material-view').length,
       }
-      await poke(2)
+      await poke(before.value)
       return { found: true, ...before, top, bottom, restored: localStorage.getItem('qingmu.glassLevel') }
     })(),    /* 回读 localStorage：验「开关有没有写进去 / 页面有没有读到」 */
     ls: {

@@ -662,11 +662,11 @@ document.querySelectorAll('.app-nav .lg-selection-lens').length
 3. **栏本身不画底。** 库的 `GlassToolbar` 注释：「工具栏本身不携带背景 —— 它是一行分组，
    玻璃是每一组」。一整条大玻璃 + 一堆手写平控件 = 屏幕上看不出材质。
    平栏要配 `ScrollEdge`（不给 `targetRef` 即盯页面滚动），否则内容会从文字下面穿过去。
-4. **玻璃是设置里的 1~3 级滑块**（库的 `GlassSlider`，键 `qingmu.glassLevel`）：
-   1 级 = 库的 `opaque` 策略 + 面板退回 `MaterialView`（= `backup-pre-global-glass` 那一版）；
-   2 级 = 毛玻璃；3 级 = 液态玻璃（折射）。**材质 / 透明度 / 全局玻璃三件事全由这一档派生**
-   （`lib/useGlass.ts` 的 `level*()` 三个函数），`Panel.tsx` 只看 `level > 1`。
-   背景参数不随等级变（两档共用一套）。
+4. **玻璃是设置里的 1~4 级滑块**（库的 `GlassSlider`，键 `qingmu.glassLevel`）：
+   1 级不透明、2 级毛玻璃（这两级内容面板用轻量材质）、**3 级液态 = 只有栏/侧栏/控件折射**
+   （= `backup-pre-global-glass` 那一版，用户报过「一半液态玻璃的效果没了」，就是这档）、
+   4 级连内容面板也折射。材质 / 透明度 / 面板要不要玻璃三件事全由这一档派生
+   （`lib/useGlass.ts` 的 `level*()`），`Panel.tsx` 只看 `level >= 4`。
 
 ---
 

@@ -133,7 +133,7 @@ function Appearance({
 
   /** 滑块给的是 number，收进 1~3（拖动/键盘理论上都给不出界外值，防御一下） */
   const clampLevel = (v: number): GlassLevel =>
-    Math.min(3, Math.max(1, Math.round(v))) as GlassLevel
+    Math.min(GLASS_LEVELS.length, Math.max(1, Math.round(v))) as GlassLevel
   const THEMES: { id: ThemeMode; label: string; desc: string }[] = [
     { id: 'system', label: '跟随系统', desc: '系统切换配色时自动跟着换' },
     { id: 'light', label: '明亮', desc: '浅色底、细描边' },
@@ -151,20 +151,20 @@ function Appearance({
       <Panel>
         <PanelHead
           title="玻璃等级"
-          desc="拖动滑块调整。级别越高越「玻璃」，开销也越大 —— 1 级最省、对比最高，3 级折射最明显"
+          desc="拖动滑块调整。级别越高越「玻璃」，开销也越大 —— 1 级最省、对比最高，4 级折射最全"
         />
         <div className="slider-row">
           <GlassSlider
             aria-label="玻璃等级"
             min={1}
-            max={3}
+            max={GLASS_LEVELS.length}
             step={1}
             marks
             value={level}
             onValueChange={(v) => setLevel(clampLevel(v))}
             formatValue={(v) => `${v} 级：${GLASS_LEVELS[v - 1]?.label ?? ''}`}
             minLabel="1"
-            maxLabel="3"
+            maxLabel={String(GLASS_LEVELS.length)}
           />
           <div className="slider-legend">
             {GLASS_LEVELS.map((l) => (
@@ -184,8 +184,9 @@ function Appearance({
           </div>
         </div>
         <p className="hint">
-          1 级会把玻璃换成不透明底色（内容面板也退回轻量材质）；2 级只模糊提色；
-          3 级开折射，画面里每个玻璃面都会多一层 SVG 位移贴图。
+          1 级把玻璃换成不透明底色；2 级只模糊提色、3 级开折射 —— 这两级**内容面板都是轻量材质**；
+          4 级连内容面板也变成玻璃，画面里每个玻璃面都会多一层 SVG 位移贴图（开销最大）。
+          等级只影响材质，背景图参数不变。
           系统里开了「减少透明度」时，模糊会自动失效 —— 那是库的无障碍策略，不受这里影响。
         </p>
       </Panel>
