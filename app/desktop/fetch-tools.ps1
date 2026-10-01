@@ -157,9 +157,29 @@ if ($Only -in 'all', 'tools') {
         if ($arch) {
             $ex = Join-Path $tmp 'tools'
             Expand-Archive-Clean $arch $ex
-            # zip 里就是 ffmpeg\ 、yt-dlp.exe 、libresvip\ 三项，整体覆盖过去
+            # 这一层要**合并**进 tools\，不能整目录替换。
+            #
+            # ⚠️ 为什么不能直接 Move-Into：它先 Remove-Item 目标再搬。tools\ 里同时
+            #    住着入库的源脚本（zip-assets.ps1 / fetch-jizura-fonts.ps1），而
+            #    zip-assets.ps1 **不在存档里**（它就是打存档的那个）—— 整目录替换会
+            #    把它删掉。实测踩过：跑完干净房间验证，git status 多一条
+            #    ` D tools/zip-assets.ps1`。
+            #    也不能只靠 Move-Item -Force 硬搬：目标若是**目录**它会把源目录塞进去，
+            #    变成 tools\ffmpeg\ffmpeg\。所以规则是：
+            #      · 目标是要被换成目录的**文件** → Move-Item -Force（原地覆盖，安全）
+            #      · 目标是要被换成文件/目录的**目录** → 先删掉再搬（目录不能原地覆盖）
+            #      · 目标不存在 → 直接搬
+            #    存档里没有的项（zip-assets.ps1）从头到尾没人碰它。
             foreach ($item in Get-ChildItem $ex) {
-                Move-Into $item.FullName (Join-Path $root "tools\$($item.Name)")
+                $dst = Join-Path $root "tools\$($item.Name)"
+                if ((Test-Path $dst -PathType Container) -and $item.PSIsContainer) {
+                    Remove-Item $dst -Recurse -Force
+                } elseif ((Test-Path $dst) -and -not $item.PSIsContainer) {
+                    Remove-Item $dst -Recurse -Force      # 目标是目录、来的是文件
+                }
+                $parent = Split-Path -Parent $dst
+                if (-not (Test-Path $parent)) { New-Item -ItemType Directory -Path $parent -Force | Out-Null }
+                Move-Item $item.FullName $dst -Force
             }
             Remove-Item $ex -Recurse -Force -ErrorAction SilentlyContinue
         } else {

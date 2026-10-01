@@ -7,18 +7,26 @@
 #
 # fetch-tools.ps1 是本仓库**唯一**「源码之外的东西怎么到位」的机制，而它平时在开发机上是
 # **空转**的（文件都在 → 直接跳过），所以它的解压/落位/校验那半段永远没被执行过。
-# 2026-10-05 第一次真跑就抓出两个必然踩中的 bug：
+# 2026-10-02 第一次真跑就抓出两个必然踩中的 bug：
 #
 #   ① Get-Archive 里 `Say "  用本机存档 …"` 用的是 Write-Output，那句提示混进了返回值，
 #      $arch 变成「提示 + 路径」两行拼起来的垃圾 → Expand-Archive 报「路径不存在」。
 #   ② Move-Item 不建中间目录：往 app\web\vendor\jizura 搬而 vendor\ 不存在时报
 #      `Could not find a part of the path.`，而且**目标没到位**。
 #
-# 两个都是「肉眼审脚本看不出来、一跑就炸」的类型。这个脚本就是那个「一跑」：
-# 把两块大件**挪到一边**，从不联网的本地存档重新解一遍，再逐文件比对。
+# 第三次真跑（同一天，收尾那轮）又抓出第三个：
 #
-# ⚠️ 它会真的移动/删除/重建 `tools\` 与 `app\web\vendor\jizura\`。
-#    中途失败时会把东西还原（原目录先改名成 .verify-hold-*，成功后才删）。
+#   ③ fetch-tools.ps1 对存档里的每一项调 Move-Into（先 Remove-Item 目标再搬），
+#      而 tools\ 里住着**入库的源脚本**；zip-assets.ps1 不在存档里（它就是打存档的
+#      那个），于是跑完验证 git status 多一条 ` D tools/zip-assets.ps1`。
+#      已改成「只清同名项」；下面的 Get-TrackedToolsScripts 就是这条的回归守卫。
+#
+# 三个都是「肉眼审脚本看不出来、一跑就炸」的类型。这个脚本就是那个「一跑」：
+# 把两块大件**挪到一边**（脚本留下），从不联网的本地存档重新解一遍，再逐文件比对。
+#
+# ⚠️ 它会真的移动/删除/重建 `tools\` 里的大二进制与 `app\web\vendor\jizura\`
+#    （`tools\*.ps1` 是入库的源码，不挪、也不许被补齐过程删掉）。
+#    中途失败时会把东西留在 `_verify-hold-*`（成功才删），还原办法见末尾提示。
 #    仍然建议在**已经提交过、且有备份**的工作区上跑（H:\工作站-backup-* 就是为此存在的）。
 
 param(
@@ -48,6 +56,24 @@ function Info([string]$m) { Write-Host "  $m" -ForegroundColor DarkGray }
 function Count-Woff2([string]$dir) {
     if (-not (Test-Path $dir)) { return 0 }
     (Get-ChildItem $dir -File -Filter '*.woff2' -ErrorAction SilentlyContinue | Measure-Object).Count
+}
+
+# ── 回归守卫：tools\ 里住着**源脚本**，补齐时不许把它们弄丢 ──────────────────
+#
+# tools\ 整目录被 .gitignore 排除（288MB 二进制），但里面 *.ps1 是入库的源码：
+# 打存档的 zip-assets.ps1、重新生成字体的 fetch-jizura-fonts.ps1。
+# 2026-10-02 实测踩过：fetch-tools.ps1 原来对存档里的每一项调 Move-Into（它先
+# Remove-Item 目标再搬），于是跑完一次干净房间验证，多出一条 ` D tools/zip-assets.ps1`
+# —— zip-assets.ps1 **不在存档里**（它就是打存档的那个），所以整目录替换必删它。
+function Get-TrackedToolsScripts([string]$Root) {
+    $names = & git -C $Root ls-files -- 'tools/*.ps1' 2>$null
+    if (-not $names) { return $null }              # 不在 git 仓库里就别管
+    $h = @{}
+    foreach ($n in $names) {
+        $full = Join-Path $Root ($n -replace '/', '\')
+        if (Test-Path $full) { $h[$n] = (Get-FileHash $full -Algorithm SHA256).Hash }
+    }
+    return $h
 }
 
 # 存档里的每个文件都要在磁盘上找到同名同大小的 —— 这是「补齐」是否真的补齐的判据。
@@ -90,17 +116,35 @@ $t = Compare-Archive (Join-Path $ArchiveDir 'tools.zip') $tools ''
 if ($t.Missing -or $t.SizeDiff) { Ok "tools.zip 与当前 tools\ 不符（缺 $($t.Missing) / 差 $($t.SizeDiff)），本次会以存档为准重建" }
 else { Ok "tools.zip 对得上当前 tools\（$($t.Total) 个文件）" }
 
+$scriptsBefore = Get-TrackedToolsScripts $root
+if ($null -eq $scriptsBefore) { Info "（不在 git 仓库里，跳过「源脚本没被删」的守卫）" }
+else { Ok "tools\ 下的入库脚本 $($scriptsBefore.Count) 个，已记下哈希（补齐后要一模一样）" }
+
 # ── 1. 挪走两大块（模拟「刚 clone 下来」）───────────────────────────────────
+#
+# ⚠️ 只挪**大二进制**，tools\*.ps1 要留在原地 —— 真实的干净 clone 就是这样：
+#    脚本入库（git 里有），二进制靠 fetch-tools.ps1 补。
+#    早先这里把整个 tools\ 挪走，于是「补齐会不会删掉入库的源脚本」这件事**根本测不到**
+#    （脚本跟着一起被挪走了），白跑三轮才发现。
 Write-Host ""
-Write-Host "[1/5] 把 tools\ 与 jizura\ 挪到临时区（模拟干净 clone）"
+Write-Host "[1/5] 把 tools\ 里的大件与 jizura\ 挪到临时区（模拟干净 clone）"
 New-Item -ItemType Directory -Path $hold -Force | Out-Null
-if (Test-Path $tools)  { Move-Item $tools  (Join-Path $hold 'tools') -Force }
+$moved = 0
+if (Test-Path $tools) {
+    New-Item -ItemType Directory -Path (Join-Path $hold 'tools') -Force | Out-Null
+    foreach ($it in (Get-ChildItem $tools -Force | Where-Object { $_.Extension -ne '.ps1' })) {
+        Move-Item $it.FullName (Join-Path $hold "tools\$($it.Name)") -Force
+        $moved++
+    }
+    if (-not (Get-ChildItem $tools -Force)) { Remove-Item $tools -Force }   # 空了就删，让下面从零建
+}
 if (Test-Path $jizura) {
     New-Item -ItemType Directory -Path (Join-Path $hold 'vendor') -Force | Out-Null
     Move-Item $jizura (Join-Path $hold 'vendor\jizura') -Force
 }
-if (Test-Path $tools)  { Bad "tools\ 没能挪走（下一步会变成覆盖而不是重建）" }  else { Ok "tools\ 已挪走" }
-if (Test-Path $jizura) { Bad "jizura\ 没能挪走" } else { Ok "jizura\ 已挪走（app\web\vendor\ 现在是空的）" }
+Ok "tools\ 挪走 $moved 项大件（入库的脚本留在原地）、jizura\ 已挪走"
+if (Test-Path (Join-Path $tools 'ffmpeg')) { Bad "tools\ffmpeg 没能挪走（下一步会变成覆盖而不是重建）" }
+if (Test-Path $jizura) { Bad "jizura\ 没能挪走" }
 
 try {
     # ── 2. 跑补齐（-Local：只用本地存档，不联网，CI 与本机都能跑）──────────
@@ -137,6 +181,16 @@ try {
 
     $n = Count-Woff2 (Join-Path $jizura 'fonts')
     if ($n -ge 2300) { Ok "jizura 字体 $n 个 woff2" } else { Bad "jizura 字体只有 $n 个（<2300，PV 页会缺字）" }
+
+    # tools\ 里的源脚本必须一个不少、一字节不改（见 Get-TrackedToolsScripts 的注释）
+    if ($null -ne $scriptsBefore) {
+        $scriptsAfter = Get-TrackedToolsScripts $root
+        $lost = @($scriptsBefore.Keys | Where-Object { -not $scriptsAfter.ContainsKey($_) })
+        $mod  = @($scriptsBefore.Keys | Where-Object { $scriptsAfter.ContainsKey($_) -and $scriptsAfter[$_] -ne $scriptsBefore[$_] })
+        if ($lost) { Bad "补齐把入库的源脚本删掉了：$($lost -join ', ')（fetch-tools.ps1 又在整目录替换 tools\？）" }
+        elseif ($mod) { Bad "入库的源脚本被改动了：$($mod -join ', ')" }
+        else { Ok "tools\ 下的入库脚本一个没少、一字节没改（$($scriptsBefore.Count) 个）" }
+    }
 
     # ── 4. 幂等：再跑一次应该什么都不做 ────────────────────────────────────
     Write-Host ""
@@ -181,7 +235,10 @@ try {
         Remove-Item $hold -Recurse -Force -ErrorAction SilentlyContinue
         Info "临时区已清理"
     } else {
-        Write-Host "  ⚠️ 有失败项，临时区保留着（还原办法：把里面的 tools 与 vendor\jizura 移回原位）：$hold" -ForegroundColor Yellow
+        Write-Host "  ⚠️ 有失败项，临时区保留着：$hold" -ForegroundColor Yellow
+        Write-Host '     还原办法（⚠️ 别用 Move-Item 整个目录搬 —— 目标已存在时它会**嵌套**成 tools\tools\）：' -ForegroundColor Yellow
+        Write-Host "       Get-ChildItem '$hold\tools' -Force | ForEach-Object { Move-Item `$_.FullName '$root\tools' -Force }" -ForegroundColor Yellow
+        Write-Host "       再把 '$hold\vendor\jizura' 移回 '$root\app\web\vendor\jizura'" -ForegroundColor Yellow
     }
 }
 
