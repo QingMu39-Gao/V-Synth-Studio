@@ -1080,7 +1080,7 @@ git log --all -- app/data/resources.json
 | 前端脚手架 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4），产物落 `app/web/next/`，访问 `/next/` |
 | 主题 + 透明度 | ⚠️ **原表写的 `lib/useTheme.ts` / `lib/usePerfMode.ts` 已不存在**（换库时删了）。现在主题与「降低透明度」是 `App.tsx` 里喂给库 `GlassProvider` 的两个 prop；`perfMode` 字段后端有、前端**还没接** |
 | **玻璃材质修好**（2026-10-01） | 默认改成毛玻璃、侧栏改 `size="large"`、面板降到 `thin`、顶栏（后改为绝对定位）、侧栏高亮块改用库的透镜、补回 `corner-shape: squircle`。见 `docs/GLASS-HANDOFF.md` 第二节 |
-| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页，重新检测在总览页「环境就绪度」里；顶栏同时**移出文档流**（`position: absolute`），内容列整体上移 76px，只剩侧栏让开那行品牌 |
+| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页，重新检测在总览页「环境就绪度」里；顶栏同时**移出文档流**（`position: absolute`），内容列整体上移 76px，只剩侧栏让开那行品牌。⚠️ 顶栏的 `inset-inline` 要写 `var(--lg-margin)`：绝对定位的包含块是**内边距盒**，写 0 会贴到内边距外沿，品牌比其它所有东西偏左 20px |
 | **`glass-probe.mjs`** | 玻璃专项探针：计算值 + 截图 + 高亮块逐帧/首帧采样（`tests/manual/glass-probe.mjs`） |
 | **`app/web-next` 入库** | 首次提交 `83320cd` —— 在此之前它一个 commit 都没有 |
 

@@ -1,4 +1,4 @@
-/**
+﻿/**
  * 新前端（/next/）玻璃材质的实测探针
  *
  *   node tests/manual/glass-probe.mjs [port] [theme] [material]
@@ -182,6 +182,19 @@ const PROBE = String.raw`(async () => {
       sidebarPosition: scrollEl ? getComputedStyle(scrollEl).position : null,
       navCount: document.querySelectorAll('.nav-row, .lg-tab-link').length,
       docHeight: document.documentElement.scrollHeight, viewport: innerHeight,
+      /* 左边缘对齐：品牌图标 / 品牌字 / 页面标题 / 侧栏 / 面板 各自从哪起 */
+      align: (() => {
+        const l = (sel) => {
+          const el = document.querySelector(sel)
+          if (!el) return null
+          const r = el.getBoundingClientRect()
+          return { x: px(r.x), y: px(r.y) }
+        }
+        return {
+          brandMark: l('.brand-mark'), brandName: l('.brand-name'), pageTitle: l('.page-title'),
+          sidebar: l('.app-sidebar'), panel: l('.panel'), navRow: l('.nav-row'), navGroup: l('.nav-group'),
+        }
+      })(),
     },
     /* 圆角：普通圆弧还是苹果式连续曲率 —— 光看 CSS 声明看不出来，要看计算值 */
     round: {

@@ -157,7 +157,14 @@ body::before {
    */
   position: absolute;
   inset-block-start: var(--lg-space-4);
-  inset-inline: 0;
+  /**
+   * ⚠️ **必须让开 `.app` 的横向内边距。**
+   *
+   * 绝对定位的包含块是祖先的**内边距盒**，`inset-inline: 0` 贴的是内边距的**外沿**，
+   * 而内容列从内边距的**内沿**起 —— 两者差一个 `--lg-margin`（实测 12.5 vs 32.5，
+   * 品牌图标比其它所有东西偏左 20px）。写 0 就是「图标和标题往左偏移」。
+   */
+  inset-inline: var(--lg-margin);
   z-index: 10;
 }
 /**
