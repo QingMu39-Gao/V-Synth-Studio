@@ -619,3 +619,72 @@ pub fn summarize(project: &Value) -> Value {
         "lyrics": lyrics,
     })
 }
+
+/* ══════════════════════════════════ 单元测试 ══════════════════════════════════ */
+
+#[cfg(test)]
+mod prompt_tests {
+    use super::*;
+    use serde_json::json;
+
+    /// 括号里的默认值才是**一定合法**的答案。
+    /// ⚠️ 这里特意包含那个把候选切碎的分数题 —— 曾经因为「在方括号里挑第一个」而 Aborted。
+    #[test]
+    fn takes_default_from_parentheses() {
+        assert_eq!(default_from_prompt("1. 导入音量包络 [y/n] (y):"), Some("y".into()));
+        assert_eq!(
+            default_from_prompt("1. 缩放系数 [1/1/2/1/1/2/5/3/3/2/6/5/4/5/3/5/3/4] (1/1):"),
+            Some("1/1".into())
+        );
+        assert_eq!(default_from_prompt("4. 默认的CompID (BETDB8W6KWZPYEB9):"), Some("BETDB8W6KWZPYEB9".into()));
+        assert_eq!(default_from_prompt("没有括号的题："), None);
+    }
+
+    /// 有选项就用选项（bool → y/n），否则照抄默认值
+    #[test]
+    fn option_wins_over_default() {
+        let opts = json!({ "import.pitch": false, "export.vsqxVersion": "3" });
+        assert_eq!(answer_for("3. 导入音高曲线 [y/n] (y):", &opts), "n");
+        assert_eq!(answer_for("1. VSQX文件版本 [3/4] (4):", &opts), "3");
+        // 没给过的题 → 默认值
+        assert_eq!(answer_for("2. 美化XML [y/n] (y):", &opts), "y");
+        // 空 options → 全默认
+        assert_eq!(answer_for("3. 导入音高曲线 [y/n] (y):", &json!({})), "y");
+    }
+
+    /// 认题靠中文关键词，而提示是 GBK —— 这条测试同时证明 GBK 解码链路是通的
+    #[test]
+    fn matches_chinese_keywords_from_gbk_bytes() {
+        // "1. 导入音量包络 [y/n] (y):" 的 GBK 字节
+        let gbk = utf8_to_gbk("9. 换气音符处理方式 [ignore/keep/convert] (convert):");
+        let prompt = gbk_to_utf8(&gbk);
+        assert!(prompt.contains("换气音符"), "GBK 往返丢了字：{prompt}");
+        let opts = json!({ "import.breathMode": "keep" });
+        assert_eq!(answer_for(&prompt, &opts), "keep");
+    }
+
+    /// 给了中间件参数就自动开中间件（否则用户填了半音数还要自己去开开关）
+    #[test]
+    fn parameter_turns_middleware_on() {
+        let o = normalize_options(&json!({ "transpose.semitones": 3 }));
+        assert_eq!(o.get("middleware.transpose"), Some(&json!(true)));
+        // 0 不算「填过」，不该误开
+        let o2 = normalize_options(&json!({ "transpose.semitones": 0 }));
+        assert!(o2.get("middleware.transpose").is_none());
+        // 显式关掉时不要被参数打开
+        let o3 = normalize_options(&json!({ "transpose.semitones": 3, "middleware.transpose": false }));
+        assert_eq!(o3.get("middleware.transpose"), Some(&json!(false)));
+    }
+
+    /// 只在「安静下来且结尾是冒号」时才认为它在提问；已经答过的不重复答
+    #[test]
+    fn detects_pending_prompt() {
+        let raw = utf8_to_gbk("导入选项： \n1. 导入音量包络 [y/n] (y): ");
+        assert!(pending_prompt(&raw, 0).is_some());
+        // 整段都答过了 → 不再认为在等回答
+        assert!(pending_prompt(&raw, raw.len()).is_none());
+        // 不是冒号结尾（比如正在打日志）→ 不是提问
+        let log = utf8_to_gbk("正在写出文件…");
+        assert!(pending_prompt(&log, 0).is_none());
+    }
+}
