@@ -697,12 +697,12 @@ body::before {
   align-items: flex-start;
   gap: var(--lg-space-4);
 }
+/* 设置页的小节导航 —— **和主侧栏同一种东西**（一块玻璃 + 滑动高亮块）。
+   里面的 `.app-nav` / `.nav-row` / `.nav-lens` 直接复用主侧栏那套，
+   这里只管它在两栏布局里的位置和宽度。 */
 .settings-nav {
   width: 142px;
   flex: none;
-  display: flex;
-  flex-direction: column;
-  gap: 1px;
   position: sticky;
   top: var(--lg-space-4);
 }

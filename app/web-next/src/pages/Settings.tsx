@@ -1,11 +1,12 @@
-﻿import { useCallback, useEffect, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { AppState, HealthInfo } from '@/lib/types'
 import { Button } from '@/components/Button'
 import { Field, TextInput } from '@/components/Field'
-import { Chip, Panel, PanelHead, Stat } from '@/components/Panel'
+import { Chip, GlassPanel, Panel, PanelHead, Stat } from '@/components/Panel'
 import { GlassSlider } from '@ttqtt/liquid-glass-react'
 import { GLASS_LEVELS, useGlassLevel, type GlassLevel } from '@/lib/useGlass'
+import { useNavLens } from '@/lib/useNavLens'
 import type { ThemeMode } from '@/App'
 
 /**
@@ -49,6 +50,10 @@ export function Settings({
   onToast: (msg: string, tone?: string) => void
 }) {
   const [section, setSection] = useState<SectionId>('appearance')
+  /* 高亮块要量位置：和主侧栏同一套（见 lib/useNavLens.ts） */
+  const navRef = useRef<HTMLElement>(null)
+  const lensRef = useRef<HTMLSpanElement>(null)
+  useNavLens(navRef, lensRef, section)
   const [cfg, setCfg] = useState<Record<string, unknown>>({})
   const [health, setHealth] = useState<HealthInfo | null>(null)
 
@@ -82,19 +87,31 @@ export function Settings({
 
   return (
     <div className="settings">
-      <nav className="settings-nav" aria-label="设置分节">
-        {SECTIONS.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            className="nav-row"
-            aria-current={section === s.id ? 'page' : undefined}
-            onClick={() => setSection(s.id)}
-          >
-            <span className="nav-row-label">{s.label}</span>
-          </button>
-        ))}
-      </nav>
+      {/* 这一条小节导航和**主侧栏是同一种东西**：一块玻璃 + 一个滑过去的高亮块。
+          结构必须和 `App.tsx` 的主导航一致（`useNavLens` 靠这三个类名找目标）。 */}
+      <GlassPanel
+        className="settings-nav"
+        /* 参数**和主侧栏逐项对齐**（large 玻璃 / 26 圆角 / 12 内边距）——
+           `.nav-lens` 那个 14px 圆角就是按「26 − 12」算的同心情形，换数字就对不上了 */
+        size="large"
+        radius={26}
+        padding={12}
+      >
+        <nav className="app-nav" aria-label="设置分节" ref={navRef}>
+          <span className="lg-selection-lens nav-lens" ref={lensRef} aria-hidden="true" />
+          {SECTIONS.map((s) => (
+            <button
+              key={s.id}
+              type="button"
+              className="nav-row"
+              aria-current={section === s.id ? 'page' : undefined}
+              onClick={() => setSection(s.id)}
+            >
+              <span className="nav-row-label">{s.label}</span>
+            </button>
+          ))}
+        </nav>
+      </GlassPanel>
 
       <div className="stack-lg settings-body">
         {section === 'appearance' && (

@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
+﻿import { useCallback, useEffect, useRef, useState } from 'react'
 import { api } from '@/lib/api'
 import type { AppState } from '@/lib/types'
 import { Icon, type IconName } from '@/components/Icon'
@@ -11,6 +11,7 @@ import {
   useGlassPolicy,
 } from '@ttqtt/liquid-glass-react'
 import { levelMaterial, levelTransparency, useGlassLevel } from '@/lib/useGlass'
+import { useNavLens } from '@/lib/useNavLens'
 import { materialOptions } from '@/components/Glass'
 import { Dashboard } from '@/pages/Dashboard'
 import { Settings } from '@/pages/Settings'
@@ -299,62 +300,6 @@ export default function App() {
  *     rect 随滚动偏移；`offsetTop` 相对 offsetParent 恒定 ——
  *     前提是 nav 上有 `position: relative`（CSS 里 `.app-nav` 那条）。
  *  3. **行要 `position: relative; z-index: 1`**，否则被这块绝对定位的高亮盖住。
- */
-function useNavLens(
-  navRef: React.RefObject<HTMLElement | null>,
-  lensRef: React.RefObject<HTMLSpanElement | null>,
-  active: string,
-) {
-  const placed = useRef(false)
-
-  useLayoutEffect(() => {
-    const nav = navRef.current
-    const lens = lensRef.current
-    if (!nav || !lens) return
-    const place = () => {
-      const row = nav.querySelector<HTMLElement>('.nav-row[aria-current="page"]')
-      const first = !placed.current
-      if (first) lens.style.transition = 'none'
-      if (row && row.offsetWidth) {
-        lens.style.width = `${row.offsetWidth}px`
-        lens.style.height = `${row.offsetHeight}px`
-        lens.style.setProperty('--lg-slot-x', `${row.offsetLeft}px`)
-        lens.style.setProperty('--lg-slot-y', `${row.offsetTop}px`)
-        lens.style.setProperty('--lg-lens-shown', '1')
-        placed.current = true
-      } else {
-        lens.style.setProperty('--lg-lens-shown', '0')
-      }
-      // 强制这一帧就落位（趁过渡还关着），再把它放回去
-      if (first) {
-        void lens.offsetWidth
-        lens.style.transition = ''
-      }
-    }
-    place()
-    const observer = new ResizeObserver(place)
-    observer.observe(nav)
-    return () => observer.disconnect()
-  }, [navRef, lensRef, active])
-
-  /** 滑动时挤压一下。只改**一个**喂进 `transform` 的变量，没有第二条动画去抢 transform。 */
-  const last = useRef<string | null>(null)
-  useEffect(() => {
-    const nav = navRef.current
-    if (last.current === null) {
-      last.current = active
-      return
-    }
-    last.current = active
-    if (!nav) return
-    nav.dataset.moving = 'true'
-    const timer = setTimeout(() => delete nav.dataset.moving, 180)
-    return () => {
-      clearTimeout(timer)
-      delete nav.dataset.moving
-    }
-  }, [active, navRef])
-}
 
 /* ══════════════════════════════════════════════════════════════ 背景色调 ══ */
 

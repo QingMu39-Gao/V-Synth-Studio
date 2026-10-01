@@ -188,7 +188,20 @@ const PROBE = String.raw`(async () => {
       }
       await poke(before.value)
       return { found: true, ...before, top, bottom, restored: localStorage.getItem('qingmu.glassLevel') }
-    })(),    /* 回读 localStorage：验「开关有没有写进去 / 页面有没有读到」 */
+    })(),    /* 导航高亮块：主侧栏和设置页小节导航**各有一块**，两边都要落位准、都要能滑 */
+    navs: [...document.querySelectorAll('.app-nav')].map((nav) => {
+      const lens = nav.querySelector('.lg-selection-lens')
+      const row = nav.querySelector('.nav-row[aria-current="page"]')
+      const a = lens ? lens.getBoundingClientRect() : null
+      const b = row ? row.getBoundingClientRect() : null
+      return {
+        label: nav.getAttribute('aria-label'),
+        rows: nav.querySelectorAll('.nav-row').length,
+        lens: !!lens,
+        shown: lens ? getComputedStyle(lens).getPropertyValue('--lg-lens-shown').trim() : null,
+        align: a && b ? { dx: px(a.x - b.x), dy: px(a.y - b.y), dw: px(a.width - b.width), dh: px(a.height - b.height) } : null,
+      }
+    }),    /* 回读 localStorage：验「开关有没有写进去 / 页面有没有读到」 */
     ls: {
       theme: localStorage.getItem('qingmu.theme'),
       glass: localStorage.getItem('qingmu.glass'),

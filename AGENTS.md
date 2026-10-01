@@ -603,7 +603,7 @@ getComputedStyle(document.querySelector('.quick')).transition.replace(/\s+/g, ' 
 **改前的错**：每个导航项各带 `glass-chip` —— 于是 8 个选项**各自**被描边 + 底色框住，
 再加上 `.glass-sheen` 每次切换还有一道 720ms 斜光扫过。视觉上就是一堆小方块。
 
-**现在的结构**（`App.tsx` 的导航 + `index.css` 的 `.app-nav` 一组）：
+**现在的结构**（`App.tsx` 的导航 + `index.css` 的 `.app-nav` 一组；设置页同款）：
 
 ```
 GlassPanel.app-sidebar        ← **唯一**的框（一层玻璃 + 一条描边 + 一个圆角）
@@ -614,9 +614,10 @@ GlassPanel.app-sidebar        ← **唯一**的框（一层玻璃 + 一条描边
           └ button.nav-row × 8 ← 完全透明，自身零描边零底色
 ```
 
-⚠️ **这一节原先写的 `.nav-rail` / `.nav-thumb` / `.nav-thumb-track` / `data-nav-ready`
-在仓库里一个都不存在**（全 git 历史搜过，零命中）—— 那是新前端换库之前的手写玻璃时代，
-换库时连同手写玻璃一起被覆盖掉了，文档没跟着改。**现在用的是上一节说的库的透镜。**
+⚠️ 本节曾写的 `.nav-rail` / `.nav-thumb` 等类名在仓库里零命中（换库前的手写玻璃时代遗留）。
+
+⚠️ **设置页那条小节导航是同一套东西**（`lib/useNavLens.ts` + `.app-nav` / `.nav-row` /
+`.nav-lens`，外框参数与主侧栏逐项相同）—— 改主侧栏的样式会同时改到它。
 
 **「丝滑」是靠 transform，不是给每项加背景色**：量出选中项相对 nav 的 `offsetTop`，
 写进库的 `--lg-slot-y`，那块 span 自己 `translate` 过去 —— 合成层动画，不触发布局重排。
@@ -625,7 +626,7 @@ GlassPanel.app-sidebar        ← **唯一**的框（一层玻璃 + 一条描边
 
 1. **首帧不能滑。** 第一次量位置时先把 `transition` 关掉，量完 `void lens.offsetWidth`
    强制回流再恢复；否则打开界面会看到一个方块从左上角飞过来。
-   （`App.tsx` 的 `useNavLens` 就是这么写的，探针里 `boot.settled` 那条在验它。）
+   （`lib/useNavLens.ts` 就是这么写的，探针里 `boot.settled` 那条在验它。）
 2. **量位置用 `offsetTop`，不用 `getBoundingClientRect()`。** 侧栏是滚动的，
    滚动后 rect 会偏；`offsetTop` 相对 offsetParent 恒定。前提是 nav 上有 `position: relative`
    —— 而库的 `.lg-content` 本身就是 `position: relative`，所以 nav 必须是最近的那个。
