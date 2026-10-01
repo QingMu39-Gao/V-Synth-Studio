@@ -1,0 +1,220 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   工程转换页（`pages/Convert.tsx`）自己的样式。
+
+   规矩和其它页面一样（见 `docs/NEXT-UI.md` §3.3）：
+     - **一行玻璃都没有**：材质来自库，页面只管排布；
+     - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**（写死 = 亮色下瞎掉）；
+     - 控件是库的（`GlassButton` / `GlassSwitch` / `DirectoryInput`），这里不重造。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── 两栏：左（来源 + 目标格式）/ 右（输出 + 预检 + 执行）──────────────
+   目标格式一格一格的（40 种），宽度不够时窄栏会挤成一列字，所以给左右都留 minmax(0, …)
+   并让窄屏直接落成一栏。 */
+.convert-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  gap: var(--lg-space-4);
+  align-items: start;
+}
+@media (max-width: 1100px) {
+  .convert-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.convert-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+  min-width: 0;
+}
+
+/* ── 来源列表 ─────────────────────────────────────────────────────────
+   一行一个文件：图标 / 名字（超长省略）/ 扩展名 / 大小 / 两个图标按钮。
+   列表长了（整目录收集可能几十个）自己滚，不去撑高整页。 */
+.convert-sources {
+  display: flex;
+  flex-direction: column;
+  max-height: 264px;
+  overflow-y: auto;
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+}
+.convert-source {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  padding: var(--lg-space-2) var(--lg-space-3);
+  min-height: 46px;
+}
+.convert-source + .convert-source {
+  border-block-start: 1px solid var(--lg-separator);
+}
+.convert-source-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+}
+.convert-source-ext {
+  font-family: var(--lg-font-mono);
+  font-size: 11px;
+  color: var(--lg-label-secondary);
+}
+.convert-source-size {
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.convert-empty {
+  padding: var(--lg-space-6);
+  text-align: center;
+  font-size: 13px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 目标格式 ─────────────────────────────────────────────────────────
+   一个格式一个方块：名字 + 扩展名。**未就绪的置灰并直接把 `reason` 写在方块里**
+   （只放在 title 里等于没告诉用户为什么不能用），选中态用强调色描边。 */
+.convert-formats {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+}
+.convert-format-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.convert-format-grid {
+  display: grid;
+  gap: 6px;
+  grid-template-columns: repeat(auto-fill, minmax(min(158px, 100%), 1fr));
+}
+.convert-format {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  min-height: 54px;
+  padding: var(--lg-space-2) var(--lg-space-3);
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: pointer;
+  /* 玻璃面上的元素用填充，不画不透明的页面底（库的规矩：实色 = 在材质上凿洞） */
+  background: var(--lg-fill-quaternary);
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-s);
+  transition: border-color var(--lg-duration-layout) var(--lg-ease-out);
+}
+.convert-format:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--lg-accent) 40%, var(--lg-separator));
+}
+.convert-format[data-selected='true'] {
+  border-color: var(--lg-accent);
+  box-shadow: inset 0 0 0 1px var(--lg-accent);
+}
+.convert-format:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.convert-format-name {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.convert-format-meta {
+  font-family: var(--lg-font-mono);
+  font-size: 11px;
+  color: var(--lg-label-secondary);
+  word-break: break-word;
+}
+/* 未就绪的原因：这是**信息**不是装饰，用橙色点出来（同 `.tool-version` 的用法） */
+.convert-format-reason {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: var(--lg-orange);
+}
+
+/* ── 输出设置里的两个开关行 ──────────────────────────────────────────── */
+.convert-switch-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+}
+.convert-switch-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.convert-switch-label {
+  font-size: 13.5px;
+}
+.convert-switch-desc {
+  font-size: 12.5px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 预检：一个源文件一段 ─────────────────────────────────────────────
+   多个文件时按文件分段，段与段之间拉一条分隔线（批量预检的「逐文件」那层结构）。 */
+.convert-report {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+}
+.convert-report + .convert-report {
+  margin-block-start: var(--lg-space-3);
+  padding-block-start: var(--lg-space-3);
+  border-block-start: 1px solid var(--lg-separator);
+}
+.convert-report-head {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-2);
+  flex-wrap: wrap;
+}
+.convert-report-name {
+  max-width: 240px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.convert-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ── 执行 ─────────────────────────────────────────────────────────────
+   主动作一屏只有一个（库的规矩），所以「开始转换」是 primary、「预检」是普通玻璃。 */
+.convert-run {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+}
+.convert-note {
+  margin: 0;
+  text-align: center;
+}
+.convert-result {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  margin-block-start: var(--lg-space-4);
+  padding-block-start: var(--lg-space-4);
+  border-block-start: 1px solid var(--lg-separator);
+}
+
+/* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
+   必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
+@supports (corner-shape: squircle) {
+  :where(.convert-source, .convert-format) {
+    corner-shape: squircle;
+  }
+}

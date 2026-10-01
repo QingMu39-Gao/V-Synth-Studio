@@ -1,0 +1,254 @@
+/* ══════════════════════════════════════════════════════════════════════════
+   歌词页。
+
+   颜色一律用库的 `--lg-*` 令牌（**不写死颜色** —— 写死 = 亮色下瞎掉，见 index.css 顶部）。
+   尺寸用 `--lg-space-*` / `--lg-radius-*`。这里没有一行玻璃 —— 材质归库。
+
+   两栏在 1180px 以下并成一栏：这个页面左边四张卡、右边两张，
+   `.app-main` 在侧栏 228px 之外剩下的宽度不够 ÷2，硬撑会把预览挤成一条。
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.lyrics-cols {
+  --lg-line: 1.5; /* 歌词行的行高，原文与译文要对齐 */
+  display: grid;
+  gap: var(--lg-space-4);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  align-items: start;
+}
+.lyrics-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+  min-width: 0;
+}
+@media (max-width: 1180px) {
+  .lyrics-cols {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── 搜索结果：一行一首歌（名字 + 歌手·专辑 + 时长）─────────────── */
+.lyrics-results {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  max-height: 320px;
+  overflow-y: auto;
+  /* 与面板同心的圆角，别自己写数值 */
+  border-radius: var(--lg-radius-m);
+}
+.lyrics-result {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  width: 100%;
+  min-height: 46px;
+  padding: var(--lg-space-2) var(--lg-space-3);
+  border: 0;
+  border-radius: var(--lg-radius-s);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background 140ms ease-out;
+}
+.lyrics-result:hover {
+  /* 面板已经是玻璃：里面只加填充，不再叠一层玻璃（库的规矩，见 GLASS-HANDOFF §2.2） */
+  background: var(--lg-fill-quaternary);
+}
+.lyrics-result-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+/* 单行截断，长歌名不许把整行撑开 */
+.lyrics-name,
+.lyrics-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lyrics-name {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+.lyrics-sub {
+  font-size: 12.5px;
+  color: var(--lg-label-secondary);
+}
+
+/* ── 取到的歌：封面 + 歌名 + 来源那一行 ────────────────────────── */
+.lyrics-meta {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  min-width: 0;
+}
+.lyrics-meta-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.lyrics-cover {
+  width: 74px;
+  height: 74px;
+  flex: none;
+  border-radius: var(--lg-radius-s);
+  object-fit: cover;
+  background: var(--lg-fill-quaternary);
+}
+/* 来源那一行：本地文件会在这里写「（GBK）」—— 编码猜错时这是唯一的线索 */
+.lyrics-source {
+  font-size: 12px;
+  color: var(--lg-label-secondary);
+  overflow-wrap: anywhere;
+}
+.lyrics-id {
+  font-family: var(--lg-font-mono);
+}
+
+/* ── 歌词预览：时间戳 + 原文 + 译文 ────────────────────────────── */
+.lyrics-lines {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-2);
+  max-height: 54dvh;
+  overflow-y: auto;
+  padding-inline-end: var(--lg-space-2);
+}
+.lyrics-line {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: var(--lg-space-3);
+  align-items: baseline;
+}
+.lyrics-time {
+  font-family: var(--lg-font-mono);
+  font-size: 11.5px;
+  color: var(--lg-label-tertiary);
+  font-variant-numeric: tabular-nums;
+}
+.lyrics-orig {
+  font-size: 14px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+.lyrics-trans {
+  grid-column: 2;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+  overflow-wrap: anywhere;
+}
+/* 译文为空时不留一行空档 */
+.lyrics-trans:empty {
+  display: none;
+}
+
+/* ── 登录 ────────────────────────────────────────────────────── */
+/* 登录状态徽章：颜色来自令牌（旧前端的 .chip.ok 在新前端没有对应规则） */
+.lyrics-chip-ok {
+  color: var(--lg-accent);
+  border-color: color-mix(in srgb, var(--lg-accent) 35%, transparent);
+}
+/* 一条提示只改内容：失败留在页面上，别只弹个 toast 就没了（旧前端的做法） */
+.lyrics-login-msg {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--lg-label-secondary);
+  overflow-wrap: anywhere;
+}
+.lyrics-login-msg[data-tone='err'] {
+  color: var(--lg-red);
+}
+.lyrics-login-msg[data-tone='ok'] {
+  color: var(--lg-green);
+}
+
+/* 「怎么拿到 Cookie」：原生 details，没有 JS */
+.lyrics-help {
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-m);
+  padding: var(--lg-space-3) var(--lg-space-4);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.lyrics-help > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+.lyrics-help-body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-3);
+  margin-block-start: var(--lg-space-3);
+}
+.lyrics-help ol {
+  margin: 0;
+  padding-inline-start: 1.3em;
+  color: var(--lg-label-secondary);
+}
+.lyrics-help kbd {
+  padding: 0 5px;
+  border: 1px solid var(--lg-separator);
+  border-radius: var(--lg-radius-xs);
+  font: 12px var(--lg-font-mono);
+}
+.lyrics-help code {
+  font-family: var(--lg-font-mono);
+  font-size: 12px;
+}
+/* 安全提示：MUSIC_U 等同账号登录态，必须在界面上写清楚 */
+.lyrics-alert {
+  margin: 0;
+  padding: var(--lg-space-2) var(--lg-space-3);
+  border-radius: var(--lg-radius-s);
+  border-inline-start: 3px solid var(--lg-label-tertiary);
+  background: var(--lg-fill-quaternary);
+  font-size: 12.5px;
+  line-height: 1.55;
+  color: var(--lg-label-secondary);
+}
+.lyrics-alert[data-tone='warn'] {
+  border-inline-start-color: var(--lg-orange);
+}
+.lyrics-alert[data-tone='err'] {
+  border-inline-start-color: var(--lg-red);
+}
+
+/* ── 保存那一组 ──────────────────────────────────────────────── */
+.lyrics-save-row {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  flex-wrap: wrap;
+}
+.lyrics-saved {
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--lg-label-secondary);
+  overflow-wrap: anywhere;
+}
+
+/* 保存 / 取词的失败也别只留在 toast 里 */
+.lyrics-error {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--lg-red);
+  overflow-wrap: anywhere;
+}
+
+/* 控件 + 控件之间的一行（分段控件与开关并排时用） */
+.lyrics-controls {
+  display: flex;
+  align-items: center;
+  gap: var(--lg-space-3);
+  flex-wrap: wrap;
+}
