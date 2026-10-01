@@ -103,6 +103,7 @@ app/
       views/          dashboard convert video audio lyrics pv resources settings
     vendor/jizura/    JIZURA 文字 PV（上游构建产物 + 2335 个字体）
     img/bg/           桌面背景图（明亮/黑暗）
+    img/logo.png      顶栏图标（源 app/desktop/icons/128x128.png，拷进来才伺服得到）
   data/                只读数据：resources.json / pinyin.json（schema 见第七节）
 tools/                 随包分发：ffmpeg / yt-dlp / LibreSVIP（约 390 MB）
 tests/
@@ -668,21 +669,12 @@ document.querySelectorAll('.app-nav .lg-selection-lens').length
 
 ---
 
-### 动效：曲线要明显，但过冲要克制（**历史，取值已并到上面那张表**）
+### 动效（历史教训，一句话版）
 
-用户反馈过两次：先是「动效速度似乎还是直线」，再是「浮起动效曲线还是很奇怪」。
-
-**「像直线」的根因**：原来用的是 `cubic-bezier(0.4, 0, 0.2, 1)`（Material 标准曲线），
-加速度温和，短距离位移下几乎看不出加减速。**这一课对旧前端仍然有效**
-（它现在的 `--ease` 是 `cubic-bezier(0.32, 0.72, 0, 1)`，正是照这个结论调的）。
-
-⚠️ 本节原先写的「现在三档：`0.2,0.9,0.25,1` / `1.28`」**在新前端换库之后就不成立了**
-（新前端的曲线全部来自库，见上面那张表）。
-
-⚠️ **过冲量别贪大**（这条规律仍然成立）：`--spring` 的 y 控制点一度设成 `1.42`，
-结果是 300px 的位移**冲出 42px 再弹回来**，看着是「甩过头」。
-现在库的弹簧是一条采样出来的 `linear()`（`--lg-spring`），过冲约 7%，比手调曲线稳。
-
+「像直线」的根因是用了 `cubic-bezier(0.4, 0, 0.2, 1)`（加速太平缓，短位移看不出加减速）；
+「甩过头」的根因是过冲量贪大（`--spring` 的 y 控制点 1.42 → 300px 位移冲出 42px）。
+**两套前端各自的分工见上面那张表**，别互相套用。旧前端唯一一处定义在
+`app/web/css/base.css:129-131`。
 
 ### 侧栏滑动高亮块：**为什么现在不需要分两层了**
 
@@ -1088,6 +1080,7 @@ git log --all -- app/data/resources.json
 | 前端脚手架 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4），产物落 `app/web/next/`，访问 `/next/` |
 | 主题 + 透明度 | ⚠️ **原表写的 `lib/useTheme.ts` / `lib/usePerfMode.ts` 已不存在**（换库时删了）。现在主题与「降低透明度」是 `App.tsx` 里喂给库 `GlassProvider` 的两个 prop；`perfMode` 字段后端有、前端**还没接** |
 | **玻璃材质修好**（2026-10-01） | 默认改成毛玻璃、侧栏改 `size="large"`、面板降到 `thin`、顶栏吸顶、侧栏高亮块改用库的透镜、补回 `corner-shape: squircle`。见 `docs/GLASS-HANDOFF.md` 第二节 |
+| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页，重新检测在总览页「环境就绪度」里。顶栏现在只有品牌 |
 | **`glass-probe.mjs`** | 玻璃专项探针：计算值 + 截图 + 高亮块逐帧/首帧采样（`tests/manual/glass-probe.mjs`） |
 | **`app/web-next` 入库** | 首次提交 `83320cd` —— 在此之前它一个 commit 都没有 |
 

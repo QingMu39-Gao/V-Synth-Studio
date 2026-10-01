@@ -1,4 +1,4 @@
-import { api } from '@/lib/api'
+﻿import { api } from '@/lib/api'
 import type { AppState, FormatInfo, ToolInfo } from '@/lib/types'
 import { Button } from '@/components/Button'
 import { Chip, Finding, Panel, PanelHead, Stat } from '@/components/Panel'
@@ -6,8 +6,7 @@ import { Chip, Finding, Panel, PanelHead, Stat } from '@/components/Panel'
 /**
  * 总览：环境检测与常用入口。
  *
- * **整页没有一个玻璃面。** 卡片、标签、统计都是内容层的东西 —— 实色。
- * 唯一会浮起来的是外壳的顶栏和侧栏（见 `App.tsx`）。
+ * 卡片按「全局玻璃」开关走：开着时是玻璃面，关掉退回轻量材质（见 `components/Panel.tsx`）。
  * 这不是省事，是设计系统的地基：玻璃不给内容层。
  */
 

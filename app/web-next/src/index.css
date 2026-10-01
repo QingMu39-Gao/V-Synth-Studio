@@ -1,4 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════════════
+﻿/* ══════════════════════════════════════════════════════════════════════════
    外壳样式。
 
    ## 玻璃在哪儿？
@@ -184,12 +184,16 @@ body::before {
   gap: var(--lg-space-2);
   min-width: 0;
 }
+/* 应用图标。原来这里是个 `background: var(--lg-accent)` 的纯色方块 ——
+   没有图，用户看到的就是「左上角 logo 显示不正常」。
+   图必须放在 `app/web/` 下面才伺服得到（后端只伺服那个目录），
+   源文件是 `app/desktop/icons/128x128.png`。 */
 .brand-mark {
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
   flex: none;
   border-radius: var(--lg-radius-xs);
-  background: var(--lg-accent);
+  object-fit: contain;
 }
 .brand-name {
   font-size: 17px;
@@ -197,20 +201,8 @@ body::before {
   letter-spacing: -0.02em;
   white-space: nowrap;
 }
-.topbar-actions {
-  margin-inline-start: auto;
-  display: flex;
-  align-items: center;
-  gap: var(--lg-space-3);
-}
-.topbar-status {
-  font-size: 13px;
-  color: var(--lg-label-secondary);
-  white-space: nowrap;
-}
-.topbar-status[data-dead='true'] {
-  color: var(--lg-red);
-}
+
+
 
 /* ── 主体：侧栏 + 内容 ───────────────────────────────────────── */
 .app-body {
