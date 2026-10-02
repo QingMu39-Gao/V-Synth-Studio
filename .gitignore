@@ -35,6 +35,15 @@
 # 含个人路径（输出目录、下载目录）。程序首次运行会自动按默认值生成。
 app/data/config.json
 
+# ── 音轨分离引擎（8.6 GB，绝不可能入库）─────────────────────
+# app/data/svsep/ 是内嵌的离线分离引擎：runtime/ 是 Python 3.10 + torch
+# + CUDA 运行库（7.5 GB），models/ 是两个模型（730 MB），backend/ 是后端源码。
+# **前后端都靠它**（Rust 的 svsep.rs 从这里拉进程），但它不是源码：
+#   * 运行时与模型都由 tools/svsep-pack.ps1 打包分发，用户按需下载；
+#   * 注意 app/data/ 本身**不在**忽略之列（pinyin.json / resources.json 要入库），
+#     所以必须点名忽略这个子目录，不能只靠上面那条 config.json。
+app/data/svsep/
+
 # ── 依赖与构建产物 ──────────────────────────────────────────
 node_modules/
 *.exe

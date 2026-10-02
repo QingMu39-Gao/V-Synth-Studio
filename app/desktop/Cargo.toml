@@ -38,10 +38,17 @@ libc = "0.2"
 # 系统「下载」目录（读注册表 KNOWNFOLDERID，见 platform.rs）
 # Win32_Globalization 只有一个用处：导入歌词时用 MultiByteToWideChar 把 GBK 转成
 # UTF-8（国内老 LRC 有相当一部分是 GBK）。同一份 kernel32 绑定，不引编码库、不加体积。
+# Win32_System_JobObjects：把分离引擎的 python.exe 放进作业对象，进程一死就带走它
+# （见 svsep.rs 的 `job` 模块）—— 光靠 Drop 收不住「任务管理器强杀」那条路。
+# 作业对象那套类型定义挂在 Threading 下，`CreateJobObjectW` 的参数又用了
+# `SECURITY_ATTRIBUTES`（Win32_Security），三个 feature 都得开。
 windows-sys = { version = "0.59", features = [
     "Win32_Foundation",
     "Win32_Globalization",
     "Win32_System_Registry",
+    "Win32_System_JobObjects",
+    "Win32_System_Threading",
+    "Win32_Security",
 ] }
 
 [profile.release]

@@ -8,6 +8,12 @@ use std::path::{Path, PathBuf};
 use serde_json::{json, Value};
 
 /// 编辑器/工具候选定义
+///
+/// ⚠️ 现在 `candidates()` 是空的，所以这个结构体在**编译产物里没有构造点**。
+/// 保留它是因为 `detect_candidate` / `scan_for_exe` 都按它写好了，将来往
+/// `candidates()` 里加一条就能用。字段在主程序路径上被认为是 dead code，
+/// 但单测会构造它，所以别删。
+#[allow(dead_code)]
 struct Candidate {
     id: &'static str,
     name: &'static str,
@@ -26,39 +32,23 @@ struct Candidate {
 
 
 
-/// 需要探测的外部程序。
+/// 需要探测的外部程序。**现在一个都没有**。
 ///
-/// **只留 UVR 一个**。原来的表里有 16 个编辑器（VOCALOID6/5、SynthV 1/2、CeVIO、
-/// OpenUtau、UTAU、ACE Studio、DeepVocal、VOICEVOX、FL Studio、oremo、RecStar…），
-/// 配 56 条硬编码路径和带深度限制的目录扫描 —— 但其中**只有 UVR 被真正用到**
-/// （音频页的人声分离要跳过去）。
+/// 原来的表里有 16 个编辑器（VOCALOID6/5、SynthV 1/2、CeVIO、OpenUtau、UTAU、
+/// ACE Studio、DeepVocal、VOICEVOX、FL Studio、oremo、RecStar…），配 56 条硬编码
+/// 路径和带深度限制的目录扫描。其中先后只剩两个被真正用到过：
+///   * 编辑器列表本身 —— 用途只是「在工作站里显示装了什么」和「从工作站启动别的
+///     编辑器」。用户桌面本来就有快捷方式，绕这一层没有意义，还带来一堆要跟着
+///     编辑器版本维护的路径。这部分早就删了。
+///   * **UVR**（`H:\ChiXiaoYangUVR5`）—— 音频页的「离线人声分离」跳过去用它。
+///     2026-10-02 这条也删了：离线分离改成内嵌（见 `crate::svsep`），不再需要
+///     用户自己装 UVR。
 ///
-/// 其余的用途只是「在工作站里显示装了什么」和「从工作站启动别的编辑器」。
-/// 用户桌面本来就有快捷方式，绕这一层没有意义，还带来一堆要跟着编辑器版本维护的路径。
+/// 所以这张表现在是空的。**不要因为「空函数很怪」就把它删掉** —— `detect_editors`
+/// 与 `/api/tools/detect` 的 `editors` / `installedCount` 都还挂在这条链上，
+/// 前端 `state.editors` 也还在读。将来要有新的外部程序要探测，往这里加。
 fn candidates() -> Vec<Candidate> {
-    let pf = PathBuf::from(
-        std::env::var("ProgramFiles").unwrap_or_else(|_| "C:\\Program Files".into()),
-    );
-
-    vec![Candidate {
-        id: "uvr",
-        name: "Ultimate Vocal Remover (离线人声分离)",
-        vendor: "社区",
-        category: "tool",
-        formats: &[],
-        color: "#00d1b2",
-        paths: vec![
-            PathBuf::from("H:\\ChiXiaoYangUVR5\\UVR.exe"),
-            PathBuf::from("H:\\ChiXiaoYangUVR5\\Start.exe"),
-            pf.join("Ultimate Vocal Remover\\UVR.exe"),
-        ],
-        scan_dirs: vec![
-            PathBuf::from("H:\\ChiXiaoYangUVR5"),
-            pf.join("Ultimate Vocal Remover"),
-        ],
-        exe_names: &["uvr.exe", "start.exe", "ultimate vocal remover.exe"],
-        scan_depth: 2,
-    }]
+    Vec::new()
 }
 /// 探测本机装了哪些编辑器
 pub fn detect_editors() -> Vec<Value> {

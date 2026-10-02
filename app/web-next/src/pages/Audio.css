@@ -319,36 +319,24 @@
   word-break: break-all;
 }
 
-/* ── 人声分离 ─────────────────────────────────────────────────────────
-   MVSEP（在线，要上传）与 UVR（离线）两条路，中间一条分隔线。 */
-.audio-sep-row {
-  display: flex;
-  align-items: center;
-  gap: var(--lg-space-2);
-  flex-wrap: wrap;
-}
-.audio-sep-title {
-  font-size: 13px;
-  font-weight: 600;
-}
-.audio-sep-path {
-  font-family: var(--lg-font-mono);
-  font-size: 12px;
-  color: var(--lg-label-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 100%;
-}
-.audio-divider {
-  height: 1px;
-  background: var(--lg-separator);
-}
-.audio-url {
-  font-family: var(--lg-font-mono);
-  font-size: 12px;
-  color: var(--lg-label-secondary);
-  word-break: break-all;
+/* ── 音轨分离（2026-10-02 起只剩指路）─────────────────────────────────
+   分离整条链搬到独立页 `pages/Svsep.tsx`（侧栏「音轨分离」）：在线 MVSEP
+   与离线内嵌引擎两条差异极大的路，外加「服务起没起 / 模型下没下」这些状态，
+   塞在音频页右栏一张卡里说不清。这里只留「去音轨分离」那张卡片
+   （版式全用通用类，没有专属样式），以及文案里一处内联链接。
+   `.audio-sep-*` / `.audio-divider` / `.audio-url` 已无人引用，随本次一并删。 */
+
+/* 段落里当链接用的按钮 —— 不能真用 <a>，那是切页不是跳转 */
+.audio-inline-link {
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lg-accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
 }
 
 /* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。

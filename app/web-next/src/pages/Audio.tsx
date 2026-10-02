@@ -30,9 +30,16 @@ import './Audio.css'
  * 参数名**照旧界面**（`format` `sampleRate` `channels` `semitones` `ratio`
  * `startSec` `endSec` `targetLufs`），后端 `audio_run` 是把 `options` 摊平读的。
  *
- * 右边的「人声分离」两条路照旧：在线 MVSEP 走 `api.fsOpen({ url })`（在系统浏览器里开，
- * 不是 window.open）、离线 UVR 走 `api.launch`。ffmpeg 缺失时的说法也照旧 ——
- * **它随包分发，不引导用户去下载**，只说明「tools 目录缺失，从压缩包里重新解压」。
+ * ⚠️ **2026-10-02：这一页不再管分离。** 原来右栏有一张「人声分离」卡
+ * （在线 MVSEP + 离线跳 UVR）加一条本页内的流程，现在整体搬到独立页
+ * `pages/Svsep.tsx`（侧栏「音轨分离」）：离线那条改成内嵌引擎，要下模型、
+ * 跑几十分钟、占 5 GB 内存，和三分钟的 ffmpeg 转格式根本不是一种东西，
+ * 挤在一个页面里用户看不出该点哪个。这里只留一张指路卡。
+ * `MVSEP_URL` 与 `EditorInfo`（读 `state.editors` 找 UVR）随之删除 ——
+ * `state.editors` 现在是空数组（后端候选表也清空了，见 `tools.rs::candidates`）。
+ *
+ * ffmpeg 缺失时的说法照旧 —— **它随包分发，不引导用户去下载**，
+ * 只说明「tools 目录缺失，从压缩包里重新解压」。
  *
  * 几条和旧实现的**有意差异**（都在文件末尾「与旧实现有意不同的地方」一节写清）：
  *   1. 探测结果用 `<Chip>` 组合而不是 innerHTML 拼串；
@@ -44,7 +51,6 @@ import './Audio.css'
 
 /** 设置持久化的键 —— **沿用旧界面的键**，用户之前选过的参数不丢 */
 const LS_KEY = 'fandiao.audio.settings'
-const MVSEP_URL = 'https://mvsep.com/zh'
 
 const OPS: { id: string; name: string; desc: string; icon: IconName }[] = [
   { id: 'convert', name: '格式转换', desc: '导出 WAV / FLAC / MP3…', icon: 'swap' },
@@ -147,13 +153,6 @@ interface AudioFormat {
   label?: string
   ext?: string
   lossless?: boolean
-}
-
-/** `state.editors` 的一项（只用到 UVR 这三个字段） */
-interface EditorInfo {
-  id?: string
-  installed?: boolean
-  path?: string | null
 }
 
 /** `state.config` 里这一页读得到的字段 */
@@ -1152,8 +1151,8 @@ export function Audio({ state, onNavigate, onToast }: PageProps) {
           )}
         </Panel>
 
-        <SeparationCard state={state} onNavigate={onNavigate} onToast={onToast} />
-        <TipsCard />
+        <SeparationLinkCard onNavigate={onNavigate} />
+        <TipsCard onNavigate={onNavigate} />
       </div>
 
       {/* ── 本机文件选择器（选文件，不是选目录）── */}
@@ -1898,120 +1897,38 @@ function tickStep(viewSpan: number, width: number): number {
   return 3600
 }
 
-/* ══════════════════════════════════════════════════════ 人声分离 / 流程 ══ */
+/* ══════════════════════════════════════════════════════ 音轨分离入口 / 流程 ══ */
 
-function SeparationCard({
-  state,
-  onNavigate,
-  onToast,
-}: {
-  state: PageProps['state']
-  onNavigate: (id: string) => void
-  onToast: (msg: string, tone?: 'ok' | 'err' | 'warn' | 'info') => void
-}) {
-  const editors = (state?.editors ?? []) as EditorInfo[]
-  const uvr = editors.find((e) => e.id === 'uvr')
-  const installed = !!uvr?.installed
-
-  const openUrl = (url: string) => {
-    api.fsOpen({ url }).catch((e: unknown) => onToast(`打开浏览器失败：${errText(e)}`, 'err'))
-  }
-
-  const launchUvr = async (path: string) => {
-    try {
-      await api.launch({ path })
-      onToast('已启动 Ultimate Vocal Remover', 'ok')
-    } catch (e) {
-      onToast(`启动失败：${errText(e)}`, 'err')
-    }
-  }
-
+/**
+ * 分离搬到独立页了（侧栏「音轨分离」）—— 这里只留一条去那儿的入口。
+ *
+ * 为什么搬走：分离已经不是一个「顺带在这里做一下」的功能了。
+ * 它现在有在线（MVSEP）与离线（内嵌引擎，要下 730 MB 模型、跑几十分钟、
+ * 占 5 GB 内存）两条差异极大的路，状态也多（服务起没起、模型下没下、
+ * 任务跑到哪一轨）。塞在音频页右栏一张卡里，用户根本看不出该点哪个。
+ */
+function SeparationLinkCard({ onNavigate }: { onNavigate: (id: string) => void }) {
   return (
     <Panel>
-      <PanelHead title="人声分离" desc="把人声和伴奏拆开，再拿回来继续做" />
-      <div className="stack-lg">
-        <div className="stack">
-          <div className="audio-sep-row">
-            <span className="audio-sep-title">在线：MVSEP</span>
-            <span className="spacer" />
-            <Chip tone="warn">需上传文件</Chip>
-          </div>
-          <Finding level="warn" title="隐私提示">
-            在线服务需要把音频上传到对方服务器才能处理。介意的话用下面的离线方案（UVR），音频不出本机。
-          </Finding>
-          <div className="audio-sep-row">
-            <Button icon="external" onClick={() => openUrl(MVSEP_URL)}>
-              打开 MVSEP 网站
-            </Button>
-            <span className="audio-url">{MVSEP_URL}</span>
-          </div>
-          <p className="hint">
-            MVSEP 支持人声/伴奏、鼓/贝斯等多轨分离，有免费额度。上传前可以先用「裁剪片段」截出要用的部分，
-            省流量也省时间。
-          </p>
-        </div>
-
-        <div className="audio-divider" />
-
-        {installed ? (
-          <div className="stack">
-            <div className="audio-sep-row">
-              <span className="audio-sep-title">离线：Ultimate Vocal Remover</span>
-              <span className="spacer" />
-              <Chip tone="ok">已安装</Chip>
-            </div>
-            <span className="audio-sep-path" title={uvr?.path ?? ''}>
-              {uvr?.path ?? ''}
-            </span>
-            <div className="audio-sep-row">
-              <Button
-                variant="primary"
-                icon="play"
-                onClick={() => {
-                  if (uvr?.path) void launchUvr(uvr.path)
-                }}
-              >
-                启动 UVR
-              </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                icon="folder"
-                onClick={() =>
-                  api.fsReveal(uvr?.path ?? '', true).catch((e: unknown) => onToast(errText(e), 'err'))
-                }
-              >
-                定位文件
-              </Button>
-            </div>
-            <p className="hint">
-              在 UVR 里选 MDX-Net 或 Demucs 模型分离，导出的人声 / 伴奏可以直接拖回本页继续变调、转 WAV。
-            </p>
-          </div>
-        ) : (
-          <div className="stack">
-            <div className="audio-sep-row">
-              <span className="audio-sep-title">离线：Ultimate Vocal Remover</span>
-              <span className="spacer" />
-              <Chip>未检测到</Chip>
-            </div>
-            <Finding level="info" title="建议装一个 UVR">
-              免费开源的离线分离工具，音频不出本机。装好之后如果没被自动认出来，
-              可以在「设置 → 自定义程序」里手动指定 UVR.exe 的路径。
-            </Finding>
-            <div className="btn-row">
-              <Button size="sm" icon="gear" onClick={() => onNavigate('settings')}>
-                去设置里指定路径
-              </Button>
-            </div>
-          </div>
-        )}
+      <PanelHead
+        title="音轨分离"
+        desc="已独立成一页：在线 MVSEP 与离线内嵌引擎"
+        extra={<Chip tone="accent">已搬家</Chip>}
+      />
+      <p className="hint">
+        把人声、伴奏、鼓、贝斯等拆开，现在都在「音轨分离」页：离线那条会拿本机的
+        CPU / 显卡跑，音频不出本机；在线那条指 MVSEP，要上传文件但效果更好。
+      </p>
+      <div className="btn-row">
+        <Button variant="primary" icon="layers" onClick={() => onNavigate('svsep')}>
+          去音轨分离
+        </Button>
       </div>
     </Panel>
   )
 }
 
-function TipsCard() {
+function TipsCard({ onNavigate }: { onNavigate: (id: string) => void }) {
   return (
     <Panel>
       <PanelHead title="顺手流程" desc="从 MV 到能干活的伴奏" />
@@ -2019,13 +1936,18 @@ function TipsCard() {
         <pre className="job-log">{[
           '1. 视频解析 → 下载 MV（或只下音频）',
           '2. 这里「提取音频」→ 导出 WAV',
-          '3. UVR 离线分离 → 人声 / 伴奏',
+          '3. 音轨分离 → 离线引擎拆出人声 / 伴奏',
           '4. 「变调」把伴奏对到你的音域',
           '5. 「响度标准化」让两边音量接近',
           '6. 导出 WAV，拿去编辑器里继续做',
         ].join('\n')}</pre>
         <p className="hint">
-          顺序只是建议：先在 UVR 里分离、再变调，通常比先变调再分离更干净（模型对原调更敏感）。
+          顺序只是建议：先分离、再变调，通常比先变调再分离更干净（模型对原调更敏感）。
+          分离在
+          <button type="button" className="audio-inline-link" onClick={() => onNavigate('svsep')}>
+            音轨分离
+          </button>
+          页。
         </p>
       </div>
     </Panel>

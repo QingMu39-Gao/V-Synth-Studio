@@ -190,15 +190,69 @@ html[data-boot='out'] .app-main {
   /**
    * 吸顶：内容从它下面滚过去 —— 玻璃的观感来自「有东西从背后经过」。
    * 平栏吸顶本身不需要模糊，但里面的玻璃控件（分段控件 / 按钮）需要。
+   *
+   * ⚠️ **2026-10-02 修：以前这里是 `position: absolute`，它压根不吸顶。**
+   * `absolute` 的包含块是 `.app`（`position: relative`）的**内边距盒**，
+   * 而 `.app` 是 `min-height: 100dvh` 的**普通流内元素** —— 页面一滚，`.app` 整体
+   * 跟着滚走，顶栏自然跟着走。用户报的「滚轮滑动页面时左上角的软件名和图标一起动」
+   * 就是这个。注释当时写的是「吸顶」，代码写的不是，两边对不上。
+   *
+   * 改成 `sticky` 而不是 `fixed` 是**故意的**：`.app` 有 `max-width` 且
+   * `margin-inline: auto`，窄窗口下居中、宽窗口下两侧留白。`fixed` 的包含块是视口，
+   * `inset-inline: var(--lg-margin)` 就只在窗口刚好等于 `--shell-max` 时才对得齐，
+   * 宽屏下品牌会比侧栏偏左一大截；要对齐就得把 `--shell-max` 再抄一份进 `calc()`，
+   * 那样两个值以后必然会走岔。`sticky` 留在流内，左右由 `.app` 的内边距自然管住。
+   * 侧栏本来就是同款做法（`.app-sidebar` 也是 sticky），两边现在一致了。
    */
-  position: absolute;
+  /**
+   * `inset-block-start: 0`：吸顶后停在「视口顶 + `.app` 的上内边距（16px）」。
+   *
+   * ⚠️ **2026-10-02：以前这里是 `position: absolute` + `inset-block-start: var(--lg-space-4)`。**
+   * absolute 的包含块是 `.app`（`position: relative`）的**内边距盒**，而 `.app` 是
+   * `min-height: 100dvh` 的**普通流内元素** —— 页面一滚，`.app` 整体跟着滚走，
+   * 顶栏自然跟着走。用户报的「滚轮滑动页面时左上角的软件名和图标一起动」就是这个；
+   * 注释当时写的是「吸顶」，代码写的不是，两边对不上。
+   * （写 `top` 为负内边距也试过：无头 Edge 实测那样它停在 `-16px`，品牌被顶上去了。
+   *   别再用负值「补偿」，直接 0。）
+   *
+   * 改成 `sticky` 而不是 `fixed` 是**故意的**：`.app` 有 `max-width` 且
+   * `margin-inline: auto`，窄窗口下居中、宽窗口下两侧留白。`fixed` 的包含块是视口，
+   * `inset-inline: var(--lg-margin)` 就只在窗口刚好等于 `--shell-max` 时才对得齐，
+   * 宽屏下品牌会比侧栏偏左一大截；要对齐就得把 `--shell-max` 再抄一份进 `calc()`，
+   * 那样两个值以后必然会走岔。`sticky` 留在流内，左右由 `.app` 的内边距自然管住 ——
+   * 1100 / 1440 / 1600 三个宽度实测顶栏与侧栏左边缘**逐像素对齐**。
+   * 侧栏本来就是同款做法（`.app-sidebar` 也是 sticky），两边现在一致了。
+   *
+   * ⚠️ **代价（有意的）**：顶栏现在**真的占位**了（26px + 一个 `--lg-space-4` 间距），
+   * 所以它下面的内容整体比从前低 42px（16 → 58）。这才是正常外壳该有的样子：
+   * 以前内容是从品牌**背后**穿过去的，靠侧栏那条 `margin-block-start: 44px` 手工让位。
+   * 那条让位已随本次修改删掉，`.app-sidebar` 的 `top` 同步改成 58px
+   * —— 侧栏 `sticky` 的 `top` **必须等于初始位置**，这条约束仍然成立（踩过一次）。
+   */
+  /**
+   * ⚠️ **`inset-block-start` 取 `--lg-space-4`（16px），让吸顶后停在 y=16 ——
+   * 与它静止时的位置逐像素相同，滚动时零位移。这个值不是推出来的，是量出来的：**
+   *
+   *   | `top`   | 静止 y | 滚到 400 后 y | Δ     |
+   *   |---------|--------|---------------|-------|
+   *   | `0`     | 16     | 0             | −16 ❌ |
+   *   | `8px`   | 16     | 8             | −8  ❌ |
+   *   | **16px**| 16     | **16**        | **0 ✅** |
+   *   | `24px`  | 24     | 24            | 0     |
+   *   | `−16px` | 16     | −16           | −32 ❌（品牌被顶上去） |
+   *
+   * 直觉上「sticky 的 `top` 是相对滚动容器上沿算的」，那 `top: 0` 就该停在「视口顶 +
+   * `.app` 的内边距」；**实测不是** —— 这里的粘性包含块上沿就在 y=0，`top` 是多少，
+   * 吸顶后 `getBoundingClientRect().y` 就是多少。所以要让品牌停回它原来的 16，
+   * 就得写 16。改这个值之前先跑 `node tests\manual\topbar-probe.mjs 8891`。
+   */
+  position: sticky;
   inset-block-start: var(--lg-space-4);
   /**
-   * ⚠️ **必须让开 `.app` 的横向内边距。**
-   *
-   * 绝对定位的包含块是祖先的**内边距盒**，`inset-inline: 0` 贴的是内边距的**外沿**，
-   * 而内容列从内边距的**内沿**起 —— 两者差一个 `--lg-margin`（实测 12.5 vs 32.5，
-   * 品牌图标比其它所有东西偏左 20px）。写 0 就是「图标和标题往左偏移」。
+   * 水平方向走 `.app` 的内边距，**这条 `inset-inline` 仍然要留着**：
+   * 当初 absolute 的包含块是内边距盒，`inset-inline: 0` 贴的是内边距外沿，
+   * 品牌会比其它所有东西偏左一个 `--lg-margin`（实测 12.5 vs 32.5）。
+   * sticky 下包含块是同一个 `.app`，这条约束不变。
    */
   inset-inline: var(--lg-margin);
   z-index: 10;
@@ -264,18 +318,17 @@ html[data-boot='out'] .app-main {
   position: sticky;
   width: var(--sidebar-w);
   flex: none;
-  /* 让开顶栏那行品牌（26px 图标 + 间距）—— **只有侧栏让**：
-     内容列现在和品牌同一行起排，这正是「右边整体往上移」要的效果。 */
-  margin-block-start: 44px;
   /**
-   * ⚠️ `top` **必须等于初始位置**（= 上内边距 16 + 上面那 44 的品牌让位）。
+   * ⚠️ **`top` 必须等于初始位置**（踩过一次：写小于初始值，页面一滚侧栏先自己往上跳
+   * 一截再吸附，用户看到的是「侧栏跟着滚轮走」）。
    *
-   * 以前写的是 `top: var(--lg-space-4)`（16px），而初始位置在 60px —— 于是页面一滚，
-   * 侧栏先自己往上跳 44px 再吸附。用户看到的就是「侧栏跟着滚轮滚动」。
+   * 初始位置 = `.app` 上内边距 16 + 顶栏 26 + 一个间距 16 = **58**。
+   * 顶栏那 26 现在是真占位的（sticky，不是 absolute）。以前它不占位，靠这里一条
+   * `margin-block-start: 44px` 手工让位 —— 那条已删，别再按「16 + 44」算。
    */
-  top: calc(var(--lg-space-4) + 44px);
+  top: calc(var(--lg-space-4) * 2 + 26px);
   /* 吸附后底边还要留一个 --lg-space-4，别顶到视口外 */
-  max-height: calc(100dvh - 44px - var(--lg-space-4) * 2);
+  max-height: calc(100dvh - var(--lg-space-4) * 2 - 26px);
 }
 .app-sidebar-inner {
   display: flex;
@@ -830,6 +883,53 @@ html[data-boot='out'] .app-main {
   font-size: 12.5px;
   line-height: 1.5;
   color: var(--lg-label-secondary);
+}
+
+/**
+ * ── 滑块补动效：位置也要有弹簧 ───────────────────────────────────────
+ *
+ * 用户报「调整玻璃等级那个滑条 没有任何动画 甚至是一帧拉过去的」。查库的 CSS
+ * （`node_modules/@ttqtt/liquid-glass-react/dist/components.css:317-323`）——
+ * **库真就是这么写的，不是样式冲突**：
+ *
+ *   .lg-slider-lens   { inset-inline-start: calc(var(--lg-progress) * (100% - 26px));
+ *                       transition: scale …, translate …, box-shadow …; }   ← 没有位置
+ *   .lg-slider-fill   { width: calc(var(--lg-progress) * 100%); }           ← 一条 transition 都没有
+ *
+ * 滑块的位置来自 `inset-inline-start`，它不在 `transition` 列表里；填充条同理。
+ * 所以点刻度、按方向键、点轨道时，滑块**确实是一帧到位**。
+ * （库只给「按住抬起」做了弹簧：`scale` / `translate` / `box-shadow` 那三条都在，
+ *   按住时滑块会放大、跟手挤压 —— 拖的时候有反馈，改完值松手时反而没有。）
+ *
+ * ## 为什么只补「位置」，不补别的
+ *
+ * 拖拽时**不该**给位置加过渡：手指到哪滑块就该到哪，动画只会拖后腿（iOS、Material
+ * 都是这个取舍）。而库里 `inset-inline-start` 是**一个连续量**，拖拽和点击走的是同一条
+ * 属性 —— 没法只给「点击」开动画。所以这里让它带上弹簧：慢速拖拽几乎看不出来，
+ * 快速拖拽会有一点液体感，点刻度和按方向键则是明显滑过去。这正是用户要的效果。
+ *
+ * ⚠️ **必须 `!important`**：库有一条
+ * `.lg-root[data-pulling="true"] { transition-property: background, … }`，
+ * shorthand 写法 `transition: … !important` 会连这条 `transition-property` 列表一起改掉，
+ * 把按压反馈也覆盖没。只覆盖 `transition-*` 的三个分量，`transition-property` 那条管不着。
+ * 两个规则的特异性都是 (0,4,0)，`index.css` 在库的 `style.css` 之后导入（`main.tsx:15-16`），
+ * 同特异性下后者胜 —— 但那是巧合，`!important` 让它不依赖导入顺序。
+ *
+ * ⚠️ 位置动的是 `inset-inline-start`、填充动的是 `width`，都是**布局属性**：
+ * 每帧重排，不像 transform 那样只合成。滑条只有一根、跑一次 0.52s，代价可以接受；
+ * 但别照着这个写法给进度条之类的东西加动画（那种地方该用 `transform: scaleX()`）。
+ */
+.lg-slider .lg-slider-lens {
+  transition-property: scale, translate, box-shadow, inset-inline-start !important;
+  /* `--lg-spring` 会过冲（linear(…) 里到 1.16），所以滑块到位时会轻轻弹一下 */
+  transition-duration: var(--lg-duration-press), var(--lg-duration-press), var(--lg-duration-spring),
+    var(--lg-duration-spring) !important;
+
+  transition-timing-function: var(--lg-ease-out), var(--lg-ease-out), var(--lg-ease-out),
+    var(--lg-spring) !important;
+}
+.lg-slider .lg-slider-fill {
+  transition: width var(--lg-duration-spring) var(--lg-spring); /* 与滑块同一条曲线，一起停 */
 }
 
 .choice-desc {

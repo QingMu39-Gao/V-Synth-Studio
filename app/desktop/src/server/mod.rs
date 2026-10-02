@@ -12,12 +12,14 @@
 //!   convert.rs  转换链路（阶段 2）
 //!   tools.rs    工具与声库探测（阶段 3）
 //!   media.rs    视频解析 / 下载 / 音频（阶段 4）
-//!   lyrics.rs   歌词：搜索 / 取词 / 存 LRC·SRT / 封面 / 扫码与短信验证码登录
+//!   lyrics.rs   歌词：搜索 / 取词 / 存 LRC·SRT / 封面 / 歌曲直链下载 / 短信验证码登录
+//!   svsep.rs    音轨分离：在线 MVSEP 的入口 + 离线分离服务的转发
 
 pub mod convert;
 pub mod lyrics;
 pub mod media;
 pub mod simple;
+pub mod svsep;
 pub mod tools;
 
 use std::path::PathBuf;
@@ -47,6 +49,8 @@ pub struct AppState {
     pub started: Instant,
     /// 任务表
     pub jobs: Mutex<crate::server::simple::JobTable>,
+    /// 离线音轨分离服务（Python 子进程）。见 `crate::svsep`。
+    pub svsep: crate::svsep::Svsep,
 }
 
 impl AppState {
@@ -54,6 +58,11 @@ impl AppState {
         // 可写目录可能还不存在（首次运行安装版），先建出来
         let _ = std::fs::create_dir_all(&paths.writable);
         let config = load_config(&paths.writable);
+        let svsep = crate::svsep::Svsep::new(
+            paths.root.clone(),
+            paths.writable.clone(),
+            paths.installed,
+        );
         Arc::new(Self {
             root: paths.root,
             writable: paths.writable,
@@ -61,6 +70,7 @@ impl AppState {
             config: Mutex::new(config),
             started: Instant::now(),
             jobs: Mutex::new(Default::default()),
+            svsep,
         })
     }
 
@@ -149,9 +159,37 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/api/lyrics/import", post(lyrics::import))
         .route("/api/lyrics/save", post(lyrics::save))
         .route("/api/lyrics/cover", post(lyrics::cover))
+        // 歌曲直链下载：拿网易云的播放直链存成 mp3（见 server/lyrics.rs::song）
+        .route("/api/lyrics/song", post(lyrics::song))
         .route("/api/lyrics/login/sms", post(lyrics::login_sms))
         .route("/api/lyrics/login/cellphone", post(lyrics::login_cellphone))
         .route("/api/lyrics/logout", post(lyrics::logout))
+        // ── 音轨分离（在线 MVSEP 只是前端一个链接；离线是内嵌引擎）──
+        .route("/api/svsep/status", get(svsep::status))
+        .route("/api/svsep/start", post(svsep::start))
+        .route("/api/svsep/stop", post(svsep::stop))
+        .route("/api/svsep/models/download", post(svsep::models_download))
+        .route(
+            "/api/svsep/runtime/download",
+            post(svsep::runtime_download),
+        )
+        // 提交分离：音频以 multipart 原样转发给分离后端。默认 body 上限 2MB
+        // 连一首 3 分钟的 wav（约 32MB）都装不下，放宽到 600MB。
+        .route(
+            "/api/svsep/separate",
+            post(svsep::separate).layer(DefaultBodyLimit::max(svsep::SEPARATE_LIMIT)),
+        )
+        .route("/api/svsep/task/{id}", get(svsep::task))
+        .route("/api/svsep/task/{id}/cancel", post(svsep::cancel))
+        .route("/api/svsep/task/{id}/out/{index}", get(svsep::output))
+        .route("/api/svsep/open-output", post(svsep::open_output))
+        // 分离后端自己的状态 / 设备 / 队列，原样透出去
+        .route("/api/svsep/backend/status", get(svsep::backend_status))
+        .route("/api/svsep/backend/system-stats", get(svsep::system_stats))
+        .route(
+            "/api/svsep/backend/inference",
+            get(svsep::inference_get).post(svsep::inference_set),
+        )
         // ── 前端静态文件 ──────────────────────────────────
         .fallback(simple::static_files)
         .with_state(state)

@@ -28,6 +28,7 @@ mod lyrics;
 mod net;
 mod platform;
 mod server;
+mod svsep;
 
 /// 追加一行日志到 `<可写目录>/app.log`。
 ///
@@ -199,8 +200,22 @@ fn main() {
         })
         .build(tauri::generate_context!())
         .expect("Tauri 应用构建失败")
-        .run(|_app, _event| {
-            // 服务在进程内，进程退出它就没了 —— 不需要收拾子进程
+        .run(|_app, event| {
+            /*
+             * 这里原本想在退出时收掉音轨分离的子进程（python.exe），但**写不出来**：
+             * `AppState` 是在 `serve()` 里建的 —— 那是个 `spawn` 出去的 task，
+             * 从来没 `app.manage()` 过，所以 `app.try_state::<Arc<AppState>>()`
+             * 永远回 `None`。写成那样就是一段看着在收、其实一次都没跑的死代码。
+             *
+             * 真正收子进程的是 `impl Drop for Svsep`：`Svsep` 是 `AppState` 的字段，
+             * 而 `AppState` 是 `serve()` 的局部变量 —— 进程退出时 tokio 运行时的
+             * 任务被 drop，`serve()` 的 future 跟着 drop，`Svsep::drop` 就跑了。
+             * 收不掉的那种退出（任务管理器强杀、运行时被跳过析构）是这套机制
+             * 的边界，要靠 Windows 作业对象才兜得住，那是另一个量级的改动。
+             */
+            if let tauri::RunEvent::Exit = event {
+                note!("窗口关闭，正在收尾…");
+            }
         });
 }
 

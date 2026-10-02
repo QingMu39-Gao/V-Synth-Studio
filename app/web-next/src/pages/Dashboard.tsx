@@ -1,4 +1,4 @@
-﻿import { api } from '@/lib/api'
+import { api } from '@/lib/api'
 import type { AppState, FormatInfo, ToolInfo } from '@/lib/types'
 import { Button } from '@/components/Button'
 import { Chip, Finding, Panel, PanelHead, Stat } from '@/components/Panel'
@@ -22,9 +22,14 @@ const QUICK: { id: string; title: string; desc: string }[] = [
     desc: 'B 站原生解析（含 WBI 签名、大会员画质、弹幕字幕）+ yt-dlp 覆盖 YouTube 等站点',
   },
   {
+    id: 'svsep',
+    title: '音轨分离',
+    desc: '在线 MVSEP（要上传）与离线内嵌引擎（音频不出本机）两条路，拆人声、伴奏、鼓、贝斯等',
+  },
+  {
     id: 'audio',
-    title: '人声分离 / 音频',
-    desc: 'MVSEP、UVR 直达；本地 ffmpeg 做 WAV/MP3 导出、变调变速、响度标准化',
+    title: '音频工具',
+    desc: '本地 ffmpeg 做 WAV/MP3 导出、裁剪、变调变速、响度标准化',
   },
   {
     id: 'resources',
@@ -119,7 +124,7 @@ export function Dashboard({
         <div className="stack">
           <PanelHead
             title="欢迎回来"
-            desc="这里本是清沐方便自己调音、顺手用起来的工作台。把翻调流程里最烦的几件事收在一起：工程格式互转（完全离线）、MV 解析下载、人声分离与音频处理，以及一份随手可查的资源导航。所有转换都在你自己机器上完成，工程不会离开本地。"
+            desc="这里本是清沐方便自己调音、顺手用起来的工作台。把翻调流程里最烦的几件事收在一起：工程格式互转（完全离线）、MV 解析下载、音轨分离与音频处理，以及一份随手可查的资源导航。所有转换都在你自己机器上完成，工程不会离开本地。"
           />
           <div className="btn-row">
             <Button variant="primary" icon="play" onClick={() => onNavigate('convert')}>

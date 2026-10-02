@@ -23,10 +23,10 @@ WebView2 窗口（Tauri 2）
        │              └─ 调 crate 模块做真活：
        │                 libresvip.rs（转换/读工程）· audio.rs（ffmpeg）
        │                 bili.rs（B 站原生）· ytdlp.rs（yt-dlp 桥）
-       │                 lyrics.rs（网易云 / QQ）· net.rs（HTTP 客户端）
+       │                 lyrics.rs（网易云）· net.rs（HTTP 客户端）
        │                 platform.rs（路径/打开/回收站/find_binary）
        │                 tools.rs（探测）· data.rs（静态表）
-       │                    └─ 外部进程：LibreSVIP CLI、ffmpeg/ffprobe、yt-dlp、explorer、UVR
+       │                    └─ 外部进程：LibreSVIP CLI、ffmpeg/ffprobe、yt-dlp、explorer、音轨分离后端（python.exe）
        └─ 其它路径 → simple.rs::static_files（**每请求从磁盘读** app/web/ 下的文件，带 no-store）
 ```
 
@@ -73,9 +73,11 @@ WebView2 窗口（Tauri 2）
 
 ---
 
-## 2. 路由总表（39 条，逐条）
+## 2. 路由总表（53 条，逐条）
 
-路由表在 `app/desktop/src/server/mod.rs::router`（39 个 `.route(...)`；`/api/config` 一条挂 GET+POST 两个方法，末尾还有一个 `fallback` 静态文件处理器，不计入 39）。
+路由表在 `app/desktop/src/server/mod.rs::router`（53 个 `.route(...)`；`/api/config` 与 `/api/svsep/backend/inference` 各挂 GET+POST 两个方法，末尾还有一个 `fallback` 静态文件处理器，不计入 53）。
+
+> 2026-10-02：加了「音轨分离」一页（41~53），路由从 40 涨到 53。前 40 条见下，顺序与 `router()` 一致。
 
 「用的页面」列指**新前端** `app/web-next/src/pages/*.tsx`（另有 `components/` 与 `lib/`）。
 
@@ -106,20 +108,34 @@ WebView2 窗口（Tauri 2）
 | 23 | POST | `/api/convert/run-upload` | `convert.rs::run_upload` | 上传版转换 | **Convert 页的拖入文件走它**（`simple::CONVERT_UPLOAD_LIMIT` = 96MB，axum 默认 2MB 装不下 base64 过的工程） |
 | 24 | GET | `/api/tools/detect` | `server/tools.rs::detect` | 工具 + 编辑器探测（`?force=1` 被忽略） | Dashboard、Settings |
 | 25 | POST | `/api/tools/install` | `server/tools.rs::install` | **固定 400**：工具随包分发，不联网下载 | **无人调用** |
-| 26 | POST | `/api/tools/launch` | `server/tools.rs::launch` | 启动外部程序（`{path}`，或 `{id}` 查配置） | Audio（UVR） |
+| 26 | POST | `/api/tools/launch` | `server/tools.rs::launch` | 启动外部程序（`{path}`，`{id}` 回落已随 `customPrograms` 一起删） | （当前无调用方） |
 | 27 | POST | `/api/video/parse` | `server/media.rs::video_parse` | 解析视频信息与播放流 | Video |
 | 28 | POST | `/api/video/download` | `media.rs::video_download` | 下载，回 `{jobId}` | Video |
 | 29 | POST | `/api/audio/probe` | `media.rs::audio_probe` | ffprobe 媒体信息 | Audio |
 | 30 | POST | `/api/audio/run` | `media.rs::audio_run` | 6 种音频操作，回 `{jobId}` | Audio |
-| 31 | POST | `/api/lyrics/search` | `server/lyrics.rs::search` | 搜歌（网易云 / QQ） | Lyrics |
+| 31 | POST | `/api/lyrics/search` | `server/lyrics.rs::search` | 搜歌（网易云） | Lyrics |
 | 32 | POST | `/api/lyrics/get` | `lyrics.rs::get` | 取歌词 + 译文 + 歌曲信息 | Lyrics |
-| 33 | POST | `/api/lyrics/parse-link` | `lyrics.rs::parse_link` | 链接 / 编号 → `(source,id)` | Lyrics |
+| 33 | POST | `/api/lyrics/parse-link` | `lyrics.rs::parse_link` | 网易云链接 / 编号 → id | Lyrics |
 | 34 | POST | `/api/lyrics/import` | `lyrics.rs::import` | 导入本地 `.lrc`（形状同 get） | Lyrics、Pv |
 | 35 | POST | `/api/lyrics/save` | `lyrics.rs::save` | 存 LRC / SRT（UTF-8 无 BOM） | Lyrics |
 | 36 | POST | `/api/lyrics/cover` | `lyrics.rs::cover` | 下载封面 | Lyrics |
-| 37 | POST | `/api/lyrics/login/sms` | `lyrics.rs::login_sms` | 发短信验证码（**真会发短信**） | Lyrics |
-| 38 | POST | `/api/lyrics/login/cellphone` | `lyrics.rs::login_cellphone` | 手机号 + 验证码登录 → 写 Cookie | Lyrics |
-| 39 | POST | `/api/lyrics/logout` | `lyrics.rs::logout` | 清空该来源 Cookie | Lyrics |
+| 37 | POST | `/api/lyrics/song` | `lyrics.rs::song` | **下载歌曲**（网易云直链 → mp3） | Lyrics |
+| 38 | POST | `/api/lyrics/login/sms` | `lyrics.rs::login_sms` | 发短信验证码（**真会发短信**） | Lyrics |
+| 39 | POST | `/api/lyrics/login/cellphone` | `lyrics.rs::login_cellphone` | 手机号 + 验证码登录 → 写 Cookie | Lyrics |
+| 40 | POST | `/api/lyrics/logout` | `lyrics.rs::logout` | 清空网易云 Cookie | Lyrics |
+| 41 | GET | `/api/svsep/status` | `server/svsep.rs::status` | 运行时 / 模型 / 服务 / 下载进度（前端每 2 秒轮询） | Svsep |
+| 42 | POST | `/api/svsep/start` | `svsep.rs::start` | 起离线分离服务（Python 子进程） | Svsep |
+| 43 | POST | `/api/svsep/stop` | `svsep.rs::stop` | 停它（`taskkill /T /F` 整棵树） | Svsep |
+| 44 | POST | `/api/svsep/runtime/download` | `svsep.rs::runtime_download` | **下运行时 zip（几 GB）并解压**，立刻返回 `{started}` | Svsep |
+| 45 | POST | `/api/svsep/models/download` | `svsep.rs::models_download` | **下模型 zip（730 MB）并解压**，立刻返回 `{started}` | Svsep |
+| 46 | POST | `/api/svsep/separate` | `svsep.rs::separate` | 提交一次分离（multipart **原样转发**；`?engine=`） | Svsep |
+| 47 | GET | `/api/svsep/task/{id}` | `svsep.rs::task` | 查任务（进度**是估的**，见 §3.9） | Svsep |
+| 48 | POST | `/api/svsep/task/{id}/cancel` | `svsep.rs::cancel` | 取消任务 | Svsep |
+| 49 | GET | `/api/svsep/task/{id}/out/{index}` | `svsep.rs::output` | 取输出轨（**流式转发**，不整个读进内存；`?inline=1` 试听） | Svsep |
+| 50 | POST | `/api/svsep/open-output` | `svsep.rs::open_output` | 打开输出目录 | Svsep |
+| 51 | GET | `/api/svsep/backend/status` | `svsep.rs::backend_status` | 分离后端原始 `/api/status`（设备 / 队列 / 输出目录） | Svsep |
+| 52 | GET | `/api/svsep/backend/system-stats` | `svsep.rs::system_stats` | 分离后端的 CPU / 内存 | Svsep |
+| 53 | GET+POST | `/api/svsep/backend/inference` | `svsep.rs::inference_get` / `inference_set` | 推理模式 auto / cpu / gpu | Svsep |
 
 ---
 
@@ -256,7 +272,7 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 ### 3.3 音频处理
 
-**界面上是什么**：Audio 页 —— 左列六种操作（格式转换 / 提取音频 / 变调 / 变速 / 裁剪片段 / 响度标准化）+ 参数表单；右边波形编辑区（`/api/fs/raw` 取字节 → `decodeAudioData`）与人声分离两条路（在线 MVSEP、离线 UVR）。
+**界面上是什么**：Audio 页 —— 左列六种操作（格式转换 / 提取音频 / 变调 / 变速 / 裁剪片段 / 响度标准化）+ 参数表单；右边波形编辑区（`/api/fs/raw` 取字节 → `decodeAudioData`）。⚠️ 人声/音轨分离 2026-10-02 已搬到 Svsep 页（见 §3.11）。
 
 **请求链**：`api.audioProbe(input)`（`{info}`，不是任务）→ `api.audioRun({action,input,output,options})` → `{jobId}` → `useJob`。
 
@@ -283,33 +299,42 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 - 输出目录由 `prepare_out()` 顺手 `create_dir_all`；`require_input()` 只校验「路径存在」。
 - `extract` 与 `convert` 共用一个实现，所以在界面上它们的差别只是默认格式与文案。
-- 音频页的人声分离：MVSEP 走 `api.fsOpen({url})`（**见 §3.2 的 `{url}` 坑**）、UVR 走 `api.launch({path})`；UVR 路径来自 `/api/state` 的 `editors[0]`（`tools.rs` 的候选表只剩 UVR 一个）。
+- ⚠️ **音频页 2026-10-02 起不再管分离**：原来这里有在线 MVSEP 与离线 UVR 两条路，现在两者都搬到独立的 **Svsep 页**（见 §3.11）—— 音频页右栏只留一张「音轨分离 · 已搬家」的入口卡。「打开本地 UVR5」那个按钮与 `tools.rs` 的 UVR 路径候选**一起删了**（离线分离改成内嵌引擎，不再需要用户自己装 UVR）。**`/api/tools/launch` 仍在**，但当前没有调用方。
 
 **涉及文件**：`server/media.rs`（`audio_probe` / `audio_run`）、`audio.rs`、`data.rs`、`net.rs`（Cancel 类型）、`app/web-next/src/pages/Audio.tsx`。
 
 ### 3.4 歌词
 
-**界面上是什么**：Lyrics 页 —— 来源分段（网易云 / QQ 音乐）、搜索 / 粘贴链接 / 导入本地 `.lrc` 三条取词路 → 预览（对照 / 只看原文 / 只看译文）→ 存 LRC / SRT、下封面、「用这段歌词做文字 PV」、登录（手机号+验证码 / 手工 Cookie）与退出。
+**界面上是什么**：Lyrics 页（**网易云专区**）—— 搜索 / 粘贴链接 / 导入本地 `.lrc` 三条取词路 → 预览（对照 / 只看原文 / 只看译文）→ 存 LRC / SRT、下封面、**下歌曲**、「用这段歌词做文字 PV」、登录（手机号+验证码 / 手工 Cookie）与退出。
 
-**请求链**：`api.lyricsSearch({source,keyword})` → 点一条 → `api.lyricsGet({source,id})`；或 `api.lyricsParseLink({url})`；或 `api.lyricsImport({path})`；存盘 `api.lyricsSave({format,lyric,trans,bilingual,durationSec,source,outDir,name})`；封面 `api.lyricsCover({url,outDir,name})`。
+> 2026-10-02 按用户要求改成网易云专区：删掉了「来源」分段与整套 QQ 音乐实现（前后端），
+> 并新增**歌曲直链下载**。下面凡涉及 QQ 的描述都已按新状态改写；历史落点表见 `AGENTS.md`。
+
+**请求链**：`api.lyricsSearch({source,keyword})` → 点一条 → `api.lyricsGet({source,id})`；或 `api.lyricsParseLink({url})`；或 `api.lyricsImport({path})`；存盘 `api.lyricsSave({format,lyric,trans,bilingual,durationSec,source,outDir,name})`；封面 `api.lyricsCover({url,outDir,name})`；歌曲 `api.lyricsSong({id,outDir,name})`。
 
 **回包形状（权威）**：
 
 | 路由 | 形状 |
 |---|---|
-| `search` | `{source, keyword, songs:[{id,name,artists,album,cover,durationSec}]}`（字段是 `name` / `artists`，不是 `title` / `artist`） |
-| `get` | `{source, id, song:{name,artists,album,cover,durationSec}, lyric, trans}` |
+| `search` | `{source, keyword, songs:[{id,name,artists,album,cover,durationSec,fee,playable}]}`（字段是 `name` / `artists`，不是 `title` / `artist`；`playable` 是后端批量探测出来的，见下） |
+| `get` | `{source, id, song:{name,artists,album,cover,durationSec,fee}, lyric, trans}` |
 | `import` | 与 `get` 同形，另有 `encoding: "utf-8"｜"gbk"｜"unknown"` |
+| `song` | `{path, name, size, level, format}`；拿不到直链时 **400**（不是 500）。`format` 通常是 `mp3`，也可能是接口给的 `m4a` / `flac`，此时后端会把已写下的文件改名成对应扩展名 |
 
 **后端做了什么**（`lyrics.rs` + `server/lyrics.rs`）：
 
-- **两个来源**：`normalize_source` 只认 `netease` / `qq`（空串报「请先选择音乐来源」）。出站客户端挂 `config.proxy`（不带协议自动补 `http://`）、20 秒超时，**UA 与 Referer 必带**。
-- 网易云走**明文接口**（`/api/cloudsearch/pc` 搜索、`/api/song/lyric?id=&lv=-1&kv=-1&tv=-1` 取词+译文、`/api/song/detail` 补详情，详情失败不废歌词）。QQ 必须用 `QQ_UA`（手机 UA，桌面 UA 会被要求签名）+ `y.qq.com` Referer；取词用 `fcg_query_lyric_new.fcg?nobase64=1`，回包是 HTML 转义过的 → `html_unescape()`；`retcode != 0` 直接报错。纯音乐用 `is_pure_music()` 识别并拒绝。
-- **`parse_link` 的判定顺序不能调**（`lyrics.rs::parse_link`，注释里写明踩过）：① `?songmid=` → ② `qq.com` + `/songDetail/<mid>` → ③ `?id=<数字>` → ④ 纯数字 → ⑤ 裸 songmid（5~30 位字母数字且**至少含一个字母**）。反了的话 `songmid=0039MnYb0qxYhV` 会被 `id=(\d+)` 先吃掉，变成网易云 id `0039`。
+- **只有一个来源**：`source` 字段仍在请求与回包里（回包固定 `"netease"`），但已没有分派逻辑 —— `server/lyrics.rs::source_of()` 永远返回 `"netease"`，传 `qq` 也不报错（功能已不存在，报错只会让人困惑）。出站客户端挂 `config.proxy`（不带协议自动补 `http://`）、20 秒超时，**UA 与 Referer 必带**。
+- 网易云走**明文接口**（`/api/cloudsearch/pc` 搜索、`/api/song/lyric?id=&lv=-1&kv=-1&tv=-1` 取词+译文、`/api/song/detail` 补详情，详情失败不废歌词）。纯音乐用 `is_pure_music()` 识别并拒绝。
+- **`parse_link` 只认网易云**（`lyrics.rs::parse_link`）：① `?id=<数字>`（`?` 与 `&` 都认）→ ② `/song/<数字>` → ③ 整个输入是纯数字。兜底文案「无法识别的链接。支持：网易云歌曲链接（music.163.com/song?id=…）或歌曲 ID」。注释里**保留了当年 songmid 顺序坑的教训**（加来源必须先判特征参数，否则会被 `id=(\d+)` 抢走）。
 - **本地 `.lrc` 与编码**：`import_file` 先按 UTF-8 读，**不是合法 UTF-8 才按 GBK(936)**（Windows 走 `MultiByteToWideChar`，非 Windows 只认 UTF-8）；两种都不是就有损解码并回 `unknown`。解析不出时间轴 → 400「不像是 LRC 歌词」。双语拆分两种写法（`split_bilingual`）：行内 `原文 / 译文`（`/`、`／`、`|`，要求**至少一半**歌词行拆得开），或前后两段**时间戳逐条相同**（≥4 行且偶数）。
-- **保存 LRC / SRT**（`render`）：`format` 只支持 `lrc` / `srt`；`bilingual`（默认 true）决定带不带译文；LRC 双语是**交错两行**（同时间戳写两条，不合并）；SRT 结束时间取「后面第一个更晚的时间戳」，最后一句用 `durationSec`（0 就 +4 秒），同时间戳多行收在同一结束时间上（双语正是这种）。译文匹配先精确、再容忍 ±50ms。**一律 UTF-8 无 BOM**，界面上不提供 GBK 选项。文件名去用户可能带的 `.lrc`/`.srt` 再用 `bili::safe_title` 清洗。
-- **封面**：`url` 必须 `http` 开头（否则「封面地址无效」）；扩展名从 URL 猜（jpg/jpeg/png/webp），猜不到按 jpg；下载**不带 Cookie**，Referer 按域名选（`qq.com`/`gtimg.cn` → QQ，否则网易云）。
-- **短信登录与 Cookie**：`login_sms` 先 `phone_exists`（**只有明确回答「没有」才拦**，查不出来就放行让发码接口自己说话）→ `sms_send`（成功形状 `code==200`）。`login_cellphone` 打 `/api/w/login/cellphone`，Cookie 从 **`Set-Cookie` 响应头**（或老版 body 里的 `cookie` 字段）里取，**必须含 `MUSIC_U`** 才认；成功后写 `config.neteaseCookie` 并落盘，顺手取昵称做提示（失败不影响登录）。`logout` 把该来源 Cookie 置空并落盘。
+- **保存 LRC / SRT**（`render`）：`format` 只支持 `lrc` / `srt`；`bilingual`（默认 true）决定带不带译文；LRC 双语是**交错两行**（同时间戳写两条，不合并）；SRT 结束时间取「后面第一个更晚的时间戳」，最后一句用 `durationSec`（0 就 +4 秒），同时间戳多行收在同一结束时间上（双语正是这种）。译文匹配先精确、再容忍 ±50ms。**一律 UTF-8 无 BOM**，界面上不提供 GBK 选项。文件名去用户可能带的 `.lrc`/`.srt`/`.mp3` 再用 `bili::safe_title` 清洗。
+- **封面**（`download_cover`）：`url` 必须 `http` 开头（否则「封面地址无效」）；扩展名从 URL 猜（jpg/jpeg/png/webp），猜不到按 jpg；下载**不带 Cookie**，Referer 用网易云。⚠️ 网易云给的原始 `picUrl` 是**3000×3000、7.1 MB** 的巨图，`lyrics.rs::cover_url()` 统一改写成 `?param=500y500`（URL 里已有 `?` 就不重复拼）。
+- **歌曲直链下载**（`download_song` → `POST /api/lyrics/song`）：⚠️ **必须用 v1 接口** —— `GET /api/song/enhance/player/url/v1?ids=[<id>]&level=exhigh&encodeType=mp3`（带上登录 Cookie），拿 `data[0].url` 再下载，**直链本身不挂 Cookie**。2026-10-02 实测：**老的非 v1 接口 `/api/song/enhance/player/url?id=X&ids=[X]&br=320000` 已经拿不到链接了** —— 同一批 7 首歌里它只给 1 首，换 v1 + `level` + `encodeType` 后 6 首都能拿（剩下那首是真的要会员）。`level` 与 `encodeType` 这两个参数**一个都不能少**，少了就退化成老行为。`fetch_media()` 是唯一取直链入口，下载与搜索结果探测共用它。
+- ⚠️ **下音频的客户端必须放宽超时**（`media_client()`）：搜索/取词用的 `client()` 是 20 秒总超时，而实测一首 320 kbps、9.8 MB 的歌单流传输要 **96 秒**，用 20 秒必被掐断，报出来还是含糊的 `error decoding response body`。所以 `media_client()` = 总超时 600 秒 + `read_timeout` 60 秒（「多久没收到新数据」才判死，数据在流就不超时）。前端 `api.ts::lyricsSong` 的超时也放到了 5 分钟。下载走 `save_stream()` 边到边写盘（几 MB 不占内存），写完用 `file_looks_like_audio()` 嗅探文件头（ID3 / fLaC / OggS / MPEG 帧同步），不是音频就**删掉文件**再报「直链可能已经过期」。格式取接口回的 `type`（`format_of()`），不是 mp3 时 `server/lyrics.rs::song()` 会把已写下的文件改名成对应扩展名。
+- **能不能下**：搜索时 `netease_search` 调 `annotate_playable()` **一次批量**问接口（20 个 id 一起），给每条结果插 `playable: true/false`；探测本身失败就**整体不插这个字段**（前端按「未知」处理，不显示成不能下）。下载失败且有别的 `playable` 版本时，页面会自动换一个版本重试一次。⚠️ **`fee` 仍然不能当判据**（0 免费 / 1 VIP / 4 付费专辑 / 8 低音质免费，只当标签展示）：实测同为 `fee=0` 的歌有的拿得到直链、有的拿不到；真正的判据只有「接口有没有给 url」。
+  - 拿不到时的文案按回包分支（`no_direct_link_reason()`）：`cannotListenReason` 1 → 版权或付费受限、建议先登录；2 → 只有会员能听；`code == -110` 或 `freeTrialPrivilege.userConsumable == false` → 这个版本不给免费账号下载、建议换一个版本；否则「网易云没有返回这首歌的下载地址」。状态码是 **400**，因为这是用户能理解并自己处理的事。
+  - 音质用 `level` + `br` 渲染成人话（`standard`→标准、`exhigh`→极高、`lossless`→无损、`hires`→Hi-Res …，`br>0` 再拼 ` / 320 kbps`），存进回包的 `level`。
+- **短信登录与 Cookie**：`login_sms` 先 `phone_exists`（**只有明确回答「没有」才拦**，查不出来就放行让发码接口自己说话）→ `sms_send`（成功形状 `code==200`）。`login_cellphone` 打 `/api/w/login/cellphone`，Cookie 从 **`Set-Cookie` 响应头**（或老版 body 里的 `cookie` 字段）里取，**必须含 `MUSIC_U`** 才认；成功后写 `config.neteaseCookie` 并落盘，顺手取昵称做提示（失败不影响登录）。`logout` 把它置空并落盘。
 - 手机号校验 `phone_ok`：11 位、以 1 开头、纯数字；`phone_of` 会先归一化（去空格/`-`/`+`/括号、去 `86` 前缀）。
 - **Cookie 回显一律脱敏**：`/api/config` 与 `/api/state` 把任何 `*Cookie` 的非空值换成占位串 `已设置`（`simple.rs::MASKED`）；前端把 `已设置` 原样提交回来时 `config_post` **跳过不覆盖**。`lyrics::cookie_of` 对网易云做补全：只粘了值（没有 `=`）时自动补 `MUSIC_U=`。
 
@@ -317,6 +342,7 @@ CLI 调用形态（`libresvip.rs::convert`）：`libresvip-cli proj convert <in>
 
 - ⚠️ **扫码登录不做**：网易云始终回 `8821 请切换其他登录方式`，判为服务端风控，已整体移除（`AGENTS.md` 第十节）。**别再试图修它**。留了「手机号验证码 + 手工 Cookie」两条路。
 - ⚠️ **测试时绝不要调 `lyricsSms`** —— 这个接口真会发短信（`lyrics.rs::sms_send` 注释）。只用明显非法的格式（如 `123`）让它停在参数校验上。
+- ⚠️ **`default_config()` 里没有 `qqCookie` 了**（2026-10-02 删）。`load_config` 只认默认值里有的键，所以老用户 `config.json` 里残留的 `qqCookie` **不会报错**，会在下次 `save_config` 整份回写时自然被清掉。
 - `Lyrics.tsx` 头部注释说 `lib/api.ts` 的 `LyricsHit/LyricsDoc` 是 `{items:[{title,artist}]}` —— **注释已过期**，`api.ts` 现在就是按 `songs:[{name,artists}]` 与 `{song,lyric,trans}` 声明的（已核实）。
 
 **涉及文件**：`server/lyrics.rs`、`lyrics.rs`、`net.rs`（`encode_component`）、`bili.rs::safe_title`、`app/web-next/src/pages/Lyrics.tsx`、`pages/Pv.tsx`（复用 import）。
@@ -409,8 +435,8 @@ resources.json
 
 **配置模型**（`simple.rs`）：
 
-- `default_config()` 的键：`bilibiliCookie` `neteaseCookie` `qqCookie` `proxy` `outputDir` `downloadDir` `defaultTargetFormat` `nameTemplate` `threads` `lastSourceFormat` `customPrograms` `voiceDirs` `quality` `audioQuality` `perfMode`。默认目录来自 `platform::downloads_dir()`。
-- `load_config(writable)`：默认值打底 + 已存 JSON 逐键覆盖；内部键 `_root` 不外泄；`migrate_legacy_dirs` 把指向旧 `<可写目录>/output|downloads` 的配置改成系统下载目录。
+- `default_config()` 的键：`bilibiliCookie` `neteaseCookie` `proxy` `outputDir` `downloadDir` `defaultTargetFormat` `nameTemplate` `threads` `quality` `audioQuality`。默认目录来自 `platform::downloads_dir()`。（`lastSourceFormat` / `customPrograms` / `voiceDirs` / `perfMode` 是 2026-10-02 清掉的历史键，`qqCookie` 随网易云专区改造一并删掉。）
+- `load_config(writable)`：默认值打底 + 已存 JSON 逐键覆盖，**只认默认值里有的键** —— 所以配置文件里残留的历史键（`perfMode` / `qqCookie` / 更早的 `_root`）不会报错，下次 `save_config` 整份回写时自然被清掉；内部键 `_root` 不外泄；`migrate_legacy_dirs` 把指向旧 `<可写目录>/output|downloads` 的配置改成系统下载目录。
 - `config_path = <writable>/config.json`；`config_post` 是**浅合并任意键**（不用改后端就能存新键）。
 - 死键（grep 全仓核实）：**`voiceDirs` 没有任何读取方**；`perfMode` 只有默认值，新前端没接（`AGENTS.md` 已说明）；`customPrograms` 只被 `/api/tools/launch` 的 `{id}` 分支和**旧前端设置页**使用，新前端没有管理入口。
 
@@ -447,7 +473,7 @@ resources.json
 
 **`find_binary(name, extra_dirs)`**（`platform.rs`）：先给定目录、再 PATH；Windows 上自动补 `.exe`。**这就是「将来换 Android 走 JNI」要替换的那一层**（`tools_dir` 形参已经一路穿好）。
 
-**编辑器探测**：`tools.rs::candidates()` **只剩 UVR 一个**（硬编码 `H:\ChiXiaoYangUVR5\UVR.exe` / `Start.exe` + `%ProgramFiles%\Ultimate Vocal Remover\UVR.exe`，外加深度 2 的目录扫描）。原来 16 个编辑器的路径表被砍掉，理由见 `AGENTS.md` 第十节。
+**编辑器探测**：`tools.rs::candidates()` 现在**返回空表**（2026-10-02）。原来 16 个编辑器的路径表先砍到只剩 UVR，随后离线分离改成内嵌引擎（§3.11），UVR 那条候选也删了 —— `/api/tools/detect` 的 `editors` 恒为空数组、`installedCount` 恒为 0，前端 `state.editors` 仍挂在同一条链上。**别因为「空函数很怪」就把 `candidates()` 删掉。** 理由另见 `AGENTS.md` 第十节。
 
 **`/api/tools/launch`**：`{path}` 优先；没有 path 才用 `{id}` 去 `config.customPrograms` 里查；还接受可选的 `file`（当参数传给被启动的程序）；文件不存在报「程序不存在或已被移动」；**工作目录设成程序自己所在目录**（不少编辑器的资源是相对路径找的）；用 `quiet_command`（Windows 下不弹窗）。⚠️ `{id}` 这条分支代码里保留了，但**新旧前端当前都只传 `{path}`**（grep 核实）。
 
@@ -479,6 +505,61 @@ resources.json
 **启动加载画面与交接**：`index.html` 里的静态遮罩 `#boot`（样式内联，另有一条 12 秒兜底就绪态）由 `lib/boot.ts::hideBoot()` 揭开 —— 调用时机是 **App 首次 `/api/state` 落定之后（成功失败都要揭）**，最短展示 520ms、淡出 400ms，`transitionend` 没来还有定时器兜底删节点；淡出时给 `<html>` 打 `dataset.boot='out'`，让侧栏与内容区在**同一帧**各来一段入场（两段交叉才是「交接」，参数见 `GLASS-HANDOFF` §4.1）。
 
 **涉及文件**：`app/web-next/src/App.tsx`、`lib/useGlass.ts`、`lib/useNavLens.ts`、`lib/boot.ts`、`components/Glass.tsx`、`components/Panel.tsx`、`index.html`、`index.css`、`vite.config.ts`。
+
+### 3.11 音轨分离（在线 MVSEP + 离线内嵌引擎）
+
+**界面上是什么**：Svsep 页（侧栏「音轨分离」，`video` 之后、`audio` 之前）。左栏三张卡：音频素材（拖/选一个文件）、分离模式（六轨 BS-Roformer / 二轨 UVR MDX）、分离完做什么；右栏：离线引擎（服务 / 运行时 / 模型 / 设备四个 `<Stat>` + 下载进度 + 启动/停止/下载/输出目录四个按钮）、分离进度（百分比 + 每轨试听与下载）、在线分离 MVSEP（只是一个 `api.fsOpen({url})` 的外链 + 隐私提示）、引擎队列。
+
+**两条路的差别**（这一页存在的理由）：
+
+| | 在线 MVSEP | 离线内嵌 |
+|---|---|---|
+| 怎么用 | 打开 `https://mvsep.com/zh`（默认浏览器），自己上传 | 页面上传 → 本机 Python 跑模型 |
+| 音频出不出本机 | **出**（所以有 `<Chip tone="warn">需上传</Chip>` 与隐私提示） | 不出 |
+| 依赖 | 浏览器 + 网 | 运行时（7.3 GB）+ 模型（730 MB），第一次要下 |
+| 速度 | 看对方排队 | 本机纯 CPU 实测：二轨约 8 分钟、六轨约 11 分钟（20 秒测试音频） |
+
+**架构**：Tauri 进程里**再起一个 Python 子进程**当分离服务（`crate::svsep::Svsep`，默认端口 17879，占用则 +1 重试），Rust 这层只是转发。**为什么不直接让前端打 Python**：前端只认一个后端、一套错误形状，而且「服务没起来」这话说得比 Python 的英文堆栈清楚。
+
+**磁盘布局**（决定了哪些要下载、哪些随包发）：
+
+```
+<root>/app/data/svsep/          运行时（随包分发，只读）
+  ├─ runtime/python.exe         Python 3.10 embeddable + torch + CUDA 运行库
+  ├─ backend/                   app.py 等 12 个 .py（**上游前端已删**）
+  └─ bin/ffmpeg.exe
+<可写>/svsep/models/            模型（**不随包发**，730 MB，用户按需下）
+<可写>/svsep/{uploads,outputs,logs,data}/
+```
+
+绿色版「可写」= `<root>/app/data`；安装版在 `%APPDATA%` 下（Program Files 只读）。⚠️ 于是安装版的**模型在 APPDATA、运行时在 Program Files**，两者分开 —— `config.py` 的 `MODEL_DIR` 被加了一个 `CHIXIAOYANG_MODELS_DIR` 环境变量分支来表达这个组合（上游原本只能表达「只读目录旁边有就有」，那段带注释标了「V-Synth-Studio 加的」，是**唯一一处**对上游源码的改动）。
+
+**模型下载**：`svsep.rs::MODEL_URL` **是空串** —— zip 由用户传服务器后填。空链接时界面明确说「还没配置下载地址」，不转圈失败。下载走 `download_models()` → 写 `<models>/svsep-models.zip.part` → `extract_zip(..., "models/", ...)` 解到 `models/` 的父目录 → 删 zip。运行时同理（`RUNTIME_URL`、`svsep-runtime.zip`，`strip = ""` 因为要留着 `runtime/` 那一层）。**没有断点续传**（理由：730 MB 重下一次可接受，且用户很可能放本地服务器）。
+
+⚠️ **runtime 包里必须同时有 `runtime\`、`backend\`、`bin\` 三样**（2026-10-02 修）：判据 `runtime_ready()` 看的是 `runtime/python.exe` 与 `backend/app.py` 两个文件，而 `bin/ffmpeg.exe` 是分离引擎自己要用的（`backend/config.py::_ensure_ffmpeg_on_path` 把 `<svsep>\bin` 塞进 PATH）。打包脚本第一版用 `CreateFromDirectory` 只装了 `runtime\` 一个顶层目录 —— 用户下完 4.5 GB 仍然起不来，界面还只会说「分离引擎还没装」。修法：`tools/svsep-pack.ps1` 改成 `ZipFile.Open` + `CreateEntryFromFile` 手工加条目（一个包可以放多个顶层目录，条目名用正斜杠），`$pairs` 里 `runtime` 那项是 `Dirs = @('runtime','backend','bin')`。回归测试 `svsep::tests::extracts_the_whole_real_runtime_pack_when_asked` 会逐个断言这三样 + 一个偏移超 4 GiB 的条目（`torch_cpu.lib`）。
+
+**`extract_zip()` 是手写的**（`svsep.rs`，只支持「存 + deflate」）：为解一个 zip 引 `zip` crate 不划算，`flate2` 本来就在依赖树里。⚠️ `strip` 参数两个包不一样，写错不会报错，只会在用户点「开始分离」时才现形。⚠️ 累计压缩体积要在循环外先 `sum()` 一次（runtime 有 2.4 万个条目，每轮重算就是 6 亿次加法）。
+
+**提交分离**：`POST /api/svsep/separate?engine=uvr|roformer`，audio 走 multipart 的 **`file`** 字段。Rust **不解析也不重打包** —— 把原始 multipart 字节原样转发（拆开再拼只会在文件名转义与大 body 缓冲上出错）。body 上限放宽到 600 MB（`SEPARATE_LIMIT`），因为 axum 默认 2 MB 连一首 3 分钟 wav 都装不下；真正的判据仍在 Python 那边（100 MB）。
+
+**⚠️ 进度是估的不是真的**：`task_manager.py` 里 UVR 用 `pct = 5 + int(min(0.95, elapsed / 240.0) * 90)`、RoFormer 用 `elapsed / 480.0`，纯按时间线性插值 —— 长任务会**长时间停在 90% 再跳 100%**。页面上照实显示百分比 +「已用时 N 秒」并加了一句 note 说明「看到不动不用重试」。要改就调 `CHIXIAOYANG_EST_MINUTES_PER_TASK` / `CHIXIAOYANG_ROFORMER_EST_MINUTES`。
+
+**⚠️ 它的设备徽章会误报**：`detect_acceleration()` 只看 `onnxruntime.get_available_providers()` 里有没有 `CUDAExecutionProvider`，**没真去加载 DLL**。在一台 AMD 机器上实测它报 `onnx_cuda: true / "CUDA (ONNX)"`，而 `torch.cuda.is_available()` 是 `False`。界面上那个 `badge` 不可全信。
+
+**⚠️ `audio-separator` 的 output_dir 坑**（上游代码注释里记着）：它在 `load_model` 时把 `output_dir` 拷进 `model_instance`，只改 `Separator.output_dir` 无效，必须同时改 `model_instance.output_dir`，否则输出落到全局 `outputs/`、任务子目录为空、下载 404。
+
+**上游前端已删**：`backend/templates/index.html`、`backend/static/{app.js,style.css,offline.css,favicon.ico,logo.png}` 全部不再随包（`app.py` 里那个 `GET /` 的 `render_template` 路由留着也是死路；我们只用 `/api/*`）。
+
+**退出时收子进程，连强杀也收**（2026-10-02 补）：分离引擎是 `python.exe` 子进程，`impl Drop for Svsep` 只覆盖正常退出 —— **实测任务管理器强杀会留下孤儿**：它继续监听 17879（下次启动工作站以为端口被占，另挑一个，于是两个服务并存）、还占着几 GB 内存。兜底是 Windows 作业对象（`svsep.rs` 的 `job` 模块）：`CreateJobObjectW` + `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` + `AssignProcessToJobObject(child)`，句柄**故意不关**（存 `OnceLock`）—— 进程一死，内核回收它持有的句柄，作业上挂的进程一起被终止。这比任何用户态析构都可靠。⚠️ 作业对象建不出来时只记一行日志、照常跑（这是兜底，不该让分离功能不可用）。⚠️ `windows-sys` 要同时开三个 feature：`Win32_System_JobObjects`（常量与结构体）、`Win32_System_Threading`（类型定义实际挂在这里）、`Win32_Security`（`CreateJobObjectW` 的参数用了 `SECURITY_ATTRIBUTES`）。
+
+**实测（2026-10-02，最终 exe + 真包）**：
+- `POST /api/svsep/start` → Python 服务起在 17879，`/api/svsep/status` 报 `runtimeReady: true` / `models.ok: true`（730.7 MB）。
+- 真跑一次 UVR 分离（10 秒测试音，`ffmpeg -f lavfi -i sine` 生成）：**约 150 秒完成**，两轨都出来了（人声 / 伴奏），`outputs[].label` 由后端给中文。进度长时间停在 5% 再跳 —— 就是上面那条「估的」的直接证据。
+- 下载落点回 `audio/wav`、带 `Content-Length` 与 `Accept-Ranges: bytes`，`Content-Disposition` 用 `filename*=UTF-8''`（中文轨名不乱码）；`?inline=1` 可直接喂 `<audio>`。
+- 模型下载链路走本地 HTTP 服务器实测：484,975,838 字节 / 7396 次进度回调 / 6 个文件解到位 / `.zip` 与 `.part` 都清掉。回归测试 `svsep::tests::downloads_the_real_models_pack_when_asked`（`VSS_REAL_MODELS_URL` + `VSS_REAL_DOWNLOAD_DEST` 守着，默认跳过；⚠️ **绝不要把落点指向真的可写目录**，那会把用户装好的模型重下一遍）。
+- 强杀验证：作业对象加上之前，`Stop-Process -Force` 后 python **活着**并占着 17879；加上之后同样操作 **跟着死了**、无残留。
+
+**涉及文件**：`app/desktop/src/svsep.rs`（含 `job` 模块与真包/下载测试）、`server/svsep.rs`、`server/mod.rs`、`main.rs`（退出时收子进程；⚠️ `RunEvent::Exit` 里**没有**真正的收尾逻辑，原因见那里的注释）、`app/desktop/Cargo.toml`（`windows-sys` 的 JobObjects feature）、`tools/svsep-pack.ps1`、`app/web-next/src/pages/Svsep.tsx` / `Svsep.css`、`lib/api.ts`、`App.tsx`、`pages/Audio.tsx`（拆掉 SeparationCard，改成一个「去音轨分离」的入口卡）、`pages/Dashboard.tsx`、`.gitignore`。
 
 ---
 
@@ -522,7 +603,7 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 
 | 改什么 | 先看 |
 |---|---|
-| 页面文案 | `next-smoke.mjs`（8 页逐页关键字断言）会变红 |
+| 页面文案 | `next-smoke.mjs`（**9 页**逐页关键字断言）会变红 |
 | `app/web-next/src/App.tsx` 的 `PAGES` / `pageViews` | 两处都要加，只加一处会渲染成空白（占位兜底已随旧前端一起删除） |
 | `app/desktop/src/platform.rs` | 平台相关代码**只放这里**（移植 macOS 主要改这一个文件）；`tools.rs` 的路径表是数据不是逻辑 |
 | `app/web/**` | `index.html` + `assets/` 是 Vite 产物，会被构建覆盖；`vendor/` + `img/` 是随包资源，**别让构建清掉**（`emptyOutDir` 必须 `false`） |
@@ -536,8 +617,8 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 
 工具与管什么**照 `docs/FRONTEND.md` 第 6 节的表**（契约 / 逐页冒烟 / 玻璃探针 / PV 交接探针），这里只补两条：
 
-- 逐页冒烟：`tests/manual/next-smoke.mjs`（控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8）。
-- Rust 单测：`cd app\desktop; cargo test --bins`（现有单测覆盖 SRT 时间戳、AVC 优先选流、ffmpeg 进度解析、LRC 时间戳与双语拆分、WBI 签名等）。
+- 逐页冒烟：`tests/manual/next-smoke.mjs`（控制台报错 / 占位页 / 玻璃面 / 该页文案，**9/9** —— 2026-10-02 加了「音轨分离」一页）。
+- Rust 单测：`cd app\desktop; cargo test --bins`（现有 **58 条**，含 svsep 的 Zip64 解析、`strip` 落点、作业对象相关路径；两条「真包」用例用环境变量守着，平时跳过：`VSS_REAL_ZIP` / `VSS_REAL_RUNTIME_ZIP`+`VSS_REAL_RUNTIME_DEST` / `VSS_REAL_MODELS_URL`+`VSS_REAL_DOWNLOAD_DEST`）。⚠️ 解真 runtime 包要 7.5 GB，**落点必须指到 H 盘**；两个 `cargo test` 并行会撞 linker（exit 1104），串行跑。
 
 **启动测试实例一律用 8891**，跑完必须停实例 + 清无头 Edge（命令见 `AGENTS.md`「进程卫生」）。机器上常驻一个 8891 实例时**不要**再去抢它。
 
@@ -559,5 +640,6 @@ node tests\contract\verify.mjs 8891     # 必须 17/17
 10. ~~**死配置键**~~ **已于 2026-10-02 处理**：`lastSourceFormat`、`voiceDirs`、`perfMode`、`customPrograms` 四个只写不读的键从 `server/simple.rs::default_config()` 里删掉了（连带 `/api/tools/launch` 的 `{id}` 分支与夹具同步更新）。只留 `defaultTargetFormat` —— 它**没有写入方**是事实，但 `Convert.tsx:57` 在读（目标格式的初值），所以不是死键，改默认值只能改那一行。
 11. **`docs/GLASS-HANDOFF.md` 我只读了 `AGENTS.md` 对它的引用**，本文里的小节号（§2.2 / §3.1 / §4.1）按那份引用标注，**没有逐节核对正文**。
 12. **平台相关分支只有 Windows 走过**：macOS 的 `open -R` / `$HOME/Downloads`、非 Windows 的 GBK 分支（`gbk_to_string` 直接返回 `None`）都只读了代码。
-13. **外部站点的线上行为未验证**：B 站 WBI / 番剧 / durl、网易云明文接口、QQ 音乐手机 UA 搜索、yt-dlp 各站点 —— 写文档期间没有发任何请求。
+13. **外部站点的线上行为未验证**：B 站 WBI / 番剧 / durl、网易云明文接口、yt-dlp 各站点 —— 写文档期间没有发任何请求。
+    （其中「网易云 `enhance/player/url` 直链能不能下」已由用户在 2026-10-02 实测并记进 `AGENTS.md` §十一。）
 14. **并发改动的风险**：写这份文档期间仓库里还有别的改动（`main.rs` / `server/simple.rs` / `tests/manual/*` 都有未提交修改）。本文按**我读到的那一版工作区**写；如果这些文件随后又变了，请以代码为准。（其中 `docs/NEXT-UI.md` 已于 2026-10-02 改名为 `docs/FRONTEND.md`。）

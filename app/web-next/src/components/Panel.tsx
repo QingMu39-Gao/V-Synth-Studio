@@ -34,39 +34,60 @@ export function Panel({
   padded?: boolean
 }) {
   const { globalGlass } = useGlobalGlass()
+  /* 材质两档共用的背景参数 —— 这个开关不碰背景（`useMaterial()` 只读等级）。 */
+  const { material } = useMaterial()
 
-  /* 关掉「全局玻璃」就回到换库之后那一版：面板是库的 `MaterialView`
-     （模糊 + 底色，不折射、无高光边），只有栏 / 侧栏 / 控件是玻璃。
-     注意 **背景参数两档共用**，这个开关不碰背景。 */
-  if (!globalGlass) {
-    return (
-      <MaterialView
-        thickness="thin"
-        radius={20}
-        className={`panel ${padded ? 'panel-padded' : ''} ${className}`}
-      >
-        {children}
-      </MaterialView>
-    )
-  }
-
+  /**
+   * ⚠️ **两档必须渲染同一个元素类型，不能一个走 `MaterialView`、一个走 `GlassSurface`。**
+   *
+   * 踩过（用户报「玻璃等级滑条没有任何动画，甚至一帧拉过去的」）：组件**类型**一变，
+   * React 到那个边界就把整棵子树卸载重建 —— 实测 3 级 → 4 级时
+   * `滑块根同一个节点: false`、`滑块镜头同一个节点: false`、`轨道同一个节点: false`，
+   * 全页 DOM 换一遍。后果有两个，第二个才是要命的：
+   *
+   *   1. 整页重建阻塞主线程 >1.1s（`requestAnimationFrame` 都被饿死）；
+   *   2. 滑块那 520ms 的弹簧过渡**永远放不出来** —— 新建的 lens 元素一出生就带着
+   *      最终位置的 `--lg-progress`，没有「从旧位置到新位置」这个过程可插值。
+   *
+   * 所以这里从 `GlassLayer` 那套（`GlassSurface` + `.lg-content` 内层）改成**直接驱动
+   * `MaterialView`**，两个分支的类名与子节点结构都对齐，React 复用同一个 div：
+   *
+   * | | 1~3 级 | 4 级 |
+   * |---|---|---|
+   * | 玻璃面本身 | `.lg-material-view` + 轻量底色 | 同一层 + `.lg-root.lg-surface` |
+   * | 内边距 | 直接挂在这一层 | 挂在内层内容 div |
+   *
+   * `MaterialView` 的来源（`index.js:974`）只是把剩余 props 透传给一个普通 `div`，
+   * 所以 class / data 属性都能直接给 —— **不要**在这种情况下换成 `GlassSurface`。
+   */
   return (
-    <GlassPanel
-      className={`panel ${className}`}
-      /* 内边距**必须挂在内容层**：外层的 `padding={0}` 是行内样式，
-         写在 CSS 里的 `.panel-padded` 会被它盖掉（第一版就是这么丢的，
-         表现是文字贴着玻璃边缘）。 */
-      contentClassName={padded ? 'panel-padded' : ''}
-      /* **小玻璃**：0.70/0.78 不透明 + 14px 模糊 —— 背景能透出来，才看得出是玻璃。
-         大玻璃是 0.86/0.90，糊在身上像一块奶白板（试过，见 GLASS-HANDOFF）。
-         代价：面板里再放小玻璃控件就是「玻璃叠玻璃」，库对此有意见 ——
-         但用户要的就是全局玻璃，所以这里选择让材质看得出来。 */
-      size="small"
+    <MaterialView
       radius={20}
-      padding={0}
+      /* 玻璃那一档要压掉 `.lg-material-view` 自带的 `background: var(--lg-material-thin)`：
+         那张位移贴图是**采样背后再画一遍**，本层不透明就等于把它盖住了（看不见折射）。 */
+      thickness={globalGlass ? 'ultraThin' : 'thin'}
+      {...(globalGlass
+        ? {
+            className: `lg-root lg-surface panel ${className}`,
+            style: { padding: 0, background: 'transparent' },
+            'data-lg-glass': 'small',
+            'data-material': material,
+          }
+        : { className: `panel ${padded ? 'panel-padded' : ''} ${className}` })}
     >
-      {children}
-    </GlassPanel>
+      {/* ⚠️ **两个分支的子树形状必须一模一样** —— 都包一层 div，只是类名不同。
+          第一版这里写了 `{globalGlass ? <div className={…}>{children}</div> : children}`，
+          结果切档时 MutationObserver 抓到的是
+          `-header.panel-head / -div.slider-row / -p.hint / -div.choice-grid` ——
+          **面板元素本身复用了，孩子却全被删了重建**（裸 children ↔ 包一层的 children
+          在 React 眼里不是一个形状）。滑块就在 `.slider-row` 里，于是它仍然一帧到位。
+
+          内边距在非玻璃档挂在 MaterialView 自己身上（`.panel-padded` 在它的类名表里），
+          在玻璃档必须挂在内容层：玻璃面的 `padding={0}` 是行内样式，
+          写在 CSS 里的 `.panel-padded` 会被它盖掉（第一版就是这么丢的，
+          表现是文字贴着玻璃边缘）。 */}
+      <div className={globalGlass && padded ? 'panel-padded' : ''}>{children}</div>
+    </MaterialView>
   )
 }
 

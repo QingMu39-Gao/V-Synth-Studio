@@ -238,6 +238,53 @@ body::before { inset: calc(var(--bg-blur) * -2); }   /* 够采样，几乎不放
 - **亮色背景图本身极浅**（glitch art，像素挤在 #e0–#f5）：玻璃压在上面「有东西可折射」
   的程度天然有限。要真正拉开层次得换一张有明暗层次的浅色图，参数层面已经到头。
 
+### 2.5 玻璃等级滑条「没有任何动画，一帧拉过去」（2026-10-02 修）
+
+用户原话：「调整玻璃等级那个滑条 没有任何动画 甚至是一帧拉过去的 给改了」。
+
+**两个独立的原因叠在一起**，只修一个都还是不动：
+
+**① 库没给位置做过渡。** `.lg-slider-lens` 的位置来自
+`inset-inline-start: calc(var(--lg-progress) * (100% - 26px))`，而它的 `transition`
+列表里**只有** `scale` / `translate` / `box-shadow`（那是按住时「跟手放大」用的），
+位置属性不在其中；`.lg-slider-fill` 的 `width` 更是**一条 transition 都没有**。
+于是点刻度、按方向键、点轨道全是瞬移。
+修法在 `index.css`：补两条规则（见文件里那段注释，含**为什么必须用 `!important`**
+——库还有 `.lg-root[data-pulling="true"] { transition-property: … }`，用 shorthand 会连它一起改掉、
+毁掉按压反馈，所以只覆盖 `transition-property` / `-duration` / `-timing-function` 三个分量）。
+
+**② 换档时 React 把整棵子树重建了。** 这个才是主因，①只是让它连「有元素可插值」都做不到。
+`Panel` 当时在两个组件**类型**之间切换：1~3 级走库的 `MaterialView`，
+4 级走自家 `GlassLayer`（内部是 `GlassSurface`）。React 到类型边界就整棵卸载重建 ——
+新建的 lens 一出生就带着最终位置的 `--lg-progress`，**没有「从旧位置到新位置」这个过程可插值**，
+所以 520ms 的弹簧永远放不出来。实测 3 级 → 4 级：`滑块根同一个节点: false`、
+`滑块镜头同一个节点: false`，全页重建阻塞主线程 >1.1s（`requestAnimationFrame` 都被饿死）。
+
+修法（`components/Panel.tsx`）：**两档渲染同一个元素类型**，改成直接驱动 `MaterialView`
+（它只是把剩余 props 透传给一个普通 `div`），只用类名 / data 属性切材质：
+
+| | 1~3 级 | 4 级 |
+|---|---|---|
+| 玻璃面本身 | `.lg-material-view` + 轻量底色 | 同一层 + `.lg-root.lg-surface` |
+| 内边距 | 直接挂在这一层 | 挂在内层内容 div（玻璃面有行内 `padding: 0`） |
+
+⚠️ **踩深的那个坑：光统一"面板元素"还不够，子树形状也必须一模一样。**
+第一版写成 `{globalGlass ? <div className="panel-padded">{children}</div> : children}`，
+面板元素确实复用了，但 MutationObserver 抓到
+`-header.panel-head / -div.slider-row / -p.hint / -div.choice-grid` ——
+**裸 children ↔ 包一层的 children 在 React 眼里不是一个形状，孩子仍然全被删了重建**，
+滑块就在 `.slider-row` 里。改成**两个分支都包一层 div、只换类名**才彻底稳住。
+
+**实测（修复后）**：`滑块根 / input / slider-row / panel-head / 面板` 五处全部同一节点，
+换档期间 MutationObserver 移除数 = 0；位置轨迹 4→2 有 19 个不同位置、2→4 有 21 个
+（带 `--lg-spring` 的过冲）。回归：`tests/manual/slider-probe.mjs` 由红转绿
+（8 / 37 个中间帧）、`next-smoke.mjs` 8/8。
+
+**教训**：给一个元素补 `transition` 之前，先确认**那个元素在状态切换时会不会被换掉**。
+`getBoundingClientRect()` 对不存在的 / 已脱离 DOM 的元素**不报错，返回全 0 的矩形** ——
+所以「量出来一动不动」既可能是没过渡，也可能是**量到了另一个对象**；
+量位置时要把原始 rect 和节点身份一起打出来（`slider-probe.mjs` 的注释里记了这条）。
+
 
 ---
 

@@ -1,0 +1,215 @@
+/*
+ * 音轨分离页（`pages/Svsep.tsx`）
+ *
+ * 版式沿用音频页那套两栏：左栏「给什么 / 怎么分」、右栏「状态 / 结果 / 在线」。
+ * 只放这一页独有的东西 —— 通用排版（`.panel` `.btn-row` `.hint` `.choice-*`
+ * `.finding` `.stat`）都在 `index.css` 里，别在这里重写一遍。
+ */
+
+.svsep-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: var(--lg-space-4);
+  align-items: start;
+}
+
+/* 窄窗口收成一栏 —— 两栏各 480px 以下时那几个 <Stat> 会挤成竖条 */
+@media (max-width: 1180px) {
+  .svsep-layout {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.svsep-col {
+  display: flex;
+  flex-direction: column;
+  gap: var(--lg-space-4);
+  min-width: 0;
+}
+
+/* ── 选文件的那块大按钮 ─────────────────────────────────── */
+.svsep-drop {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 22px 16px;
+  border: 1px dashed var(--lg-separator);
+  border-radius: 14px;
+  background: transparent;
+  color: var(--lg-label);
+  font: inherit;
+  cursor: pointer;
+  text-align: center;
+}
+
+.svsep-drop:hover {
+  border-color: var(--lg-accent);
+  background: color-mix(in srgb, var(--lg-accent) 6%, transparent);
+}
+
+.svsep-drop-name {
+  font-weight: 600;
+  word-break: break-all;
+}
+
+.svsep-drop-meta {
+  color: var(--lg-label-secondary);
+  font-size: 0.86em;
+}
+
+/* ── 引擎卡的「约 11 分钟」那一行 ────────────────────────── */
+.svsep-cost {
+  display: block;
+  margin-top: 6px;
+  color: var(--lg-label-secondary);
+  font-size: 0.86em;
+}
+
+/* ── 步骤清单 ───────────────────────────────────────────── */
+.svsep-steps {
+  margin: 0;
+  padding-left: 1.35em;
+  color: var(--lg-label-secondary);
+  line-height: 1.75;
+}
+
+.svsep-steps code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--lg-label) 8%, transparent);
+  font-size: 0.92em;
+}
+
+/* 段落里当链接用的按钮 —— 不能真用 <a>，那是切页不是跳转 */
+.svsep-link {
+  margin: 0 2px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--lg-accent);
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+/* ── 状态那一排 ─────────────────────────────────────────── */
+.svsep-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--lg-space-4) var(--lg-space-5);
+  margin-bottom: var(--lg-space-3);
+}
+
+/* ── 进度条 ─────────────────────────────────────────────── */
+.svsep-progress {
+  margin-bottom: var(--lg-space-3);
+}
+
+.svsep-progress-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 7px;
+  font-size: 0.92em;
+}
+
+.svsep-dim {
+  color: var(--lg-label-secondary);
+  font-size: 0.92em;
+  font-variant-numeric: tabular-nums;
+}
+
+.svsep-bar {
+  height: 8px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--lg-label) 12%, transparent);
+  overflow: hidden;
+}
+
+.svsep-bar-fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--lg-accent);
+  transition: width 320ms var(--lg-ease-out);
+}
+
+/* 服务端没给 Content-Length 时（chunked）：让它来回扫，别假装 0% */
+.svsep-bar-unknown {
+  width: 34%;
+  animation: svsep-sweep 1.4s ease-in-out infinite;
+}
+
+@keyframes svsep-sweep {
+  0% {
+    transform: translateX(-110%);
+  }
+  100% {
+    transform: translateX(320%);
+  }
+}
+
+/* ── 试听与轨道列表 ─────────────────────────────────────── */
+.svsep-audio {
+  width: 100%;
+  margin-bottom: var(--lg-space-3);
+}
+
+.svsep-tracks {
+  margin: 0 0 var(--lg-space-3);
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.svsep-track {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-radius: 10px;
+}
+
+.svsep-track:hover {
+  background: color-mix(in srgb, var(--lg-label) 5%, transparent);
+}
+
+.svsep-track-name {
+  font-weight: 600;
+  min-width: 4em;
+}
+
+/* 下载做成带图标的链接，不是按钮 —— 它是 <a download>，浏览器自己处理 */
+.svsep-dl {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  border: 1px solid var(--lg-separator);
+  color: var(--lg-label);
+  font-size: 0.88em;
+  text-decoration: none;
+}
+
+.svsep-dl:hover {
+  border-color: var(--lg-accent);
+  color: var(--lg-accent);
+}
+
+/* ── 在线那条的 URL 显示 ────────────────────────────────── */
+.svsep-url {
+  margin: var(--lg-space-3) 0;
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--lg-label) 7%, transparent);
+  color: var(--lg-label-secondary);
+  font-size: 0.9em;
+  word-break: break-all;
+}

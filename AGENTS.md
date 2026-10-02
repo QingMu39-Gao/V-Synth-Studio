@@ -28,7 +28,7 @@
 ```
 ┌─ Tauri 2 外壳（原生窗口）
 │   └─ 同进程内嵌 axum HTTP 服务（http://127.0.0.1:17878）
-│        ├─ 提供 REST API（39 条路由）
+│        ├─ 提供 REST API（53 条路由）
 │        └─ 伺服前端静态文件（app/web/）
 └─ 窗口用 WebviewUrl::External 加载那个本地地址
 ```
@@ -53,7 +53,8 @@ app/
       platform.rs     跨平台路径、下载目录、回收站、find_binary
       tools.rs        外部工具检测（ffmpeg / yt-dlp / python / 编辑器路径表）
       libresvip.rs    LibreSVIP 引擎封装（转换 + 读工程）
-      lyrics.rs       歌词：搜索 / 取词 / LRC-SRT / 短信登录
+      lyrics.rs       歌词：搜索 / 取词 / LRC-SRT / 封面 / 歌曲直链 / 短信登录
+      svsep.rs        音轨分离：离线引擎（Python 子进程）+ 大包下载解压
       bili.rs         B 站原生解析（WBI 签名、DASH、番剧）
       ytdlp.rs        yt-dlp 桥接
       audio.rs        音频处理（ffmpeg）
@@ -64,10 +65,11 @@ app/
         convert.rs    工程转换
         media.rs      视频解析下载 + 音频
         lyrics.rs     歌词相关路由
+        svsep.rs      音轨分离：转发给内嵌的 Python 分离后端
         tools.rs      工具检测
     tauri.conf.json   窗口、打包、resources
     build.ps1         唯一的构建入口（见下文）
-  web-next/           前端**源码**（React + Vite + TS + Tailwind）—— 8 页已全部搬完
+  web-next/           前端**源码**（React + Vite + TS + Tailwind）—— 9 页已全部搬完
     vite.config.ts    base '/'，outDir '../web'（emptyOutDir **必须是 false**，见下）
                       ⚠️ 含 restoreStandardBackdropFilter 插件（lightningcss 会删标准
                       backdrop-filter），别删，见 docs/GLASS-HANDOFF.md §3.1
@@ -84,14 +86,14 @@ app/
         Job.tsx       任务进度（库的 GlassProgress + 取消 + 日志）
         DirPicker.tsx 目录选择（库的 GlassDialog + PathBar + List）/ DirectoryInput
       lib/
-        api.ts        后端调用（39 条路由；API 在根路径 /api/*，**必须写绝对路径**）
+        api.ts        后端调用（53 条路由；API 在根路径 /api/*，**必须写绝对路径**）
         types.ts      后端数据结构（照 tests/contract/fixtures 定义）
         format.ts     formatBytes / formatDuration / formatNumber
         useJob.ts     任务订阅：SSE + 轮询兜底（旧 watchJob 的 React 版）
         useGlass.ts   玻璃等级 1~4（材质 / 透明度 / 面板要不要玻璃全由它派生）
         useNavLens.ts 侧栏与小节导航的滑动高亮块
         boot.ts       揭开启动加载画面
-      pages/          8 页：Dashboard / Convert / Video / Audio / Lyrics / Pv / Resources / Settings
+      pages/          9 页：Dashboard / Convert / Video / Svsep / Audio / Lyrics / Pv / Resources / Settings
                       （每页自带一个同名 .css；页面约定与库组件清单见 docs/FRONTEND.md）
 ```
 
@@ -227,7 +229,7 @@ Remove-Item Env:\GITHUB_TOKEN
 | 环节 | 需要 Node 吗 |
 |---|---|
 | 用户运行打包好的 exe | **不需要** —— 产物是静态 HTML/JS/CSS，exe 是 Rust |
-| 后端运行时 | **不需要** —— 39 条路由全在 Rust，`node.exe` 进程数为 0 |
+| 后端运行时 | **不需要** —— 53 条路由全在 Rust，`node.exe` 进程数为 0 |
 | **编译前端**（`build.ps1` 第一步） | **需要** —— Vite 是 Node 工具 |
 
 `app/web-next/node_modules/` 约 91 MB，**但不进安装包**：
@@ -388,7 +390,7 @@ Start-Sleep -Seconds 8
 # 1) 接口契约（对冻结夹具）—— 应 17/17
 node tests\contract\verify.mjs 8891
 
-# 2) 八个页面渲染 + 关键字断言 —— 应 8/8
+# 2) 九个页面渲染 + 关键字断言 —— 应 9/9
 node tests\manual\next-smoke.mjs 8891
 
 # 3) Rust 单测
@@ -445,13 +447,18 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | 自定义 CSS 与工具类 | 新前端目前是纯手写 CSS（没用 Tailwind 工具类）。哪天开始用工具类，自定义类必须进 @layer components，否则会静默盖掉工具类 |
 | 亮色主题 | 次要文字色不能太浅（对比度 4.5:1 以上）；背景图参数与新前端的取值见 LESSONS.md |
 | 背景图「压根不显示」 | 触发过两次（旧前端一次、新前端一次）。图在 `app/web/img/bg/`，被 `index.css` 以 `url()` 引用 —— 别让构建把它当成产物清掉（`emptyOutDir` 必须是 `false`） |
-| 网络 | GitHub / Google 要走代理（curl -x http://127.0.0.1:7890）；网易云、QQ 音乐直连；**测试短信接口绝不用真实手机号** |
+| 网络 | GitHub / Google 要走代理（curl -x http://127.0.0.1:7890）；网易云直连；**测试短信接口绝不用真实手机号** |
 | CI 上 `link.exe` 报 `/usr/bin/link: extra operand` | **Git for Windows 的 `C:\Program Files\Git\usr\bin` 在 runner 的系统 PATH 里，那个 `link.exe` 是 coreutils 的 `ln` 别名**，rustc 调裸名 `link.exe` 就撞上它。后面那句「build tools may need to be repaired」是**纯误导**。修法在 `build.ps1`：把 `\Git\{usr,mingw64,cmd}` 从 PATH 剔掉、再把 MSVC 的 `bin\Hostx64\x64`（用 `VCToolsInstallDir` 问出来）顶到最前，开跑前用 `where link.exe` 第一行验身份。**本地没有 Git 那套 `usr\bin`，永远复现不了** —— 要复现就自己造个假 `link.exe` 放进 `H:\tmp\faker\Git\usr\bin` 并 prepend 到 PATH |
 | 批处理里 `%PATH%` 死活不生效 | **别把命令拼成 `cmd /c "a && b && c"` 长链**：cmd 把整条链**先解析、把 `%VAR%` 全展开**再逐条执行，所以链里 `set "PATH=...;%PATH%"` 拿到的是**启动 cmd 时的原始 PATH**，前面 `set`/`vcvars` 改的全白费（实测：剔掉 Git 段的 PATH 又被原样放回，rustc 还是拿到 Git 的 link）。**改成写临时 `.cmd` 逐行执行**（批处理逐行解析，`%PATH%` 才在运行时展开）。另：`set "RUSTFLAGS=-C linker="C:\...\link.exe""` 的引号会原样传给 rustc，报 `os error 123`，**别用这条路**，把链接器目录顶到 PATH 最前就够了 |
 | `npm install` 在 CI 报 `Could not read package.json` | **`npm install` 只在当前目录找 `package.json`**（不像 vite/tsc 往上找）。`build.ps1` 开头 `Push-Location $here`（= `app\desktop`）后直接 install 就会去找 `app\desktop\package.json`；同块的 `npm run build` 有 `Push-Location $webSrc` 所以没事。**开发机永远暴露不了**（`node_modules` 早装好了，这句不跑）—— 改构建脚本后要按「干净 clone」的心智过一遍 |
 | `cargo install tauri-cli` 装完却找不到 `tauri` | cargo 子命令的可执行文件叫 **`cargo-tauri.exe`**（带 `cargo-` 前缀），缓存 path 与存在性判断都按这个写；验证别猜文件名，直接 `cargo tauri --version` 真调一次 |
 | 契约用例在 CI 上红，本地却全绿 | 夹具是**开发机上抓的冻结基准**，凡是记录「**这台机器上有什么**」而不是「**接口返回什么形状**」的用例，换台机器必然对不上。已登记两条：`video-parse-bili`（B 站对匿名/机房 IP 回 HTTP 412）、`fs-list-c`（`C:\` 根目录开发机 13 个、GitHub runner 37 个）。⚠️ 判「有意」的条件要**收得紧** —— 用 `onlyWhenLine` 把原始响应当证据（例如必须真出现 `HTTP 412`），否则这个清单会变成掩盖问题的垃圾桶 |
-| 磁盘 | C 盘很紧，临时大文件放 H:\工作站\tmp-* 并即时删 |
+| 磁盘 | C 盘很紧，临时大文件放 H:\工作站\tmp-* 并即时删。⚠️ **解 4.6 GB 的 runtime 包要 7.5 GB 空间**，测试默认解到 `%TEMP%`（在 C 盘）—— 实测把 C 撑到 0 字节可用，报的是 `解压失败：磁盘空间不足 (os error 112)`，看着像解析器坏了。真包测试用 `VSS_REAL_RUNTIME_DEST` 指到 H 盘 |
+| 手写 zip 解析器（`svsep.rs`） | 只认「压缩后大小」溢出是不够的：**本地头偏移超过 4 GiB 时 `lho` 也是哨兵 `0xFFFFFFFF`**，真值同在 Zip64 扩展块里（排在两个大小之后）。漏了它 → 拿 0xFFFFFFFF 当文件位置 seek → 报 `failed to fill whole buffer`（2.7 万条里查不出来）。现在 `zip64_resolve(extra, big_size, big_off)` 两个哨兵一起处理。⚠️ 报错**必须带条目名**，否则这种错没法定位 |
+| 「打包好了」≠「装机装得上」 | 判据是**代码真去找的那几个文件**，不是「包里有一大堆文件」。`runtime_ready()` 要 `runtime/python.exe` **和** `backend/app.py`，而打包脚本第一版用 `CreateFromDirectory` 只能装一个顶层目录 → 只装了 `runtime\`，用户下完 4.5 GB 仍然起不来。改成 `ZipFile.Open` + `CreateEntryFromFile` 手工加条目（`Dirs = @('runtime','backend','bin')`）。⚠️ 用 `ZipArchiveMode` 必须同时 `Add-Type System.IO.Compression`（`.FileSystem` 里没有这个类型） |
+| 后台跑 cargo test 会被 linker 撞 | 两个 `cargo test` 并行会抢同一个输出文件，报 `linking with link.exe failed: exit code: 1104`（**不是代码问题**）。串行跑 |
+| 子进程收不住强杀 | 分离引擎是 `python.exe` 子进程。`impl Drop for Svsep` 只覆盖正常退出 —— **任务管理器强杀实测留下孤儿**：它继续监听 17879、占着几 GB 内存，用户看到「关掉了风扇还转」。兜底是 Windows 作业对象（`svsep.rs` 的 `job` 模块）：`CreateJobObjectW` + `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` + `AssignProcessToJobObject`，句柄故意不关（存 `OnceLock`），进程一死句柄被内核回收 → 作业里的进程一起死。⚠️ `windows-sys` 要同时开 `Win32_System_JobObjects`、`Win32_System_Threading`（类型定义在 Threading 下）和 `Win32_Security`（`CreateJobObjectW` 的参数用了 `SECURITY_ATTRIBUTES`） |
+| 看着在收、其实没跑 | `main.rs` 的 `RunEvent::Exit` 里别写 `app.try_state::<Arc<AppState>>()`：`AppState` 是在 `serve()`（一个 spawn 出去的 task）里建的，从没 `app.manage()` 过，`try_state` **永远回 None**。这种死代码比不写更坏 |
 | 图标 | `components/Icon.tsx` 是一张手写 SVG path 表。**没有图标库**（要离线），加图标往表里加 |
 | 大文件不能进 git | `tools/`（288MB）与 `app/web/vendor/jizura/`（54MB）都已从 git 移出（`git rm --cached`），靠 `fetch-tools.ps1` 补齐。**别因为「本地看得见」就以为它们在库里** —— 别人 clone 下来是没有的 |
 | Rust 注释里别写 `/*` | 块注释会**嵌套**：文档注释里写 `` `app/web/js/views/*.js` `` 会让整个注释永不闭合，吞掉后面几十行，rustc 报出**29 条假错**（`prefix 'wav' is unknown`、`unterminated double quote string`）。看到成片的这类错先找「注释没闭合」，别逐个去改字符串 |
@@ -513,7 +520,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | `mime_of` | 已补齐（2026-10-02）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
 | `backdrop-filter` 降级 | 无该特性环境的降级方案没做视觉验证 |
 | `audio.rs` 顶部注释 | 写着「ffmpeg 不随程序分发」，与事实相反（注释是旧的） |
-| Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
+| Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 53 条路由 |
 | **工程转换** | 选项键已改用 LibreSVIP **官方选项名**，VSQX 参数曲线崩溃已**自动降级**（16 个真样本 15 通过，剩下 1 个是源工程自身音符重叠）。⚠️ `音高信息输入模式` 默认档是官方 `plain`（≈ 只带"已编辑"部分），要完整保留手画音高就在选项面板选「完整」。选项表与实现见 `docs/FEATURES.md` §3.1 |
 
 ### 打包：CI 出 MSI，真机装过、验证通过
@@ -633,7 +640,7 @@ macOS 上产物是 `.app`，没有这回事）。
 
 **两处要注意**：
 
-1. `src/tools.rs` 的编辑器路径表是 Windows 专有的（`H:\ChiXiaoYangUVR5` 等）。
+1. `src/tools.rs` 的编辑器路径表**已经清空**（2026-10-02：离线分离改成内嵌引擎，UVR 那条候选删了，`candidates()` 现在返回 `Vec::new()`）。要重新加编辑器探测时，别照 Windows 专有路径写死。
    macOS 上要么换成 `/Applications/*.app` 扫描，要么直接去掉（UVR 在 macOS 上安装方式本来就不统一）。
    这是**数据**不是逻辑，改动很小。
 2. 打包见上一节。
@@ -656,7 +663,7 @@ macOS 需要另写一个薄壳（`vite build` 那类跨平台步骤两边一样�
 - Node 后端（`app/server/`，19,019 行）已整体删除，其中包含 12 个格式模块和一套平台探测代码。
 - 格式转换原取自 UtaFormatix3 的模板，现已全部移除（相关代码与参考文件一并删除）。
 - 声库探测（784 行）已删 —— 只被用来「显示装了什么」，转换路径从没调用过。
-- 编辑器探测从 16 个砍到只剩 UVR。
+- 编辑器探测从 16 个砍到只剩 UVR，2026-10-02 连 UVR 那条也删了（分离改成内嵌引擎）。
 - 网易云扫码登录已移除：服务端返回 `8821 请切换其他登录方式`，按官方 JS 逐字节对齐
   三处仍失败，判断是服务端风控。**别再试图修它**，留了手机号验证码 + Cookie 两条路。
 
@@ -736,142 +743,61 @@ git filter-branch --force --index-filter `
 | 前端脚手架 | `app/web-next/`（React 19 + Vite 8 + TS 7 + Tailwind 4），产物落 `app/web/`，访问 `/` |
 | 主题 + 透明度 | ⚠️ **原表写的 `lib/useTheme.ts` / `lib/usePerfMode.ts` 已不存在**（换库时删了）。现在主题与「降低透明度」是 `App.tsx` 里喂给库 `GlassProvider` 的两个 prop；`perfMode` 字段后端有、前端**还没接** |
 | **玻璃材质修好**（2026-10-01） | 默认改成毛玻璃、侧栏改 `size="large"`、面板降到 `thin`、顶栏（后改为绝对定位）、侧栏高亮块改用库的透镜、补回 `corner-shape: squircle`。见 `docs/GLASS-HANDOFF.md` 第二节 |
-| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页（今为「玻璃等级」滑块）、重新检测在总览页。顶栏**移出文档流**，内容列上移 76px；⚠️ 顶栏 `inset-inline` 必须写 `var(--lg-margin)` —— 绝对定位的包含块是**内边距盒**，写 0 会偏左 20px |
+| **顶栏只留品牌**（2026-10-01） | 右上角那组控件（材质分段控件 / 重新检测 / 状态文字）按要求移除；左上角换成真图标。材质切换改在设置页（今为「玻璃等级」滑块）、重新检测在总览页。⚠️ 顶栏 `inset-inline` 必须写 `var(--lg-margin)` —— 绝对定位的包含块是**内边距盒**，写 0 会偏左 20px |
+| **顶栏改回吸顶 + 侧栏跟着吸顶**（2026-10-02） | 用户报「往下滚动时上面的品牌图标会跟着跑」。顶栏从 `absolute` 改 `sticky`，`inset-block-start: var(--lg-space-4)`（16px）；侧栏 `top` 同步改 `calc(var(--lg-space-4) * 2 + 26px)`（=58）并删掉原先手工让位的 `margin-block-start: 44px`。⚠️ **`top` 写多少吸顶后 `y` 就是多少** —— 这个粘性包含块的上沿就在 y=0，直觉「相对滚动容器上沿」在这里不成立（实测表写在 `index.css` 的注释里）。**有意副作用：顶栏现在真占位，其下内容整体下移 42px**（16→58）。回归探针 `tests/manual/topbar-probe.mjs`（1440/1600/1100 三宽度） |
 | **`glass-probe.mjs`** | 玻璃专项探针：计算值 + 截图 + 高亮块逐帧/首帧采样（`tests/manual/glass-probe.mjs`） |
 | **`app/web-next` 入库** | 首次提交 `83320cd` —— 在此之前它一个 commit 都没有 |
 | **启动加载画面 + 交接**（2026-10-02） | `index.html` 的 `#boot` + `lib/boot.ts`；遮罩淡出与界面入场**交叉**（时长必须拉开，见 `GLASS-HANDOFF` §4.1） |
 | **玻璃等级 1~4 滑块** | 材质 / 透明度 / 面板要不要玻璃全由这一档派生（`lib/useGlass.ts`），键 `qingmu.glassLevel` |
+| **滑条动画 + `Panel` 只换材质不重建**（2026-10-02） | 用户报「玻璃等级那个滑条没有任何动画，一帧拉过去」。两个独立原因：① 库没给 `.lg-slider-lens` 的位置做 transition（`index.css` 补了，见那儿的注释，含为什么必须 `!important`）；② **主因** —— `Panel` 原本在两个组件**类型**间切换（`MaterialView` ↔ `GlassLayer`），React 到类型边界整棵重建，新 lens 一出生就带终态、没东西可插值。改成两档都渲染 `MaterialView`、只用类名切材质。⚠️ **子树形状也必须一样**：`{cond ? <div>{children}</div> : children}` 仍会重建孩子，两个分支都要包一层。根因/实测/教训全在 **`docs/GLASS-HANDOFF.md` §2.5**，回归探针 `tests/manual/slider-probe.mjs` |
 | **设置页小节导航复用主侧栏那套** | `lib/useNavLens.ts` + `.app-nav` / `.nav-row` / `.nav-lens`，两处外框参数逐项相同 |
-| **8 页全部搬到 React**（2026-10-02） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 39 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/FRONTEND.md` 第 5 节） |
+| **8 页全部搬到 React**（2026-10-02；当天下午加「音轨分离」成 9 页） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 53 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/FRONTEND.md` 第 5 节） |
 | **`next-smoke.mjs`** | 8 页逐页冒烟：控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8 全绿（文件名里的 `next-` 是历史遗留） |
 
-### 🔜 下一个功能：歌词页做成「网易云专区」（用户 2026-10-02 定，还没开工）
+### ✅ 已完成：歌词页做成「网易云专区」（2026-10-02 落地）
 
 用户原话：「我打算 把歌词页面做成网易云专区 让用户可以搜索歌曲后直链下载歌曲
 甚至是歌曲封面（记得把填写QQ音乐cookie的功能删掉）」
 
-拆成四件事：
+四件事全部落地，实现细节与实测证据全在 **`docs/FEATURES.md` §3.4**（改这块先读它）：
 
-1. **歌词页以网易云为主** —— 现在页面上有「来源」分段（网易云 / QQ 音乐），要改成一个网易云专区。
-2. **搜索后能直链下载歌曲**（音频文件本身）—— ⚠️ **这是新链路，后端现在完全没有**：
-   `lyrics.rs` 只取歌词与封面，没有任何「下音频」的代码。
-3. **也能下封面** —— 后端**已经有了**：`lyrics.rs::download_cover(cfg, url, dest) -> Result<u64, String>`（552 行），
-   路由 `/api/lyrics/cover` 也在（`server/mod.rs:145-154`）。缺的只是页面上的入口与「存到哪」。
-4. **删掉「填写 QQ 音乐 cookie」的功能** —— 前端 `Lyrics.tsx` 的来源分段（45 行的 `{ value: 'qq', label: 'QQ 音乐' }`）、
-   `isQq`（399）、`loginKey`（400）、`saveCookie('qqCookie', …)`（486）、QQ Cookie 输入框与保存/清除按钮（768-784）
-   都要去掉；后端 `lyrics.rs::normalize_source()`（212）里的 `"qq"` 分支、`cookie_of()`（79-88）的 qq 分支一并处理。
-   ⚠️ **`server/simple.rs:89-90` 的 `qqCookie` 字段先别急着从默认 config 里删** ——
-   老用户的 `config.json` 里可能已经有它，删之前要确认读配置不会因此报错（`config_post` 是合并式的，
-   多余键按说无害，但要实测，别推断）。
+1. **`source` 概念整体删掉** —— 前端「来源」分段、`SOURCES` / `isQq` / `loginKey` / `sourceLabel` 全没了；
+   后端 `normalize_source()` 删除，`server/lyrics.rs::source_of()` 现在**永远返回 `"netease"`、不再返回 Result、不收参数**。
+   回包里的 `"source"` 字段**保留**（形状冻结，前端契约不动）。QQ 那一整条链
+   （`QQ_UA` / `qq_search` / `qq_fetch` / `html_unescape` / songmid 链接解析 / 相关单测）全删；
+   要核对就直接搜这七个名字（含 `qqCookie` / `normalize_source`），源码与文档里**应为 0 命中**
+   —— `app/web/assets/` 里那个旧产物历史包除外，它无人引用。
+2. **歌曲直链下载：新增 `POST /api/lyrics/song`** —— 请求 `{id, outDir?, name?}`，回
+   `{path, name, size, level, format}`；**拿不到直链回 400 不回 500**（文案是给人看的）。
+   实现是 `lyrics.rs::download_song()`：`enhance/player/url/**v1**?ids=[<id>]&level=exhigh&encodeType=mp3`
+   → 取 `data[0].url` → 直链**不挂 Cookie** 边下边写盘（`save_stream()`）→ `file_looks_like_audio()`
+   嗅探魔数（ID3 / fLaC / OggS / 0xFFEx），不是音频就**删掉文件**再报错 → `level_label()` 把
+   `level`/`br` 渲染成人话。⚠️ **判据只有「接口有没有给到 url」，`fee` 只当标签** ——
+   搜索后会批量探测一次给每条结果插 `playable`，界面上标「能下载 / 不能下载」。
+3. **封面下载顺手修掉 7 MB 原图** —— 新增 `cover_url()` 统一拼 `?param=500y500`（原图 3000×3000 /
+   7.1 MB → 249,916 B），URL 里已有 `?` 就不重复拼（两个 `?` 会 404），空串直接回空。
+   ⚠️ 封面字节实际是 **PNG**（URL 却叫 `.jpg`），且 `picUrl` 是 **`http://`** 开头 ——
+   **别改成只认 https**，存文件时要么嗅探魔数、要么固定存 `.png`。
+4. **删掉「填写 QQ 音乐 cookie」** —— 前端 QQ Cookie 的 Field 与保存/清除按钮、`qqCookie` state、
+   `saveCookie()` 的两参签名（简化成单参）一并处理；Chip 收费标签新增 `feeLabel()`。
+   ⚠️ **`server/simple.rs` 的 `default_config()` 里 `qqCookie` 已删，这是安全的**（读过源码确认，不是推断）：
+   `load_config()` 是「默认值打底 + 已存 JSON **只认默认值里有的键**逐键覆盖」，
+   老用户残留不会报错，下次 `save_config` 整份回写时自然清掉。
 
-**动手前先读：**
+#### ⚠️ 教训：为什么第一版「搜到的歌大多下不了」（2026-10-02）
 
-- `docs/FEATURES.md` §3.4 歌词（290-322 行）—— 这一节是这块的权威描述，**改完必须同步改它**。
-  尤其「关键约束」那几条：扫码登录不做（网易云始终回 `8821`）、
-  **测试时绝不要调 `lyricsSms`（真会发短信）**、封面 `url` 必须 http 开头且下载**不带 Cookie**。
-- `docs/FRONTEND.md` §3「新增/修改页面的标准动作」（145 行）。
+用户实测三首都下不了才查出来的。**不是权益限制，是请求参数过时** —— 同一批 7 首里，
+老接口 `player/url?id=X&ids=[X]&br=320000` 只有 1 首给 url，换成
+`player/url/**v1**?ids=[X]&**level=exhigh**&**encodeType=mp3**` 后 6 首全通。
+**`level` 与 `encodeType` 一个都不能少**；官方网页播放器（`s3.music.126.net/web/s/core_*.js`）
+用的就是这个端点 + `DEFAULT_LEVEL="exhigh"` + `DEFAULT_ENCODETYPE="aac"`，**不存在第三个端点**。
+另有一条**独立 bug**：`client()` 的 20 秒总超时对音频太短 —— 实测 9.8 MB / 320 kbps 单流传输要
+**96 秒**，被掐断后报的是含糊的 `error decoding response body`；现在音频走 `media_client()`
+（总超时 600 秒 + `read_timeout` 60 秒）。
 
-#### ⚠️ 先看这份实测：网易云「直链下歌」匿名拿不到（2026-10-02 `curl.exe` 直连实测）
-
-动手前必须知道这条 —— **它决定了这个功能能做多大**。全部用
-`curl.exe` 直连（不走代理）+ 桌面 Chrome UA + `Referer: https://music.163.com/` 实测：
-
-**① 歌词 / 搜索 / 详情这一路（现成功能用的）匿名全通**，不用 cookie：
-
-| 接口 | 结果 |
-|---|---|
-| `api/cloudsearch/pc?s=<kw>&type=1&limit=20`（**后端 `netease_search()` 在用的就是这个**） | `code=200`，明文 JSON，`result.songs` 正常 |
-| `api/song/detail/?ids=[<id>]` | 明文 JSON，元数据齐全 |
-| `api/song/lyric?id=<id>&lv=-1&kv=-1&tv=-1` | 同左 |
-
-搜索结果里每条带 **`fee`** 字段：`0`=免费、`1`=VIP、`8`=低音质免费/高音质 VIP。
-**可以在 UI 上用它给「这歌能不能下」打标。**
-
-**② 播放直链这一路匿名全死**（这是本功能最大的约束）：
-
-| 老办法 | 实测结果 |
-|---|---|
-| `music.163.com/song/media/outer/url?id=<id>.mp3` | **302 → `https://music.163.com/404`**，落盘是 107,191 B 的 HTML 错误页。**换哪个 id 都一样**，免费歌也照样 404 —— 这个流传最广的招**已经废了** |
-| `api/song/enhance/player/url?id=X&ids=[X]&br=320000` | HTTP 200 外壳，但 `data[0].url = null`、`code: 404`、`br: 0`、`fee: 0`（**免费歌也一样**）、`freeTrialPrivilege.cannotListenReason = 1` |
-| `api/song/enhance/player/url/v1?ids=[X]&level=standard&encodeType=mp3` | **逐字节同款响应**（742 B，`url` 仍是 `null`） |
-| `api/song/enhance/download/url?id=X&br=320000` | `{"data":null,"code":301}` —— 明确要登录 |
-
-关键判断：**接口没有被加密拦住**（回 200 + 合法 JSON，不是 `8821`、不是乱码），
-**拦住的是登录态**。所以：
-
-- 带真 `MUSIC_U` cookie 时 `player/url` 会不会吐出真 url —— **没实测**（需要真登录；
-  而 `lyricsSms` 是**不许调**的，别为了测试去发短信）。
-- 因此**先做能确定的部分**：搜索 + 封面 + 歌词 + 把 `fee` 展示出来；
-  「下音频」要么**明确要求用户已登录**（并如实报错「需要登录网易云」），
-  要么先只对 `fee=0` 的歌尝试。
-- ⚠️ **别为了让直链出来去接第三方解析站或 `eapi` 加密** —— 前者是侵权灰产，
-  后者是几百行签名代码换一个可能同样要登录的结果。要做的话先跟用户确认范围。
-
-**③ 封面能匿名下，但有两个坑：**
-
-- **`picUrl` 给的是原图，大得离谱**：实测一个封面
-  `http://p1.music.126.net/diGAyEmpymX8G7JcnElncQ==/109951163699673355.jpg`
-  原始 **7,172,604 B（7.1 MB）**；加 **`?param=300y300` → 102,216 B**、
-  `?param=500y500` → 249,916 B。**页面现在把 `picUrl` 原样丢给 `/api/lyrics/cover`
-  （`Lyrics.tsx:347-357`），下的是 7 MB 原图** —— 顺手修掉（拼 `?param=` 即可）。
-- **别信扩展名和 `Content-Type`**：URL 结尾是 `.jpg`、响应头写 `image/jpg`，
-  **字节实际是 PNG**（`89 50 4E 47 0D 0A 1A 0A`），加不加 `?param=` 都一样。
-  存文件时要么嗅探魔数，要么就固定 `-<name>.png`。
-- `picUrl` 是 **`http://`** 开头（不是 https）→ 和 FEATURES §3.4 那条
-  「封面 `url` 必须 http 开头」对得上，**别改成只认 https**。
-- `Range` 可用（回 `206`），大图能续传。
-
-#### QQ 音乐的全部落点（2026-10-02 grep 实测，删的时候照这张表过一遍）
-
-后端 `app/desktop/src/`：
-
-| 文件:行 | 内容 |
-|---|---|
-| `lyrics.rs:1` | 模块文档注释「网易云 / QQ 音乐的搜索、歌词抓取…」 |
-| `lyrics.rs:31` | 注释 + `const QQ_UA`（QQ 搜索接口认的手机 UA，桌面 UA 会被要求签名） |
-| `lyrics.rs:80-81` | `cookie_of()` 的 `if source == "qq" { return str_at(cfg, "qqCookie") }` |
-| `lyrics.rs:215` | `normalize_source()` 的 `"qq" => Ok("qq")` |
-| `lyrics.rs:226` / `313` | `search()` / `fetch()` 里的 `if source == "qq"` 分支（各一整段实现） |
-| `lyrics.rs:371` | 错误文案「QQ 音乐接口返回错误码 {retcode}…」 |
-| `lyrics.rs:396` | 回包里的 `"source": "qq"` |
-| `lyrics.rs:479` / `486` / `502` | `parse_link()` 三段判定 QQ 链接（**顺序不能调**，见 FEATURES §3.4） |
-| `lyrics.rs:505` | 兜底错误文案「…或 QQ 音乐的 songDetail 链接 / songmid」 |
-| `lyrics.rs:833` / `843` | `parse_lrc` 里 `source == "qq"` 的 `[offset:0]` / `[kana:` 处理 |
-| `lyrics.rs:1243` | 单测 `parse_lrc(raw, "qq")` |
-| `lyrics.rs:1290` | 单测 `cookie_of(&json!({"qqCookie":"abc"}), "qq")` |
-| `lyrics.rs:1445` / `1450` / `1458` | `parse_link` 的三个 qq 单测 |
-| `server/lyrics.rs:260` | `let key = if source == "qq" { "qqCookie" } else { "neteaseCookie" }` |
-| `server/simple.rs:88-90` | 默认 config 的 `"qqCookie": ""`（**字段先别删**，见上） |
-
-前端 `app/web-next/src/`：
-
-| 文件:行 | 内容 |
-|---|---|
-| `App.tsx:68` | 侧栏副标题「网易云 / QQ 音乐搜词，导出 LRC · SRT」 |
-| `lib/api.ts:152` / `402` / `423` | 注释、`type LyricsSource = 'netease' \| 'qq'`、返回类型注释 |
-| `pages/Lyrics.tsx:13` / `26` | 文件头注释（**本来就已过期**，见 FEATURES §3.4） |
-| `pages/Lyrics.tsx:45` | 来源分段 `{ value: 'qq', label: 'QQ 音乐' }` |
-| `pages/Lyrics.tsx:190` | `const [qqCookie, setQqCookie] = useState('')` |
-| `pages/Lyrics.tsx:239` / `258` | `api.lyricsSearch` / `lyricsGet` 的 `'netease' \| 'qq'` 断言 |
-| `pages/Lyrics.tsx:285` | toast「已识别为 QQ 音乐 / 网易云」 |
-| `pages/Lyrics.tsx:399-402` | `isQq` / `loginKey` / `sourceLabel` |
-| `pages/Lyrics.tsx:467` | `api.lyricsLogout(source as 'netease' \| 'qq')` |
-| `pages/Lyrics.tsx:486` | `saveCookie(key: 'neteaseCookie' \| 'qqCookie', …)` |
-| `pages/Lyrics.tsx:517-518` / `542` | 状态文案、以及「QQ 音乐走的是手机端搜索接口…」那段提示 |
-| `pages/Lyrics.tsx:597` | 粘贴框 hint「…以及 QQ 音乐的 songDetail 链接 / songmid」 |
-| `pages/Lyrics.tsx:768-784` | QQ Cookie 的 `Field` + 保存 / 清除两个 `Button` |
-
-文档：`README.md:142`（歌词那条功能描述）、`docs/FEATURES.md:292`（§3.4 界面描述）、
-`docs/FEATURES.md:412`（`default_config()` 键表里的 `qqCookie`）、
-`docs/FEATURES.md:562`（§6 未核实项里的「QQ 音乐手机 UA 搜索」）、
-`AGENTS.md:448`（第六节「网络」行的「网易云、QQ 音乐直连」）。
-另有 `app/data/config.json:10` 的 `"qqCookie": ""`（**开发机上的实际配置文件**，不是源码）。
-
-⚠️ `lyrics.rs` 里 qq 相关的单测有三个在 `parse_link` 上 —— **删功能时这些测试要一起删或改**，
-不然 `cargo test --bins` 会红。
-
----
-
+**别再试的两条**（实测死路）：`eapi/*` 回 `Content-Length: 0`；`weapi/*` 不带 `encSecKey` 回空 body。
+**别接第三方解析站**（侵权灰产）。**匿名会话不触发网页取链** —— 浏览器里未登录打开歌曲页，
+`enhance/player/url` 这个请求根本不会发出，所以「抓包学网页」对未登录态没用。
 ### 待办，按优先级
 
 1. **`resolve_paths()` 改用 `resource_dir()`** —— ⚠️ **优先级已下调**：Windows 安装版与绿色版
