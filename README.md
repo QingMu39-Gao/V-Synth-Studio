@@ -10,7 +10,21 @@
 
 ---
 
-## 快速开始
+## 下载安装（普通用户）
+
+不用编译，直接下安装包：
+
+**<https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest>**
+
+下载 `V-Synth-Studio_1.2.0_x64_zh-CN.msi` 双击安装即可。安装包**自带 ffmpeg、yt-dlp、
+LibreSVIP 与 JIZURA 字体**（约 183 MB），装完不联网也能用。唯一的前置条件是 WebView2
+运行时（Win11 和较新的 Win10 都预装，没有的话安装程序会提示）。
+
+> 下面那节是给**要改代码**的人看的。
+
+---
+
+## 快速开始（从源码编译）
 
 ```
 app\desktop\build.ps1     ← 编译（首次约 13 分钟，之后增量几秒）

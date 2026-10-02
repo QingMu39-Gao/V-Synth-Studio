@@ -507,7 +507,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 
 | 事项 | 状态 |
 |---|---|
-| **打包 MSI** | **能打出来了（2026-10-02）**，安装布局也已用 MSI 表核实与 `resolve_paths()` 对齐；**只差真机装一遍** —— 见下 |
+| **打包 MSI** | ✅ **已真机装过并验证通过（2026-10-02）**：界面能开、设置改了重启还在、工程转换能跑、文字 PV 能开。安装布局与 `resolve_paths()` 对齐也已用 MSI 表核实 —— 见下 |
 | UTAU Shift-JIS | 纯 Rust 侧不生成 Shift-JIS，默认写 UTF-8 |
 | YouTube | 境内不可达，相关功能要走代理（设置页可配） |
 | `mime_of` | 已补齐（2026-10-02）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
@@ -516,13 +516,16 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 39 条路由 |
 | **工程转换** | 选项键已改用 LibreSVIP **官方选项名**，VSQX 参数曲线崩溃已**自动降级**（16 个真样本 15 通过，剩下 1 个是源工程自身音符重叠）。⚠️ `音高信息输入模式` 默认档是官方 `plain`（≈ 只带"已编辑"部分），要完整保留手画音高就在选项面板选「完整」。选项表与实现见 `docs/FEATURES.md` §3.1 |
 
-### 打包：MSI 已经出得来，布局也已核实；只剩「真机装一遍」
+### 打包：CI 出 MSI，真机装过、验证通过
 
-**2026-10-02 更新**：`build.ps1 -Release -Bundle` 与 CI 工作流都通了 ——
-`.github/workflows/build-msi.yml` 打版本 tag（`v[0-9]*`）就自动出 MSI 并传 Release，
-本地也有成品：`V-Synth-Studio_1.2.0_x64_zh-CN.msi`（182.84 MB，在 Release `v1.2.0` 上）。
-**安装后的目录布局已经用 MSI 表核实过，与 `resolve_paths()` 对得上**（见下面那条）；
-**但这台机器上仍然一次都没真装过** —— 剩下的是实机验证那五条。
+**2026-10-02**：`build.ps1 -Release -Bundle` 与 CI 工作流都通了 ——
+`.github/workflows/build-msi.yml` 打版本 tag（`v[0-9]*`）就自动出 MSI 并传 Release。
+成品是 `V-Synth-Studio_1.2.0_x64_zh-CN.msi`（182.85 MB），在 Release `v1.2.0` 上，
+**可以直接发给别人装**：
+<https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest>
+
+**而且已经在真机上装过一遍，用户反馈验证通过** —— 逐条结果见下。
+安装后的目录布局另外用 MSI 表核实过，与 `resolve_paths()` 对得上（下面那条引文）。
 
 程序靠 `main.rs::resolve_paths()` **往上找 `app/web/index.html`** 定位根目录，
 它假定的是「绿色版」布局：
@@ -589,19 +592,22 @@ macOS 上产物是 `.app`，没有这回事）。
 `tools/` 约 288 MB（+ JIZURA 字体 54 MB），远超一般安装包的舒适区。原则已定：**随包分发**
 （不让用户自己下），已按此接进 `bundle.resources`。剩下的只是「直接塞进 MSI」还是「首次运行释放」。
 
-### 还没实测过
+### 实机安装验证结果（2026-10-02，已通过）
 
-打包链路写好了，**安装布局也已经用 MSI 表核实过**（见上），但**没在真机装过**。
-第一次装的时候重点验证（前两条已经静态核实过，这里是**实机复验**）：
+用 Release `v1.2.0` 的 MSI 在真机上装了一遍，**用户反馈正常**。对照当初列的五条验收点：
 
-1. 装完之后界面能打开（路径定位对不对 —— `resource_dir()` 那一步**静态核实已通过**，
-   实机只需确认没有别的意外）
-2. 改一个设置、重启，设置还在（可写目录对不对 —— 静态推理是 `%APPDATA%`，**这条最容易挂**）
-3. 转换能跑（`tools/libresvip/` 找得到）
-4. ffmpeg 能用（`tools/ffmpeg/` 找得到）
-5. 打开文字 PV（`app/web/vendor/jizura/` 找得到）
+| # | 要验的 | 结果 |
+|---|---|---|
+| 1 | 装完界面能打开（路径定位对不对） | ✅ 能开 |
+| 2 | 改一个设置 → 重启 → 设置还在（可写目录落在 `%APPDATA%`） | ✅ 还在 —— 当初判「最容易挂」的那条，没挂 |
+| 3 | 工程转换能跑（`tools/libresvip/` 找得到） | ✅ 能跑 |
+| 4 | ffmpeg 能用（`tools/ffmpeg/` 找得到） | ⬜ 没单独对着验（用户是「大致点了一圈」，音频那条没逐项确认） |
+| 5 | 打开文字 PV（`app/web/vendor/jizura/` 找得到） | ✅ 能开 |
 
-> ⚠️ 第 1 条如果挂了，看 `%APPDATA%\com.qingmu.vocalworkstation\desktop-error.log`
+**所以安装版这条路是通的。** 第 4 条只是没专门试，不是已知有问题 —— 它和工程转换走的是同一套
+`resolve_paths()`，转换能跑基本说明 `tools/` 定位没问题。
+
+> ⚠️ 万一哪天安装版一启动就挂，看 `%APPDATA%\com.qingmu.vocalworkstation\desktop-error.log`
 > （安装版的可写目录在那儿，不在 `<安装目录>\data\`；`main.rs::error_log_hint()` 会把
 > 真实路径打在错误提示里）。
 
@@ -738,6 +744,38 @@ git filter-branch --force --index-filter `
 | **设置页小节导航复用主侧栏那套** | `lib/useNavLens.ts` + `.app-nav` / `.nav-row` / `.nav-lens`，两处外框参数逐项相同 |
 | **8 页全部搬到 React**（2026-10-02） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 39 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/FRONTEND.md` 第 5 节） |
 | **`next-smoke.mjs`** | 8 页逐页冒烟：控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8 全绿（文件名里的 `next-` 是历史遗留） |
+
+### 🔜 下一个功能：歌词页做成「网易云专区」（用户 2026-10-02 定，还没开工）
+
+用户原话：「我打算 把歌词页面做成网易云专区 让用户可以搜索歌曲后直链下载歌曲
+甚至是歌曲封面（记得把填写QQ音乐cookie的功能删掉）」
+
+拆成四件事：
+
+1. **歌词页以网易云为主** —— 现在页面上有「来源」分段（网易云 / QQ 音乐），要改成一个网易云专区。
+2. **搜索后能直链下载歌曲**（音频文件本身）—— ⚠️ **这是新链路，后端现在完全没有**：
+   `lyrics.rs` 只取歌词与封面，没有任何「下音频」的代码。
+3. **也能下封面** —— 后端**已经有了**：`lyrics.rs::download_cover(cfg, url, dest) -> Result<u64, String>`（552 行），
+   路由 `/api/lyrics/cover` 也在（`server/mod.rs:145-154`）。缺的只是页面上的入口与「存到哪」。
+4. **删掉「填写 QQ 音乐 cookie」的功能** —— 前端 `Lyrics.tsx` 的来源分段（45 行的 `{ value: 'qq', label: 'QQ 音乐' }`）、
+   `isQq`（399）、`loginKey`（400）、`saveCookie('qqCookie', …)`（486）、QQ Cookie 输入框与保存/清除按钮（768-784）
+   都要去掉；后端 `lyrics.rs::normalize_source()`（212）里的 `"qq"` 分支、`cookie_of()`（79-88）的 qq 分支一并处理。
+   ⚠️ **`server/simple.rs:89-90` 的 `qqCookie` 字段先别急着从默认 config 里删** ——
+   老用户的 `config.json` 里可能已经有它，删之前要确认读配置不会因此报错（`config_post` 是合并式的，
+   多余键按说无害，但要实测，别推断）。
+
+**动手前先读：**
+
+- `docs/FEATURES.md` §3.4 歌词（290-322 行）—— 这一节是这块的权威描述，**改完必须同步改它**。
+  尤其「关键约束」那几条：扫码登录不做（网易云始终回 `8821`）、
+  **测试时绝不要调 `lyricsSms`（真会发短信）**、封面 `url` 必须 http 开头且下载**不带 Cookie**。
+- `docs/FRONTEND.md` §3「新增/修改页面的标准动作」（145 行）。
+
+⚠️ **别照猜写。** 下音频要先摸清网易云那边怎么拿直链 —— 歌词接口的回包里带没带、
+要不要 `MUSIC_U` cookie、会不会也撞反爬，都得先用 `curl.exe` 直连实测
+（网易云不用走代理；见第六节「网络」那行）。
+
+---
 
 ### 待办，按优先级
 
