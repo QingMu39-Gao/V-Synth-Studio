@@ -10,20 +10,23 @@ import type { PageProps, ToastTone } from './types'
 import './Lyrics.css'
 
 /**
- * 歌词：从网易云 / QQ 音乐搜歌 → 取歌词 → 导出 LRC / SRT / 封面 → 带去「文字 PV」。
+ * 歌词（网易云专区）：搜歌 → 取歌词 → 导出 LRC / SRT → 下载封面 / 歌曲 → 带去「文字 PV」。
  *
  * 功能清单与文案来自已退役的旧前端（**功能与文案没有丢**）。
- * 三条路取词，之后共用同一套预览 / 保存 / 带去 PV：
+ * 三条路取词，之后共用同一套预览 / 保存 / 下封面 / 下歌曲 / 带去 PV：
  *
  *   1. 搜索（`lyricsSearch` → 点一条 → `lyricsGet`）
- *   2. 粘贴链接（`lyricsParseLink`，**后端先判 QQ songmid 再判网易云 id=**，这里原样传 url）
+ *   2. 粘贴链接（`lyricsParseLink`，只认网易云链接 / 歌曲 ID）
  *   3. 本地 `.lrc` 导入（`lyricsImport`，返回和 `lyricsGet` 同一个形状，另有 `encoding`）
+ *
+ * 2026-10-02 按用户要求做成**网易云专区**：删掉了 QQ 音乐的来源分段、QQ Cookie
+ * 输入框、songmid 链接解析，以及后端整套 QQ 实现。`source` 只剩 'netease'。
  *
  * ⚠️ **扫码登录已移除，别再写**：网易云始终回 `8821 请切换其他登录方式`，
  * 判断是服务端风控（`AGENTS.md` 第十节）。留了手机号验证码 + Cookie 两条路。
  * ⚠️ **测试时绝不要调 `lyricsSms`**（会真的发短信）。
  *
- * 登录态就是 config 里的一个 Cookie 字段（`neteaseCookie` / `qqCookie`），
+ * 登录态就是 config 里的 `neteaseCookie` 一个字段，
  * 后端只回显脱敏占位「已设置」—— 所以界面上永远不回显真实值。
  */
 
@@ -40,16 +43,23 @@ const ENC_LABEL: Record<string, string> = {
   unknown: '编码没认出来',
 }
 
-const SOURCES = [
-  { value: 'netease', label: '网易云' },
-  { value: 'qq', label: 'QQ 音乐' },
-]
-
 const MODES = [
   { value: 'both', label: '对照' },
   { value: 'orig', label: '只看原文' },
   { value: 'trans', label: '只看译文' },
 ]
+
+/**
+ * 网易云 `fee` 的说法。**它不等于「能不能下载」**（实测同为 `fee=0` 的歌，
+ * 有的拿得到直链、有的拿不到），所以界面上只把这个当标签，能不能下的判据是
+ * 下载接口的返回。下载失败时的文案由后端给（已写明版权 / 会员 / 要登录）。
+ */
+const feeLabel = (fee?: number): string => {
+  if (fee === 1) return 'VIP'
+  if (fee === 4) return '付费专辑'
+  if (fee === 8) return '低音质免费'
+  return ''
+}
 
 /**
  * 本页自己攒的「这首歌」形状（**后端真实回包见 `lib/api.ts` 的 `LyricsDoc` / `LyricsHit`**）。
@@ -70,6 +80,14 @@ interface LyricSong {
   album?: string
   cover?: string
   durationSec?: number
+  /** 网易云的收费标记（0 免费 / 1 VIP / 4 付费专辑 / 8 低音质免费）—— 只当标签，不当能不能下的判据 */
+  fee?: number
+  /**
+   * 这个版本能不能拿到直链 —— 后端在搜索后**批量**探测出来的（`true` 能下 / `false` 不能下）。
+   * 从搜索进 `loadLyric` 时原样带进 `current`；粘贴链接或导入进来的没有这个字段（`undefined`）。
+   * ⚠️ 别用 `fee` 代替它：实测同为 `fee=0` 的歌两种结果都有。
+   */
+  playable?: boolean
 }
 interface LyricFile {
   source?: string
@@ -84,6 +102,8 @@ interface LyricFile {
 interface Current extends LyricFile {
   id: string | number
   source: string
+  /** 只从搜索结果带过来（见 `loadLyric`）：能不能下的标记 */
+  playable?: boolean
 }
 
 /** 归一化成一个字符串 id（网易云是数字，QQ 是 songmid，导入是完整路径） */
@@ -155,7 +175,6 @@ const baseName = (p: string): string => p.split(/[\\/]/).pop() || p
 export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps) {
   const config = state?.config ?? {}
 
-  const [source, setSource] = useState<string>('netease')
   const [keyword, setKeyword] = useState('')
   const [hits, setHits] = useState<LyricSong[] | null>(null)
   const [searching, setSearching] = useState(false)
@@ -177,6 +196,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
   const [name, setName] = useState('')
   const [saving, setSaving] = useState(false)
   const [coverLoading, setCoverLoading] = useState(false)
+  const [songLoading, setSongLoading] = useState(false)
   const [saved, setSaved] = useState('')
 
   const [phone, setPhone] = useState('')
@@ -187,7 +207,6 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
   const [busy, setBusy] = useState(false)
   const [nickname, setNickname] = useState('')
   const [neteaseCookie, setNeteaseCookie] = useState('')
-  const [qqCookie, setQqCookie] = useState('')
 
   /**
    * `edited` —— 用户手动改过输出目录之后，设置页里的默认值不再盖掉它。
@@ -236,7 +255,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     setSearching(true)
     setSearchErr(null)
     try {
-      const res = await api.lyricsSearch({ source: source as 'netease' | 'qq', keyword: kw })
+      const res = await api.lyricsSearch({ source: 'netease', keyword: kw })
       const list = res.songs ?? []
       setHits(list)
       if (!list.length) onToast('没有搜到结果', 'warn')
@@ -252,12 +271,16 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
 
   /* ── 取词：搜到的歌 / 粘贴的链接都走这里 ─────────────────── */
 
-  const loadLyric = async (id: string | number, src: string) => {
+  /**
+   * 取词。`playable` 是搜索结果那条上的「能不能下」标记，**原样带进 `current`** ——
+   * 后端取词接口不探测可下载性，只有搜索结果探测过（见 `downloadSong` 的重试用它挑版本）。
+   */
+  const loadLyric = async (id: string | number, playable?: boolean) => {
     setPreviewErr(null)
     try {
-      const res = await api.lyricsGet({ source: src as 'netease' | 'qq', id })
+      const res = await api.lyricsGet({ source: 'netease', id })
       setDoc(res)
-      setCurrent({ ...res, id, source: src })
+      setCurrent({ ...res, id, source: 'netease', playable })
       // 文件名跟着歌名走，但**别踩掉用户已经填过的名字**
       setName((prev) => prev.trim() || [res.song?.name, res.song?.artists].filter(Boolean).join(' - '))
       if (!String(res.trans ?? '').trim()) onToast('这首歌没有翻译歌词，只能导出原文', 'info')
@@ -277,12 +300,11 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     }
     setPasteLoading(true)
     try {
-      // url 原样传：后端先判 QQ songmid 再判网易云 id=，前端不猜（见 lyric.rs 的注释）
+      // url 原样传：只认网易云链接 / 歌曲 ID，认不出来后端会明确报错（前端不猜）
       const res = await api.lyricsParseLink({ url: u })
-      setSource(res.source)
       // 解析出来直接拉歌词（粘贴链接的场景不用再点一次）
-      await loadLyric(res.id, res.source)
-      onToast(`已识别为${res.source === 'qq' ? ' QQ 音乐' : '网易云'}：${res.id}`, 'ok')
+      await loadLyric(res.id)
+      onToast(`已识别为网易云：${res.id}`, 'ok')
     } catch (e) {
       onToast(errText(e), 'err')
     } finally {
@@ -365,6 +387,60 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     }
   }
 
+  /**
+   * 下载歌曲（网易云直链 → 存成 mp3，接口说是别的格式就按真实格式存）。
+   *
+   * ⚠️ 拿不到直链时后端回 400，文案已经是给用户看的（版权受限 / 只有会员能听 / 要登录），
+   * **原样弹出来**，不要再包一层「下载失败」——那会把真正的原因盖掉。
+   * 只有「本地文件」这种没有网易云 id 的来源才在这里先拦一下。
+   *
+   * **这首歌下不了就自动换一个能下的版本**（2026-10-02 用户实测「搜到的三首都不能下」后加的）：
+   * 同名歌在搜索结果里往往有十几个版本，能下的只有一两个，而**哪个能下与 `fee` 无关**，
+   * 只有后端批量探测出来的 `playable` 说得准。所以失败时从 `hits` 里挑第一条
+   * `playable === true` 且没试过的版本，取词 + 重下一次；歌词、译文、封面跟着换成新版本的。
+   */
+  const downloadSong = async () => {
+    if (current?.source === 'file') {
+      onToast('这是本地导入的歌词，没有对应的网易云歌曲可以下载', 'warn')
+      return
+    }
+    if (!current) {
+      onToast('请先搜索或粘贴链接选中一首歌', 'warn')
+      return
+    }
+    const tried = new Set<string>([asId(current.id)])
+    setSongLoading(true)
+    try {
+      let res
+      try {
+        res = await api.lyricsSong({
+          id: current.id,
+          outDir,
+          name: name.trim() || current.song?.name || '',
+        })
+      } catch (e) {
+        // 换版本只在「已经知道别的版本能下」时才做，不然会把真正的错误盖成一次空转
+        const alt = (hits ?? []).find((h) => h.playable === true && !tried.has(asId(h.id)))
+        if (!alt) throw e
+        onToast(`${errText(e)}正在换成另一个版本重试…`, 'warn')
+        tried.add(asId(alt.id))
+        await loadLyric(alt.id!, true)
+        res = await api.lyricsSong({
+          id: alt.id!,
+          outDir,
+          name: name.trim() || alt.name || '',
+        })
+      }
+      // level 是「极高 / 320 kbps」这种给人看的说法，直接跟上
+      onToast(`歌曲已保存 ${res.name}（${res.level}）`, 'ok')
+      setSaved(res.path)
+    } catch (e) {
+      onToast(errText(e), 'err')
+    } finally {
+      setSongLoading(false)
+    }
+  }
+
   /* ── 一键带去「文字 PV」─────────────────────────────────────
      交接方式：写 localStorage（同源，两边都读得到），再导航过去。
      不用 params 传：params 只在这次导航里存在，用户在 PV 页按一下 F5 就没了。
@@ -394,12 +470,9 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     onNavigate('pv')
   }
 
-  /* ── 登录（只有网易云有短信，两边的兜底都是 Cookie）───────── */
+  /* ── 登录（网易云：手机号验证码，兜底是 Cookie）───────────── */
 
-  const isQq = source === 'qq'
-  const loginKey = isQq ? 'qqCookie' : 'neteaseCookie'
-  const loggedIn = !!config[loginKey]
-  const sourceLabel = isQq ? 'QQ 音乐' : '网易云'
+  const loggedIn = !!config.neteaseCookie
 
   const sendSms = async () => {
     const p = phone.replace(/\D/g, '')
@@ -460,15 +533,14 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     }
   }
 
-  /** 退出登录：清掉当前来源的 Cookie。登录态就是 config 里一个字段，清空即退出 */
+  /** 退出登录：清掉 Cookie。登录态就是 config 里 `neteaseCookie` 一个字段，清空即退出 */
   const doLogout = async () => {
     setBusy(true)
     try {
-      await api.lyricsLogout(source as 'netease' | 'qq')
+      await api.lyricsLogout('netease')
       setNickname('')
       await onRefreshState()
       setNeteaseCookie('')
-      setQqCookie('')
       setMsg('已退出登录。', 'ok')
       onToast('已退出登录', 'ok')
     } catch (e) {
@@ -483,7 +555,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
    * 从开发者工具整行复制出来的 Cookie 常带换行，而 Cookie 头里不能有换行 —— 折成一行再存。
    * 留空保存 = 清除（后端语义）。
    */
-  const saveCookie = async (key: 'neteaseCookie' | 'qqCookie', raw: string, clear: (v: string) => void) => {
+  const saveCookie = async (raw: string) => {
     const value = raw.replace(/\s*\r?\n\s*/g, ' ').trim()
     if (value === MASK) {
       onToast('输入框里是脱敏占位「已设置」，没有可保存的新值', 'warn')
@@ -491,12 +563,12 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
     }
     setBusy(true)
     try {
-      await api.saveConfig({ [key]: value })
+      await api.saveConfig({ neteaseCookie: value })
       await onRefreshState()
-      clear('')
-      if (key === 'neteaseCookie') {
+      setNeteaseCookie('')
+      if (!value) {
         setNickname('')
-        if (!value) setMsg('已清除网易云的登录态 Cookie，取歌词会退回未登录。', 'warn')
+        setMsg('已清除网易云的登录态 Cookie，取歌词会退回未登录。', 'warn')
       }
       onToast(value ? 'Cookie 已保存' : 'Cookie 已清除', 'ok')
     } catch (e) {
@@ -514,9 +586,9 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
   const label =
     current?.source === 'file'
       ? `本地文件${ENC_LABEL[doc?.encoding ?? ''] ? `（${ENC_LABEL[doc?.encoding ?? '']}）` : ''}`
-      : current?.source === 'qq'
-        ? 'QQ 音乐'
-        : '网易云'
+      : '网易云'
+  /** 这首歌的收费标签（VIP / 付费专辑 / 低音质免费），免费歌是空串 */
+  const fee = feeLabel(song.fee)
 
   return (
     <div className="lyrics-cols">
@@ -525,23 +597,9 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
         <Panel>
           <PanelHead title="搜索歌曲" desc="搜到之后点一条就能取歌词" />
           <div className="stack">
-            <GlassSegmentedControl
-              aria-label="歌词来源"
-              items={SOURCES}
-              value={source}
-              onValueChange={(v) => {
-                setSource(v)
-                setHits(null)
-                setSearchErr(null)
-              }}
-            />
             <Field
               label="关键词"
-              hint={
-                isQq
-                  ? 'QQ 音乐走的是手机端搜索接口（桌面接口现在要签名，会返回空结果）。'
-                  : '网易云的搜索结果里带专辑与时长，信息更全。'
-              }
+              hint="搜索、取歌词都走网易云。结果里带专辑、时长与收费标签，信息更全。"
             >
               <div className="input-group">
                 <TextInput
@@ -563,7 +621,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
             {hits === null ? (
               <p className="hint">搜到的歌会列在这里，点一条就开始取歌词。</p>
             ) : hits.length === 0 ? (
-              <p className="hint">没有结果。换个关键词，或换一个来源再试。</p>
+              <p className="hint">没有结果。换个关键词再试，或者直接把歌曲链接粘到下面。</p>
             ) : (
               <div className="lyrics-results">
                 {hits.map((s, i) => (
@@ -571,7 +629,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                     key={`${asId(s.id) || i}`}
                     type="button"
                     className="lyrics-result"
-                    onClick={() => void loadLyric(s.id!, source)}
+                    onClick={() => void loadLyric(s.id!, s.playable)}
                   >
                     <Icon name="music" size={15} />
                     <span className="lyrics-result-text">
@@ -581,6 +639,9 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                         {s.album ? ` · ${s.album}` : ''}
                       </span>
                     </span>
+                    {feeLabel(s.fee) && <Chip tone="warn">{feeLabel(s.fee)}</Chip>}
+                    {s.playable === true && <Chip tone="ok">能下载</Chip>}
+                    {s.playable === false && <Chip tone="err">不能下载</Chip>}
                     {!!s.durationSec && <Chip>{fmtDuration(s.durationSec)}</Chip>}
                   </button>
                 ))}
@@ -594,7 +655,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
           <div className="stack">
             <Field
               label="歌曲链接 / ID"
-              hint="支持网易云歌曲链接 / 歌曲 ID，以及 QQ 音乐的 songDetail 链接 / songmid。"
+              hint="支持网易云歌曲链接（music.163.com/song?id=…、分享出来的 /song/<id>）或直接填歌曲 ID。"
             >
               <div className="input-group">
                 <TextInput
@@ -634,12 +695,8 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
             extra={
               <div className="lyrics-controls">
                 <Chip tone={loggedIn ? 'ok' : 'default'}>
-                  {sourceLabel}：
-                  {loggedIn
-                    ? !isQq && nickname
-                      ? `已登录为 ${nickname}`
-                      : '已登录'
-                    : '未登录'}
+                  网易云：
+                  {loggedIn ? (nickname ? `已登录为 ${nickname}` : '已登录') : '未登录'}
                 </Chip>
                 {loggedIn && (
                   <Button size="sm" variant="ghost" icon="x" loading={busy} onClick={doLogout}>
@@ -652,7 +709,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
           <div className="stack">
             {/* 扫码登录已移除（服务端风控，见 AGENTS.md 第十节）—— 别再往这里加回来 */}
             <Field
-              label="手机号 + 短信验证码（推荐，只有网易云支持）"
+              label="手机号 + 短信验证码（推荐）"
               hint="先点「发送验证码」，收到短信后把验证码填在下面点「登录」。没收到就别重复点，多半是号码不对或今天发得太多。"
             >
               <div className="input-group">
@@ -715,7 +772,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                   size="sm"
                   variant="primary"
                   icon="save"
-                  onClick={() => void saveCookie('neteaseCookie', neteaseCookie, setNeteaseCookie)}
+                  onClick={() => void saveCookie(neteaseCookie)}
                 >
                   保存
                 </Button>
@@ -723,7 +780,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                   size="sm"
                   variant="ghost"
                   icon="trash"
-                  onClick={() => void saveCookie('neteaseCookie', '', setNeteaseCookie)}
+                  onClick={() => void saveCookie('')}
                 >
                   清除
                 </Button>
@@ -764,29 +821,6 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                 </p>
               </div>
             </details>
-
-            <Field label="QQ 音乐 Cookie（可选）" hint="QQ 音乐没有短信登录，只能粘贴 Cookie。多数歌词不填也能取。">
-              <TextArea
-                rows={2}
-                spellCheck={false}
-                value={qqCookie}
-                placeholder="QQ 音乐 Cookie（可选，多数歌词不填也能取）"
-                onChange={(e) => setQqCookie(e.target.value)}
-              />
-              <span className="lyrics-controls">
-                <Button size="sm" icon="save" onClick={() => void saveCookie('qqCookie', qqCookie, setQqCookie)}>
-                  保存
-                </Button>
-                <Button
-                  size="sm"
-                  variant="ghost"
-                  icon="trash"
-                  onClick={() => void saveCookie('qqCookie', '', setQqCookie)}
-                >
-                  清除
-                </Button>
-              </span>
-            </Field>
           </div>
         </Panel>
       </div>
@@ -819,6 +853,7 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
                   <span className="lyrics-source">
                     {label} · <span className="lyrics-id">{asId(current?.id)}</span>
                     {song.durationSec ? ` · ${fmtDuration(song.durationSec)}` : ''}
+                    {fee ? ` · ${fee}` : ''}
                   </span>
                 </div>
               </div>
@@ -889,7 +924,10 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
               />
             </Field>
 
-            <Field label="文件名" hint="不用加扩展名，按上面的格式自动补 .lrc / .srt。文件一律 UTF-8 编码。">
+            <Field
+              label="文件名"
+              hint="不用加扩展名，按上面的格式自动补 .lrc / .srt；歌曲固定存成 .mp3，封面按图片真实格式存。歌词文件一律 UTF-8 编码。"
+            >
               <TextInput
                 value={name}
                 placeholder="文件名（默认：歌名 - 歌手）"
@@ -903,6 +941,9 @@ export function Lyrics({ state, onNavigate, onRefreshState, onToast }: PageProps
               </Button>
               <Button icon="image" loading={coverLoading} onClick={downloadCover}>
                 下载封面
+              </Button>
+              <Button icon="download" loading={songLoading} onClick={downloadSong}>
+                下载歌曲
               </Button>
             </div>
 

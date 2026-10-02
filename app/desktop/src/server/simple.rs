@@ -85,9 +85,9 @@ pub fn default_config() -> Value {
     let downloads = crate::platform::downloads_dir();
     json!({
         "bilibiliCookie": "",
-        // 歌词页用：网易云 / QQ 音乐的登录态（扫码登录成功后也会落到这里）
+        // 歌词页用：网易云的登录态（手机号验证码登录成功后也会落到这里）。
+        // 2026-10-02 删掉了 `qqCookie` —— 歌词页做成网易云专区后没有读取方了。
         "neteaseCookie": "",
-        "qqCookie": "",
         "proxy": "",
         "outputDir": downloads.clone(),
         "downloadDir": downloads,

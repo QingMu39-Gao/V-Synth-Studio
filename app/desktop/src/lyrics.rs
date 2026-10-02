@@ -1,7 +1,11 @@
-//! 歌词：网易云 / QQ 音乐的搜索、歌词抓取、短信验证码登录，以及 LRC ↔ SRT 转换。
+//! 网易云：搜索、歌词与详情抓取、封面下载、歌曲直链下载、短信验证码登录，
+//! 以及 LRC ↔ SRT 转换。
 //!
 //! 分工：平台相关的请求与解析都在这里（和 `bili.rs` 一个位置），路由在
 //! `server/lyrics.rs`，业务逻辑不碰 axum。
+//!
+//! 只有网易云一个来源：2026-10-02 起按用户要求删掉了 QQ 音乐（歌词页做成
+//! 网易云专区），连带删掉 `QQ_UA` / `y.qq.com` 的两套接口与 songmid 链接解析。
 //!
 //! ── 出处说明 ──────────────────────────────────────────────
 //! 以下三块**移植自 163MusicLyrics**（<https://github.com/jitwxs/163MusicLyrics>，
@@ -10,35 +14,32 @@
 //!     —— Core/Models/MusicLyricsVO.cs 的 `LyricTimestamp`
 //!   - LRC → SRT 的结束时间规则（同一时间戳的多行收在同一个结束时间上）
 //!     —— Core/Utils/SrtUtils.cs 的 `LrcToSrt`
-//!   - 译文按时间戳对齐 / 译文缺失与精度误差的处理思路、QQ 歌词里的
-//!     `[offset:0]` `[kana:` 分隔标记、纯音乐与空行的判定
+//!   - 译文按时间戳对齐 / 译文缺失与精度误差的处理思路、纯音乐与空行的判定
 //!     —— Core/Utils/LyricUtils.cs、Core/Models/MusicLyricsVO.cs
 //!
 //! 接口选择没有照搬它：它走 `weapi` 加密链路（AES + RSA，见
 //! NetEaseMusicNativeApi.cs 的 120 行加密代码），而实测明文接口
 //! `/api/cloudsearch/pc`、`/api/song/lyric`、`/api/song/detail` 直接可用，
-//! 于是这里按实测端点重写，省掉整套加密。QQ 歌词同理用实测可用的
-//! `fcg_query_lyric_new.fcg`，而不是它那套要解密 + 解压的 `lyric_download.fcg`。
+//! 于是这里按实测端点重写，省掉整套加密。
 //! 登录它没有（它是手工填 Cookie），短信验证码登录这条完全按实测接口自己写。
 
 use std::path::Path;
 use std::time::Duration;
 
+use futures_util::StreamExt;
 use serde_json::{json, Value};
 
 use crate::net::DEFAULT_UA;
 
-/// QQ 音乐的搜索接口认这个 UA：桌面 UA 会被判成网页端要求签名，
-/// 返回空列表或 `{"code":500001}`（实测两种桌面写法都不通）。
-const QQ_UA: &str = "Mozilla/5.0 (iPhone; CPU iPhone OS 14_0 like Mac OS X) \
-                     AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148";
-
 const REFER_NETEASE: &str = "https://music.163.com/";
-const REFER_QQ: &str = "https://y.qq.com/portal/player.html";
-const REFER_QQ_ROOT: &str = "https://y.qq.com/";
 
-/// 纯音乐的占位歌词，两个来源文案不同（移植自 163MusicLyrics 的 `IsPureMusic`）
+/// 纯音乐的占位歌词（移植自 163MusicLyrics 的 `IsPureMusic`）
 const PURE_MUSIC: &str = "这首歌是纯音乐，没有歌词可导出";
+
+/// 封面预览用的尺寸。网易云的 `picUrl` 是**原图**（实测 3000×3000、7.1 MB），
+/// 列表里几十张一起加载会卡，所以统一在地址后拼 `?param={n}y{n}` 让服务端现缩。
+/// 实测同一个封面：原图 7172604 B、`?param=300y300` 102216 B、`?param=500y500` 249916 B。
+const COVER_PARAM: &str = "?param=500y500";
 
 /* ══════════════════════════════════ 出站请求 ══════════════════════════════════ */
 
@@ -48,8 +49,36 @@ const PURE_MUSIC: &str = "这首歌是纯音乐，没有歌词可导出";
 /// 歌词这一页的操作都是用户手点出来的，一次几下，不值得为它维护客户端缓存。
 /// ponytail: 每次新建客户端会多一次 TLS 握手；真嫌慢再按代理串缓存一个实例。
 fn client(cfg: &Value) -> Result<reqwest::Client, String> {
+    build_client(cfg, 20)
+}
+
+/// 下音频专用的客户端：只放宽超时，其余（代理、重定向）与 `client()` 一致。
+///
+/// ⚠️ 两个超时分工（2026-10-02 实测踩到，别删任何一个）：
+/// - 总超时 10 分钟：给「整体多久还没下完」兜底。
+/// - **`read_timeout` 60 秒：真正的关键**。它是「多久没收到新数据」才判死，
+///   而不是整个请求的总时长 —— `client()` 那个 20 秒总超时对几 MB 的音频根本不够：
+///   实测一首 320 kbps、9.8 MB 的歌单流传输要 **96 秒**，20 秒必被掐断，而且报出来的是
+///   含糊的 `error decoding response body`。总超时放宽后仍怕「连上了但不发数据」，
+///   所以留 60 秒读超时。
+///
+/// 前端给这个接口的超时也是 5 分钟（`api.ts` 的 `lyricsSong`）。
+fn media_client(cfg: &Value) -> Result<reqwest::Client, String> {
+    let mut builder = base_builder(cfg, 600)?;
+    // 60 秒没收到新数据才判死；数据一直在流就不会超时
+    builder = builder.read_timeout(Duration::from_secs(60));
+    builder.build().map_err(|e| format!("HTTP 客户端创建失败：{e}"))
+}
+
+fn build_client(cfg: &Value, timeout_secs: u64) -> Result<reqwest::Client, String> {
+    base_builder(cfg, timeout_secs)?
+        .build()
+        .map_err(|e| format!("HTTP 客户端创建失败：{e}"))
+}
+
+fn base_builder(cfg: &Value, timeout_secs: u64) -> Result<reqwest::ClientBuilder, String> {
     let mut builder = reqwest::Client::builder()
-        .timeout(Duration::from_secs(20))
+        .timeout(Duration::from_secs(timeout_secs))
         .redirect(reqwest::redirect::Policy::limited(10));
 
     let proxy = str_at(cfg, "proxy");
@@ -65,7 +94,7 @@ fn client(cfg: &Value) -> Result<reqwest::Client, String> {
             reqwest::Proxy::all(&url).map_err(|e| format!("代理地址无效（{proxy}）：{e}"))?,
         );
     }
-    builder.build().map_err(|e| format!("HTTP 客户端创建失败：{e}"))
+    Ok(builder)
 }
 
 fn str_at(cfg: &Value, key: &str) -> String {
@@ -76,10 +105,7 @@ fn str_at(cfg: &Value, key: &str) -> String {
         .to_string()
 }
 
-fn cookie_of(cfg: &Value, source: &str) -> String {
-    if source == "qq" {
-        return str_at(cfg, "qqCookie");
-    }
+fn cookie_of(cfg: &Value) -> String {
     let raw = str_at(cfg, "neteaseCookie");
     // 界面上教的取法是「双击 MUSIC_U 的 Value 列复制」，拿到的就只有值、没有 `名字=`。
     // 原样当 Cookie 头发出去等于一个无名 cookie，登录态不生效 —— 这里补上名字。
@@ -146,15 +172,64 @@ async fn get_bytes(
     if !cookie.is_empty() {
         req = req.header("Cookie", cookie);
     }
-    let res = req
-        .send()
-        .await
-        .map_err(|e| format!("网络请求失败：{e}"))?;
+    let res = req.send().await.map_err(|e| network_hint(&e))?;
     let status = res.status().as_u16();
     if !(200..300).contains(&status) {
         return Err(format!("HTTP {status}：{url}"));
     }
-    Ok(res.bytes().await.map_err(|e| e.to_string())?.to_vec())
+    Ok(res.bytes().await.map_err(|e| network_hint(&e))?.to_vec())
+}
+
+/// 把响应**边到边写进文件**，返回写出的字节数。
+///
+/// 只给音频下载用（封面几百 KB，`get_bytes` 一把读完更简单）。这样写有两个好处：
+/// 1. 几 MB 的音频不占内存，也不会因为「读完才写」而在中途失败时白下一个文件；
+/// 2. 配合 `media_client()` 的 `read_timeout`，只要数据在流就不会被判超时。
+async fn save_stream(
+    client: &reqwest::Client,
+    url: &str,
+    ua: &str,
+    referer: &str,
+    cookie: &str,
+    dest: &Path,
+) -> Result<u64, String> {
+    let mut req = client
+        .get(url)
+        .header("User-Agent", ua)
+        .header("Referer", referer);
+    if !cookie.is_empty() {
+        req = req.header("Cookie", cookie);
+    }
+    let res = req.send().await.map_err(|e| network_hint(&e))?;
+    let status = res.status().as_u16();
+    if !(200..300).contains(&status) {
+        return Err(format!("HTTP {status}：{url}"));
+    }
+
+    if let Some(dir) = dest.parent() {
+        std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败：{e}"))?;
+    }
+    let mut file = std::fs::File::create(dest).map_err(|e| format!("打开文件失败：{e}"))?;
+    let mut got: u64 = 0;
+    let mut stream = res.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        let chunk = chunk.map_err(|e| network_hint(&e))?;
+        std::io::Write::write_all(&mut file, &chunk).map_err(|e| format!("写入失败：{e}"))?;
+        got += chunk.len() as u64;
+    }
+    std::io::Write::flush(&mut file).map_err(|e| format!("写入失败：{e}"))?;
+    Ok(got)
+}
+
+/// reqwest 的英文错误对用户没意义（`error decoding response body` 之类），换成能看懂的话。
+fn network_hint(e: &reqwest::Error) -> String {
+    if e.is_timeout() {
+        "下载超时（网络太慢或连接被中断，再试一次）".to_string()
+    } else if e.is_body() || e.is_decode() {
+        "下载中断了（网络不稳定，再试一次通常就好）".to_string()
+    } else {
+        format!("网络请求失败：{e}")
+    }
 }
 
 /* ══════════════════════════════ JSON 取值小工具 ══════════════════════════════ */
@@ -198,36 +273,31 @@ fn https_url(u: &str) -> String {
     }
 }
 
-/// QQ 的封面按专辑 mid 拼；拿不到 albummid 就没有封面
-fn qq_cover(album_mid: &str) -> String {
-    if album_mid.is_empty() {
-        String::new()
+/// 网易云的封面地址有时是 http://，统一升成 https（下载与显示都省事），
+/// 再拼上 `?param=` 缩小尺寸 —— 原图是 3000×3000、7 MB，列表里几十张加载不动。
+/// 地址里已经有查询串的（理论上不会有）就不再拼，免得拼出两个 `?`。
+fn cover_url(raw: &str) -> String {
+    let url = https_url(raw);
+    if url.is_empty() || url.contains('?') {
+        url
     } else {
-        format!("https://y.gtimg.cn/music/photo_new/T002R300x300M000{album_mid}.jpg")
+        format!("{url}{COVER_PARAM}")
     }
 }
 
 /* ══════════════════════════════════ 搜索 ══════════════════════════════════ */
 
-pub fn normalize_source(source: &str) -> Result<&'static str, String> {
-    match source.trim() {
-        "netease" => Ok("netease"),
-        "qq" => Ok("qq"),
-        "" => Err("请先选择音乐来源".to_string()),
-        other => Err(format!("不支持的来源：{other}")),
-    }
-}
-
 /// 搜索歌曲，返回统一的形状：
-/// `[{ id, name, artists, album, cover, durationSec }]`
-pub async fn search(cfg: &Value, source: &str, keyword: &str) -> Result<Vec<Value>, String> {
+/// `[{ id, name, artists, album, cover, durationSec, fee }]`
+///
+/// `fee` 是网易云自己的收费标记：0 免费、1 VIP、8 低音质免费（还有 4 等）。
+/// ⚠️ **它不等于「能不能下载」** —— 实测同为 `fee=0` 的歌，有的能拿到直链、
+/// 有的（版权受限）拿不到。所以这里只把它当标签展示，真正的判据是下载时
+/// `netease_download` 那次 `player/url` 请求的返回。
+pub async fn search(cfg: &Value, keyword: &str) -> Result<Vec<Value>, String> {
     let client = client(cfg)?;
-    let cookie = cookie_of(cfg, source);
-    if source == "qq" {
-        qq_search(&client, keyword, &cookie).await
-    } else {
-        netease_search(&client, keyword, &cookie).await
-    }
+    let cookie = cookie_of(cfg);
+    netease_search(&client, keyword, &cookie).await
 }
 
 async fn netease_search(
@@ -246,7 +316,7 @@ async fn netease_search(
         .cloned()
         .unwrap_or_default();
 
-    Ok(songs
+    let hits: Vec<Value> = songs
         .iter()
         .filter_map(|song| {
             let id = n(song, "/id");
@@ -258,63 +328,56 @@ async fn netease_search(
                 "name": s(song, "/name"),
                 "artists": names(song.get("ar"), "name"),
                 "album": s(song, "/al/name"),
-                "cover": https_url(&s(song, "/al/picUrl")),
+                "cover": cover_url(&s(song, "/al/picUrl")),
                 "durationSec": n(song, "/dt") / 1000,
+                "fee": n(song, "/fee"),
             }))
         })
-        .collect())
+        .collect();
+
+    Ok(annotate_playable(client, cookie, hits).await)
 }
 
-async fn qq_search(
-    client: &reqwest::Client,
-    keyword: &str,
-    cookie: &str,
-) -> Result<Vec<Value>, String> {
-    // 带参的 client_search_cp / musicu.fcg 在实测里都返回空列表或 code 500001（要签名），
-    // 只有这个「手机端搜索」是通的：换手机 UA + y.qq.com 的 Referer 即可，无需签名。
-    let url = format!(
-        "https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp?w={}&p=1&n=20&format=json&t=0&\
-         aggr=1&cr=1&catZhida=1&remoteplace=txt.mqq.all&platform=yqq&needNewCode=1&utf8=1",
-        crate::net::encode_component(keyword)
-    );
-    let json = get_json(client, &url, QQ_UA, REFER_QQ_ROOT, cookie).await?;
-    let list = json
-        .pointer("/data/song/list")
-        .and_then(|v| v.as_array())
-        .cloned()
-        .unwrap_or_default();
-
-    Ok(list
+/// 给搜索结果逐条标上「这个版本能不能拿到直链」（`playable`）。
+///
+/// 为什么要多打一次接口：用户实测「搜到的三首都不能下」，而**能不能下与 `fee` 无关**
+/// （实测同为 `fee=0` 两种结果都有），只有真去打播放接口才知道。20 条**一次批量请求**
+/// 就够（`ids` 收 JSON 数组），代价可接受；失败就整体不标（`playable` 留空），
+/// 绝不让「探测失败」变成「搜索结果打不开」。
+async fn annotate_playable(client: &reqwest::Client, cookie: &str, mut hits: Vec<Value>) -> Vec<Value> {
+    if hits.is_empty() {
+        return hits;
+    }
+    let ids = hits
         .iter()
-        .filter_map(|song| {
-            let mid = s(song, "/songmid");
-            if mid.is_empty() {
-                return None;
-            }
-            Some(json!({
-                "id": mid,
-                "name": s(song, "/songname"),
-                "artists": names(song.get("singer"), "name"),
-                "album": s(song, "/albumname"),
-                "cover": qq_cover(&s(song, "/albummid")),
-                // 这个接口直接给时长（秒）
-                "durationSec": n(song, "/interval"),
-            }))
-        })
-        .collect())
+        .map(|h| s(h, "/id"))
+        .collect::<Vec<_>>()
+        .join(",");
+    let Ok(list) = fetch_media(client, cookie, &ids).await else {
+        return hits;
+    };
+
+    for hit in hits.iter_mut() {
+        let id = s(hit, "/id");
+        let playable = list
+            .iter()
+            .find(|x| s(x, "/id") == id)
+            .map(|x| !s(x, "/url").is_empty())
+            .unwrap_or(false);
+        if let Some(obj) = hit.as_object_mut() {
+            obj.insert("playable".to_string(), Value::Bool(playable));
+        }
+    }
+    hits
 }
 
 /* ══════════════════════════════ 歌词与详情 ══════════════════════════════ */
 
-/// 取歌词：`{ source, id, song:{name,artists,album,cover,durationSec}, lyric, trans }`
-pub async fn fetch(cfg: &Value, source: &str, id: &str) -> Result<Value, String> {
+/// 取歌词：`{ source, id, song:{name,artists,album,cover,durationSec,fee}, lyric, trans }`
+pub async fn fetch(cfg: &Value, id: &str) -> Result<Value, String> {
     let client = client(cfg)?;
-    let cookie = cookie_of(cfg, source);
-    if source == "qq" {
-        qq_fetch(&client, id, &cookie).await
-    } else {
-        netease_fetch(&client, id, &cookie).await
-    }
+    let cookie = cookie_of(cfg);
+    netease_fetch(&client, id, &cookie).await
 }
 
 async fn netease_fetch(
@@ -351,60 +414,12 @@ async fn netease_fetch(
             "name": s(&detail, "/songs/0/name"),
             "artists": names(detail.pointer("/songs/0/artists"), "name"),
             "album": s(&detail, "/songs/0/album/name"),
-            "cover": https_url(&s(&detail, "/songs/0/album/picUrl")),
+            "cover": cover_url(&s(&detail, "/songs/0/album/picUrl")),
             "durationSec": n(&detail, "/songs/0/duration") / 1000,
+            "fee": n(&detail, "/songs/0/fee"),
         },
         "lyric": lyric,
         "trans": s(&data, "/tlyric/lyric"),
-    }))
-}
-
-async fn qq_fetch(client: &reqwest::Client, mid: &str, cookie: &str) -> Result<Value, String> {
-    let url = format!(
-        "https://c.y.qq.com/lyric/fcgi-bin/fcg_query_lyric_new.fcg?songmid={mid}&format=json&nobase64=1"
-    );
-    let data = get_json(client, &url, DEFAULT_UA, REFER_QQ, cookie).await?;
-
-    let retcode = n(&data, "/retcode");
-    if retcode != 0 {
-        return Err(format!(
-            "QQ 音乐接口返回错误码 {retcode}（歌曲可能已下架，或需要先填 Cookie）"
-        ));
-    }
-
-    let lyric = html_unescape(&s(&data, "/lyric"));
-    if lyric.trim().is_empty() {
-        return Err("接口没有返回歌词（可能是纯音乐）".to_string());
-    }
-    if is_pure_music(&lyric) {
-        return Err(PURE_MUSIC.to_string());
-    }
-
-    let detail = get_json(
-        client,
-        &format!(
-            "https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?songmid={mid}&format=json&platform=yqq&needNewCode=0"
-        ),
-        DEFAULT_UA,
-        REFER_QQ,
-        cookie,
-    )
-    .await
-    .unwrap_or(Value::Null);
-
-    Ok(json!({
-        "source": "qq",
-        "id": mid,
-        "song": {
-            "name": s(&detail, "/data/0/name"),
-            "artists": names(detail.pointer("/data/0/singer"), "name"),
-            "album": s(&detail, "/data/0/album/name"),
-            "cover": qq_cover(&s(&detail, "/data/0/album/mid")),
-            "durationSec": n(&detail, "/data/0/interval"),
-        },
-        "lyric": lyric,
-        // QQ 的翻译歌词经常是空的（实测多数歌就是空串），有就用，没有就照实说
-        "trans": html_unescape(&s(&data, "/trans")),
     }))
 }
 
@@ -413,96 +428,42 @@ fn is_pure_music(raw: &str) -> bool {
     raw.contains("纯音乐，请欣赏") || raw.contains("此歌曲为没有填词的纯音乐")
 }
 
-/// QQ 的歌词经过 HTML 转义（`&apos;` `&#39;` 等）。
-///
-/// 163MusicLyrics 走 XML 解析，实体是解析器顺手解掉的；这里拿到的是 JSON 字符串，
-/// 只能自己反转义，否则存下来的歌词里会留一堆 `&apos;`。
-fn html_unescape(input: &str) -> String {
-    if !input.contains('&') {
-        return input.to_string();
-    }
-    let chars: Vec<char> = input.chars().collect();
-    let mut out = String::with_capacity(input.len());
-    let mut i = 0;
-    while i < chars.len() {
-        if chars[i] == '&' {
-            if let Some(end) = chars[i..].iter().position(|c| *c == ';').map(|p| i + p) {
-                let entity: String = chars[i + 1..end].iter().collect();
-                let decoded = match entity.as_str() {
-                    "amp" => Some('&'),
-                    "lt" => Some('<'),
-                    "gt" => Some('>'),
-                    "quot" => Some('"'),
-                    "apos" => Some('\''),
-                    "nbsp" => Some(' '),
-                    _ => {
-                        let code = if let Some(hex) = entity
-                            .strip_prefix("#x")
-                            .or_else(|| entity.strip_prefix("#X"))
-                        {
-                            u32::from_str_radix(hex, 16).ok()
-                        } else {
-                            entity.strip_prefix('#').and_then(|d| d.parse::<u32>().ok())
-                        };
-                        code.and_then(char::from_u32)
-                    }
-                };
-                if let Some(c) = decoded {
-                    out.push(c);
-                    i = end + 1;
-                    continue;
-                }
-            }
-        }
-        out.push(chars[i]);
-        i += 1;
-    }
-    out
-}
-
 /* ══════════════════════════════ 链接解析 ══════════════════════════════ */
 
-/// 从粘贴的链接 / 编号里认出 `(来源, id)`。
+/// 从粘贴的链接 / 编号里认出网易云歌曲 id。
 ///
-/// ⚠️ **必须先判 songmid 再判 `id=`**：QQ 的 `...?songmid=0039MnYb0qxYhV` 里那句
-/// `songmid=0039...` 会被 `id=(\d+)` 先匹配走，于是 songmid 变成网易云 id `0039`。
-/// 这个坑实测踩过，顺序不能调。
+/// 网易云的链接花样比想象中多：分享链接是 `/song?id=123`，也有 `/#/song?id=123`、
+/// `music.163.com/song/123`、`?id=123&userid=...`。统一按「先找 `?id=` / `&id=`，
+/// 再找 `/song/<数字>`，最后认纯数字」处理。
+///
+/// ⚠️ 2026-10-02 删掉 QQ 音乐时，这里原来的第 1、2、5 步（`?songmid=`、
+/// `/songDetail/<mid>`、裸 songmid）也一起删了。**顺序坑的教训保留**：当初必须先判
+/// songmid 再判 `id=`，否则 `?songmid=0039MnYb0qxYhV` 会被 `id=(\d+)` 抢走。
+/// 将来若再加别的来源，仍然要先判它自己那个特征参数。
 pub fn parse_link(input: &str) -> Result<(String, String), String> {
     let raw = input.trim();
     if raw.is_empty() {
         return Err("请粘贴歌曲链接或歌曲编号".to_string());
     }
 
-    // 1. QQ：显式 songmid 参数（放在最前面，见上面的注释）
-    if let Some(mid) = param_value(raw, "songmid") {
-        if looks_like_mid(&mid) {
-            return Ok(("qq".to_string(), mid));
-        }
-    }
-    // 2. QQ：/songDetail/<songmid> 这种路径
-    if raw.contains("qq.com") {
-        if let Some(mid) = segment_after(raw, "songDetail/") {
-            if looks_like_mid(&mid) {
-                return Ok(("qq".to_string(), mid));
-            }
-        }
-    }
-    // 3. 网易云：?id=<数字>
+    // 1. `?id=<数字>` / `&id=<数字>`
     if let Some(id) = param_value(raw, "id") {
         if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
             return Ok(("netease".to_string(), id));
         }
     }
-    // 4. 纯数字 → 网易云 id
+    // 2. `/song/<数字>` 这种路径
+    if let Some(id) = segment_after(raw, "song/") {
+        if id.chars().all(|c| c.is_ascii_digit()) {
+            return Ok(("netease".to_string(), id));
+        }
+    }
+    // 3. 纯数字 → 歌曲 id
     if raw.chars().all(|c| c.is_ascii_digit()) {
         return Ok(("netease".to_string(), raw.to_string()));
     }
-    // 5. 裸 songmid（14 位左右的字母数字）
-    if looks_like_mid(raw) {
-        return Ok(("qq".to_string(), raw.to_string()));
-    }
 
-    Err("无法识别的链接。支持：网易云歌曲链接 / 歌曲 ID，或 QQ 音乐的 songDetail 链接 / songmid".to_string())
+    Err("无法识别的链接。支持：网易云歌曲链接（music.163.com/song?id=…）或歌曲 ID".to_string())
 }
 
 /// `?name=值` 或 `&name=值`
@@ -537,34 +498,199 @@ fn segment_after(url: &str, prefix: &str) -> Option<String> {
     }
 }
 
-/// QQ 的 songmid 形如 `0039MnYb0qxYhV`：字母数字混排、长度十来位。
-/// 要求至少有一个字母，免得把纯数字的网易云 id 认成 songmid。
-fn looks_like_mid(text: &str) -> bool {
-    let len = text.chars().count();
-    (5..=30).contains(&len)
-        && text.chars().all(|c| c.is_ascii_alphanumeric())
-        && text.chars().any(|c| c.is_ascii_alphabetic())
-}
-
-/* ══════════════════════════════ 封面下载 ══════════════════════════════ */
+/* ══════════════════════════ 封面 / 歌曲直链下载 ══════════════════════════ */
 
 /// 下载封面到 `dest`，返回写出的字节数。
+///
+/// **不带 Cookie**（实测封面 CDN 不校验登录态，带上反而多一份泄露面）。
 pub async fn download_cover(cfg: &Value, url: &str, dest: &Path) -> Result<u64, String> {
     let client = client(cfg)?;
-    let referer = if url.contains("qq.com") || url.contains("gtimg.cn") {
-        REFER_QQ_ROOT
-    } else {
-        REFER_NETEASE
-    };
-    let bytes = get_bytes(&client, url, DEFAULT_UA, referer, "").await?;
+    let bytes = get_bytes(&client, url, DEFAULT_UA, REFER_NETEASE, "").await?;
     if bytes.is_empty() {
         return Err("下载到的封面是空的".to_string());
     }
+    write_file(dest, &bytes)?;
+    Ok(bytes.len() as u64)
+}
+
+/// 建目录 + 写文件，两处下载共用。
+fn write_file(dest: &Path, bytes: &[u8]) -> Result<(), String> {
     if let Some(dir) = dest.parent() {
         std::fs::create_dir_all(dir).map_err(|e| format!("创建目录失败：{e}"))?;
     }
-    std::fs::write(dest, &bytes).map_err(|e| format!("写入失败：{e}"))?;
-    Ok(bytes.len() as u64)
+    std::fs::write(dest, bytes).map_err(|e| format!("写入失败：{e}"))
+}
+
+/// 统一的取直链入口：回包 `data` 那个数组，每项含 `url` / `level` / `br` / `type` /
+/// `code` / `freeTrialPrivilege`。**下载与搜索结果的「能不能下」标注都走这里，参数只此一份。**
+///
+/// 参数形状照网页播放器抄：`ids` 要是 JSON 数组（下载传一个、搜索结果一次传 20 个），
+/// `level` + `encodeType` 缺一不可（少了 `encodeType` 就退回旧接口行为，对免费账号大面积
+/// 不回 url）。`exhigh` = 极高档，配合 `mp3` 实测回 320 kbps。
+async fn fetch_media(client: &reqwest::Client, cookie: &str, ids: &str) -> Result<Vec<Value>, String> {
+    let url = format!(
+        "https://music.163.com/api/song/enhance/player/url/v1\
+         ?ids=%5B{ids}%5D&level=exhigh&encodeType=mp3"
+    );
+    let data = get_json(client, &url, DEFAULT_UA, REFER_NETEASE, cookie).await?;
+    Ok(data
+        .pointer("/data")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default())
+}
+
+/// 拿一首歌的直链并下载到 `dest`，返回 `(写出的字节数, 实际下到的音质标签, 格式)`。
+///
+/// ── 为什么这么写（2026-10-02 实测记录，别照着「直觉」改） ────────────────
+/// 老的 `music.163.com/song/media/outer/url?id=<id>.mp3` **已经废了**（302 到 404 页），
+/// `/api/song/enhance/download/url` 明确回 `{"data":null,"code":301}` 要登录，
+/// 而第三方解析站是侵权灰产 —— 都不碰。能用的是播放接口 `enhance/player/url/v1`。
+///
+/// 判据只能是这个接口的返回，**不能凭 `fee` 预判**：实测同为 `fee=0` 的歌两种结果都出现过。
+/// 歌本身能不能听是平台的事，本工具只如实把结果告诉用户。
+///
+/// ⚠️⚠️ **2026-10-02 二次修正（关键，别改回去）** —— 最初那版实现（旧接口
+/// `/api/song/enhance/player/url?id=X&ids=[X]&br=320000`，不带 `level`/`encodeType`）
+/// **对免费账号大面积不回 url**：同一批 7 首里只 1 首成功。当时误判成「这些歌版权受限」，
+/// 实际是**请求写法过时**。
+///
+/// - 网页播放器用的是 **`/api/song/enhance/player/url/v1` + `level` + `encodeType`**
+///   （扒 `s3.music.126.net/web/s/core_*.js` 确认，见 `AGENTS.md` §十一）。换成 v1 之后
+///   **同一批 7 首里 6 首全通**，`level=exhigh&encodeType=mp3` 回 320 kbps mp3。
+/// - 所以「网页端能播、我们下不了」的绝大多数就是**请求写错**，先改参数再谈权益。
+///
+/// 换 v1 后仍然拿不到的，才是真受限：实测 `id=26096272`（千本桜）回 `code:-110` 且
+/// `freeTrialPrivilege.userConsumable=false`，**免费账号确实拿不到**（它 fee=1）。
+///
+/// 直链自带 token，实测**不带 UA / 不带 Referer 也回 206**，走配置的代理同样通 ——
+/// 所以下 CDN 那一跳只挂 UA，不挂 Cookie（登录 Cookie 是给 `/api/` 接口用的，cdn 不吃这套；
+/// 不挂也少一份把 Cookie 发去 CDN 的风险）。但**取直链那一跳必须带 Cookie**：
+/// v1 对已登录用户才按账号权益给 url。
+///
+/// 返回值是 (`字节数`, `音质文案`, `格式`)；格式由接口回包的 `type` 决定，不是写死 mp3。
+pub async fn download_song(cfg: &Value, id: &str, dest: &Path) -> Result<(u64, String, String), String> {
+    // 取直链是小请求，用普通超时；**下音频必须换成 media_client**（见那里的注释：
+    // 20 秒装不下几 MB 的歌，会被掐成含糊的「error decoding response body」）
+    let client = media_client(cfg)?;
+    let cookie = cookie_of(cfg);
+
+    let media = fetch_media(&client, &cookie, id)
+        .await?
+        .into_iter()
+        .next()
+        .unwrap_or(Value::Null);
+
+    let direct = s(&media, "/url");
+    if direct.is_empty() {
+        return Err(no_direct_link_reason(&media));
+    }
+
+    // 边下边写（`save_stream`）。不用 `get_bytes`：几 MB 的音频没必要占内存，
+    // 而且流式读才能配合 `media_client()` 的 read_timeout（数据在流就不算超时）。
+    let size = save_stream(&client, &direct, DEFAULT_UA, REFER_NETEASE, "", dest).await?;
+    if size == 0 {
+        let _ = std::fs::remove_file(dest);
+        return Err("下载到的音频是空的（直链可能已经失效，重试一次通常就好了）".to_string());
+    }
+
+    // 直链失效时 CDN 可能回一页 HTML 而不是音频。已经写下去了，读回头几个字节挡一下，
+    // 别把错误页当成歌留在用户目录里
+    if !file_looks_like_audio(dest) {
+        let _ = std::fs::remove_file(dest);
+        return Err("拿到的不是音频数据（直链可能已经过期，重试一次通常就好了）".to_string());
+    }
+
+    Ok((
+        size,
+        level_label(&s(&media, "/level"), n(&media, "/br")),
+        format_of(&media),
+    ))
+}
+
+/// 读文件头判断是不是音频（`looks_like_audio` 的按文件版本）。
+fn file_looks_like_audio(dest: &Path) -> bool {
+    use std::io::Read;
+    let mut head = [0u8; 4];
+    let Ok(mut f) = std::fs::File::open(dest) else {
+        return false;
+    };
+    match f.read_exact(&mut head) {
+        Ok(()) => looks_like_audio(&head),
+        // 文件比 4 字节还短：不是音频
+        Err(_) => false,
+    }
+}
+
+/// 接口回包里的容器格式（`mp3` / `m4a` / `flac`），空则按 mp3 兜底。
+fn format_of(media: &Value) -> String {
+    let t = s(media, "/type");
+    if t.is_empty() {
+        "mp3".to_string()
+    } else {
+        t
+    }
+}
+
+/// 拿不到直链时，按接口给的信息说清楚为什么。
+///
+/// 实测三条判据（`id=26096272` 这类「真受限」的样本）：
+/// `code=-110` + `freeTrialPrivilege.userConsumable=false` + `fee=1`。而**未登录**时
+/// 最常见的还是 `cannotListenReason=1`（先登录就能解决），所以两者分开说。
+fn no_direct_link_reason(media: &Value) -> String {
+    let reason = n(media, "/freeTrialPrivilege/cannotListenReason");
+    let consumable = media
+        .pointer("/freeTrialPrivilege/userConsumable")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(true);
+    let code = n(media, "/code");
+
+    match reason {
+        // 1 = 版权/付费受限；未登录时最多见，登录后多数能解
+        1 => "这首歌拿不到下载地址：版权或付费受限。先在下面的「登录」里用短信登录或填 Cookie \
+              再试一次；如果登录后还是拿不到，说明这个版本网易云不给免费账号，\
+              换搜索结果里的另一个版本试试。"
+            .to_string(),
+        2 => "这首歌只有会员能听，没有可下载的直链。换搜索结果里的另一个版本试试。".to_string(),
+        _ if !consumable || code == -110 => "这个版本网易云不给免费账号下载（要会员）。\
+              搜索结果里同一首歌往往有好几个版本，换一个能下的试试。"
+            .to_string(),
+        _ => "网易云没有返回这首歌的下载地址（可能已下架，或需要登录）。".to_string(),
+    }
+}
+
+/// 前几个字节看着像不像音频。
+///
+/// 认四种：`ID3`（带标签的 mp3）、`0xFF 0xEx`（裸 mp3 帧头）、`fLaC`、`OggS`。
+/// 不是要当解码器，只是不想把 CDN 的错误页当 mp3 存下来。
+fn looks_like_audio(bytes: &[u8]) -> bool {
+    bytes.len() >= 4
+        && (bytes.starts_with(b"ID3")
+            || bytes.starts_with(b"fLaC")
+            || bytes.starts_with(b"OggS")
+            || (bytes[0] == 0xFF && bytes[1] & 0xE0 == 0xE0))
+}
+
+/// 把接口回的 `level` + `br` 说成人话，用于「已下载（320 kbps）」这类提示。
+fn level_label(level: &str, br: i64) -> String {
+    let name = match level {
+        "standard" => "标准",
+        "higher" => "较高",
+        "exhigh" => "极高",
+        "lossless" => "无损",
+        "hires" => "Hi-Res",
+        "jyeffect" => "沉浸环绕声",
+        "sky" => "沉浸环绕声",
+        "jymaster" => "超清母带",
+        _ => "",
+    };
+    let kbps = if br > 0 { br / 1000 } else { 0 };
+    match (name.is_empty(), kbps) {
+        (false, k) if k > 0 => format!("{name} / {k} kbps"),
+        (false, _) => name.to_string(),
+        (true, k) if k > 0 => format!("{k} kbps"),
+        _ => "未知音质".to_string(),
+    }
 }
 
 /* ══════════════════════════ 短信验证码登录（网易云） ══════════════════════════ */
@@ -575,7 +701,7 @@ pub async fn download_cover(cfg: &Value, url: &str, dest: &Path) -> Result<u64, 
 /// 没登录时接口回 `{"code":200,"account":null,"profile":null}`（实测），所以全程当可空处理；
 /// 失败就回空串 —— 它只是装饰，不该让登录本身报错。
 pub async fn account_nickname(cfg: &Value) -> Result<String, String> {
-    let cookie = cookie_of(cfg, "netease");
+    let cookie = cookie_of(cfg);
     if cookie.is_empty() {
         return Ok(String::new());
     }
@@ -830,18 +956,16 @@ fn parse_line(line: &str) -> Vec<(u64, String)> {
 
 /// 整段歌词 → 按时间排序的 `(毫秒, 正文)`。
 ///
-/// `source == "qq"` 时套用 163MusicLyrics 的 QQ 处理：`[offset:0]` 与 `[kana:` 是
-/// 「正文从这里开始」的分隔标记，出现在它们之前的内容属于另一个版本的歌词头，要丢掉。
-pub fn parse_lrc(raw: &str, source: &str) -> Vec<(u64, String)> {
+/// 以前这里有个 `source` 参数，QQ 来源要额外处理 `[offset:0]` 与 `[kana:` 这两个
+/// 「正文从这里开始」的分隔标记（出现在它们之前的内容属于另一个版本的歌词头，
+/// 要丢掉）。删掉 QQ 之后网易云的歌词没有这种标记，参数也就一起去掉了。
+/// ponytail: 将来再加来源、又碰到这种头，再把这个丢头逻辑加回来。
+pub fn parse_lrc(raw: &str) -> Vec<(u64, String)> {
     let normalized = raw.replace("\r\n", "\n").replace('\r', "\n");
     let mut out: Vec<(u64, String)> = Vec::new();
     for line in normalized.lines() {
         let line = line.trim();
         if line.is_empty() {
-            continue;
-        }
-        if source == "qq" && (line == "[offset:0]" || line.starts_with("[kana:")) {
-            out.clear();
             continue;
         }
         for item in parse_line(line) {
@@ -900,8 +1024,8 @@ fn first_tag(line: &str) -> Option<String> {
 /// 两行）两种模式，这里只做 STAGGER —— 同一时间戳连写两行是播放器通用认的双语写法，
 /// 合并成一行会把原文和译文挤在一起，对着歌词翻调时反而难读。
 /// ponytail: 要 MERGE 就在这里把两段用分隔符拼起来，界面和路由都不用动。
-pub fn merge_lrc(raw: &str, trans: &str, source: &str) -> String {
-    let trans_lines = parse_lrc(trans, source);
+pub fn merge_lrc(raw: &str, trans: &str) -> String {
+    let trans_lines = parse_lrc(trans);
     if trans_lines.is_empty() {
         return raw.to_string();
     }
@@ -929,12 +1053,12 @@ pub fn merge_lrc(raw: &str, trans: &str, source: &str) -> String {
 /// 结束时间取「后面第一个更晚的时间戳」，最后一句取歌曲时长（拿不到就 +4 秒）。
 /// 这条规则移植自 163MusicLyrics 的 `SrtUtils.LrcToSrt`：时间戳相同的多行（双语正是
 /// 这种）要收在同一个结束时间上，否则后一行会把前一行顶成零长度字幕。
-pub fn lrc_to_srt(raw: &str, trans: Option<&str>, source: &str, duration_sec: u64) -> String {
-    let lines = parse_lrc(raw, source);
+pub fn lrc_to_srt(raw: &str, trans: Option<&str>, duration_sec: u64) -> String {
+    let lines = parse_lrc(raw);
     if lines.is_empty() {
         return String::new();
     }
-    let trans_lines = trans.map(|t| parse_lrc(t, source)).unwrap_or_default();
+    let trans_lines = trans.map(parse_lrc).unwrap_or_default();
 
     let last = lines.last().map(|(ms, _)| *ms).unwrap_or(0);
     let song_end = if duration_sec > 0 {
@@ -978,7 +1102,6 @@ pub fn render(
     format: &str,
     lyric: &str,
     trans: &str,
-    source: &str,
     duration_sec: u64,
     bilingual: bool,
 ) -> Result<(String, &'static str), String> {
@@ -988,10 +1111,10 @@ pub fn render(
         None
     };
     match format {
-        "srt" => Ok((lrc_to_srt(lyric, trans, source, duration_sec), "srt")),
+        "srt" => Ok((lrc_to_srt(lyric, trans, duration_sec), "srt")),
         "lrc" => {
             let text = match trans {
-                Some(t) => merge_lrc(lyric, t, source),
+                Some(t) => merge_lrc(lyric, t),
                 None => format!("{}\n", lyric.replace("\r\n", "\n").trim_end()),
             };
             Ok((text, "lrc"))
@@ -1015,7 +1138,7 @@ pub fn import_file(path: &Path) -> Result<Value, String> {
 
     let (text, encoding) = decode_text(&bytes);
     let (lyric, trans) = split_bilingual(&text);
-    if parse_lrc(&lyric, "netease").is_empty() {
+    if parse_lrc(&lyric).is_empty() {
         return Err("这个文件里没有可识别的时间轴，不像是 LRC 歌词".to_string());
     }
 
@@ -1225,7 +1348,7 @@ mod tests {
     #[test]
     fn parses_lrc_lines_and_skips_metadata() {
         let raw = "[ti:晴天]\n[ar:周杰伦]\n[00:12.00]故事的小黄花\n[00:15.50][01:20.00]从出生那年就飘着\n";
-        let lines = parse_lrc(raw, "netease");
+        let lines = parse_lrc(raw);
         assert_eq!(
             lines,
             vec![
@@ -1237,19 +1360,9 @@ mod tests {
     }
 
     #[test]
-    fn qq_header_before_offset_marker_is_dropped() {
-        // QQ 的响应里 [offset:0] 之前的都是另一个版本的头，实测确实会带这种垃圾
-        let raw = "[00:01.00]旧的错误歌词\n[offset:0]\n[00:12.00]真正的歌词\n";
-        let lines = parse_lrc(raw, "qq");
-        assert_eq!(lines, vec![(12_000, "真正的歌词".to_string())]);
-        // 网易云不做这个处理
-        assert_eq!(parse_lrc(raw, "netease").len(), 2);
-    }
-
-    #[test]
     fn lrc_to_srt_uses_next_distinct_timestamp_as_end() {
         let raw = "[00:01.00]第一句\n[00:03.00]第二句\n[00:03.00]第二句译文\n";
-        let srt = lrc_to_srt(raw, None, "netease", 10);
+        let srt = lrc_to_srt(raw, None, 10);
         let lines: Vec<&str> = srt.lines().collect();
         assert_eq!(lines[0], "1");
         assert_eq!(lines[1], "00:00:01,000 --> 00:00:03,000");
@@ -1266,7 +1379,6 @@ mod tests {
         let srt = lrc_to_srt(
             "[00:01.00]hello\n[00:03.00]world\n",
             Some("[00:01.00]你好\n"),
-            "netease",
             8,
         );
         assert!(srt.contains("1\n00:00:01,000 --> 00:00:03,000\nhello\n你好\n"));
@@ -1278,19 +1390,17 @@ mod tests {
     fn netease_cookie_gets_its_name_back_when_only_the_value_was_pasted() {
         // 界面上教的取法是从开发者工具里双击 Value 列复制 —— 拿到的没有 `MUSIC_U=`
         let bare = json!({ "neteaseCookie": "abc123" });
-        assert_eq!(cookie_of(&bare, "netease"), "MUSIC_U=abc123");
+        assert_eq!(cookie_of(&bare), "MUSIC_U=abc123");
         // 已经有名字的（单段或整行）原样不动
         let named = json!({ "neteaseCookie": "MUSIC_U=abc123" });
-        assert_eq!(cookie_of(&named, "netease"), "MUSIC_U=abc123");
+        assert_eq!(cookie_of(&named), "MUSIC_U=abc123");
         let full = json!({ "neteaseCookie": "MUSIC_U=abc123; __csrf=xyz" });
-        assert_eq!(cookie_of(&full, "netease"), "MUSIC_U=abc123; __csrf=xyz");
+        assert_eq!(cookie_of(&full), "MUSIC_U=abc123; __csrf=xyz");
         // 空值仍然是空：不能凭空造一个 MUSIC_U= 出来
-        assert_eq!(cookie_of(&json!({}), "netease"), "");
-        // QQ 不做这个补全（它的 Cookie 本来就不止一个键）
-        assert_eq!(cookie_of(&json!({ "qqCookie": "abc" }), "qq"), "abc");
+        assert_eq!(cookie_of(&json!({})), "");
     }
 
-    /// 网易云/QQ 的每个请求都走 `get_text`，而它跑的是 HTTPS —— 明文头抓不到。
+    /// 网易云的每个请求都走 `get_text`，而它跑的是 HTTPS —— 明文头抓不到。
     /// 所以拿本机一个 TCP 监听假装目标站点，直接看发出去的请求行里有没有 Cookie。
     #[tokio::test]
     async fn get_text_puts_the_cookie_into_the_request_header() {
@@ -1322,7 +1432,7 @@ mod tests {
             &format!("http://{addr}/api/cloudsearch/pc?s=x"),
             DEFAULT_UA,
             REFER_NETEASE,
-            &cookie_of(&cfg, "netease"),
+            &cookie_of(&cfg),
         )
         .await
         .unwrap();
@@ -1341,7 +1451,6 @@ mod tests {
         let merged = merge_lrc(
             "[ti:x]\n[00:12.00]原文\n[00:15.00]第二句\n",
             "[00:12.00]译文\n",
-            "netease",
         );
         assert_eq!(
             merged,
@@ -1352,19 +1461,19 @@ mod tests {
     #[test]
     fn render_picks_format_and_extension() {
         let lrc = "[00:01.00]hello\n";
-        let (text, ext) = render("lrc", lrc, "", "netease", 0, true).unwrap();
+        let (text, ext) = render("lrc", lrc, "", 0, true).unwrap();
         assert_eq!(ext, "lrc");
         assert_eq!(text, lrc);
 
-        let (text, ext) = render("srt", lrc, "[00:01.00]译文", "netease", 5, true).unwrap();
+        let (text, ext) = render("srt", lrc, "[00:01.00]译文", 5, true).unwrap();
         assert_eq!(ext, "srt");
         assert!(text.contains("00:00:01,000 --> 00:00:05,000\nhello\n译文"));
 
         // 关掉双语就不带译文
-        let (text, _) = render("srt", lrc, "[00:01.00]译文", "netease", 5, false).unwrap();
+        let (text, _) = render("srt", lrc, "[00:01.00]译文", 5, false).unwrap();
         assert!(!text.contains("译文"));
 
-        assert!(render("ass", lrc, "", "netease", 0, true).is_err());
+        assert!(render("ass", lrc, "", 0, true).is_err());
     }
 
     #[test]
@@ -1424,14 +1533,7 @@ mod tests {
     }
 
     #[test]
-    fn unescapes_qq_lyric_entities() {
-        assert_eq!(html_unescape("It&apos;s ok"), "It's ok");
-        assert_eq!(html_unescape("a&amp;b &#39;c&#x27;"), "a&b 'c'");
-        assert_eq!(html_unescape("no entities"), "no entities");
-    }
-
-    #[test]
-    fn parses_links_with_songmid_before_id() {
+    fn parses_netease_links_and_bare_ids() {
         assert_eq!(
             parse_link("https://music.163.com/#/song?id=186016").unwrap(),
             ("netease".to_string(), "186016".to_string())
@@ -1441,22 +1543,21 @@ mod tests {
             ("netease".to_string(), "186016".to_string())
         );
         assert_eq!(
-            parse_link("https://y.qq.com/n/ryqq/songDetail/0039MnYb0qxYhV").unwrap(),
-            ("qq".to_string(), "0039MnYb0qxYhV".to_string())
+            parse_link("https://music.163.com/song/186016").unwrap(),
+            ("netease".to_string(), "186016".to_string())
         );
-        // 这一条是踩过的坑：songmid 必须比 id= 先判，否则拿到的是 "0039"
+        // 分享链接常带一堆参数，id 后面的东西不能混进去
         assert_eq!(
-            parse_link("https://i.y.qq.com/v8/playsong.html?songmid=0039MnYb0qxYhV").unwrap(),
-            ("qq".to_string(), "0039MnYb0qxYhV".to_string())
+            parse_link("https://music.163.com/song?id=186016&userid=123456").unwrap(),
+            ("netease".to_string(), "186016".to_string())
         );
         assert_eq!(
             parse_link("186016").unwrap(),
             ("netease".to_string(), "186016".to_string())
         );
-        assert_eq!(
-            parse_link("0039MnYb0qxYhV").unwrap(),
-            ("qq".to_string(), "0039MnYb0qxYhV".to_string())
-        );
+        // 删掉 QQ 之后，songmid 这类链接必须明确报「认不出来」，而不是当成 id 硬认
+        assert!(parse_link("https://i.y.qq.com/v8/playsong.html?songmid=0039MnYb0qxYhV").is_err());
+        assert!(parse_link("0039MnYb0qxYhV").is_err());
         assert!(parse_link("").is_err());
         assert!(parse_link("随便写点什么").is_err());
     }
@@ -1477,7 +1578,7 @@ mod tests {
         let (orig, trans) = split_bilingual(raw);
         assert_eq!(orig, "[ti:x]\n[00:01.00]原文一\n[00:03.00]原文二\n");
         assert_eq!(trans, "[00:01.00]译文一\n[00:03.00]译文二\n");
-        assert_eq!(parse_lrc(&trans, "netease").len(), 2);
+        assert_eq!(parse_lrc(&trans).len(), 2);
     }
 
     /// 只有个别行带斜杠时**不能**当双语拆 —— 拆了就是把原文改坏（`AC/DC`）。
@@ -1533,5 +1634,83 @@ mod tests {
         std::fs::write(&path, "这不是歌词\n").unwrap();
         assert!(import_file(&path).is_err());
         let _ = std::fs::remove_file(&path);
+    }
+
+    /* ── 封面与直链下载 ── */
+
+    #[test]
+    fn cover_url_upgrades_scheme_and_shrinks_the_original() {
+        // 原图 3000×3000、7 MB —— 一定要拼上 ?param=
+        assert_eq!(
+            cover_url("http://p1.music.126.net/abc.jpg"),
+            "https://p1.music.126.net/abc.jpg?param=500y500"
+        );
+        assert_eq!(
+            cover_url("https://p1.music.126.net/abc.jpg"),
+            "https://p1.music.126.net/abc.jpg?param=500y500"
+        );
+        // 没有封面时是空串，不能拼出一个只有参数的怪地址
+        assert_eq!(cover_url(""), "");
+        // 已经有查询串的不重复拼（拼出两个 ? 会 404）
+        assert_eq!(
+            cover_url("http://p1.music.126.net/abc.jpg?x=1"),
+            "https://p1.music.126.net/abc.jpg?x=1"
+        );
+    }
+
+    #[test]
+    fn audio_sniffing_rejects_html_error_pages() {
+        // 实测下到的 mp3 头是 ID3（49 44 33 04）
+        assert!(looks_like_audio(b"ID3\x04\x00\x00\x00\x00\x00\x00"));
+        // 裸 mp3 帧头 0xFF 0xEx
+        assert!(looks_like_audio(&[0xFF, 0xFB, 0x90, 0x00]));
+        assert!(looks_like_audio(b"fLaC\x00\x00\x00\x22"));
+        assert!(looks_like_audio(b"OggS\x00\x02\x00\x00"));
+        // 直链过期时 CDN 会回一页 HTML，不能当 mp3 存下来
+        assert!(!looks_like_audio(b"<!DOCTYPE html><html>"));
+        assert!(!looks_like_audio(b"Not Found"));
+        assert!(!looks_like_audio(b""));
+    }
+
+    #[test]
+    fn level_label_reads_like_a_human() {
+        assert_eq!(level_label("exhigh", 320_001), "极高 / 320 kbps");
+        assert_eq!(level_label("lossless", 999_000), "无损 / 999 kbps");
+        // 码率缺失时只说音质名，不写「0 kbps」
+        assert_eq!(level_label("standard", 0), "标准");
+        // 两个都没有就照实说不知道，而不是编一个
+        assert_eq!(level_label("", 0), "未知音质");
+        assert_eq!(level_label("something_new", 128_000), "128 kbps");
+    }
+
+    #[test]
+    fn missing_direct_link_explains_why() {
+        // 实测最常见：版权/付费受限
+        let e = no_direct_link_reason(&json!({
+            "url": null,
+            "freeTrialPrivilege": { "cannotListenReason": 1 }
+        }));
+        assert!(e.contains("版权") && e.contains("登录"), "{e}");
+        let e = no_direct_link_reason(&json!({ "freeTrialPrivilege": { "cannotListenReason": 2 } }));
+        assert!(e.contains("会员"), "{e}");
+        // 实测 id=26096272 的回包：code=-110 且 userConsumable=false（免费账号真拿不到）
+        let e = no_direct_link_reason(&json!({
+            "url": null,
+            "code": -110,
+            "fee": 1,
+            "freeTrialPrivilege": { "cannotListenReason": 0, "userConsumable": false }
+        }));
+        assert!(e.contains("会员") && e.contains("版本"), "{e}");
+        // 不认识的 reason 也要给一句话，不能是空串
+        assert!(!no_direct_link_reason(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn format_of_falls_back_to_mp3() {
+        // 实测 exhigh + mp3 回 type=mp3；有些档位回 m4a（扩展名要跟着改）
+        assert_eq!(format_of(&json!({ "type": "mp3" })), "mp3");
+        assert_eq!(format_of(&json!({ "type": "m4a" })), "m4a");
+        assert_eq!(format_of(&json!({ "type": "" })), "mp3");
+        assert_eq!(format_of(&Value::Null), "mp3");
     }
 }

@@ -1,9 +1,12 @@
 //! 歌词路由
 //!
-//! 搜索 / 取歌词 / 解析链接 / 存文件 / 下封面 / 短信验证码登录与退出。
+//! 搜索 / 取歌词 / 解析链接 / 存文件 / 下封面 / 下歌曲 / 短信验证码登录与退出。
 //! 平台相关的实现全在 `crate::lyrics`，这里只做参数校验、配置读取与错误映射。
 //!
 //! 响应形状是新增的（原来的 31 个路由一个都没动），前端 `api.js` 直接按这里的形状写。
+//!
+//! 2026-10-02：歌词页做成网易云专区，`source` 只剩 `netease` 一个值（为了不破坏
+//! 已有调用方仍然收下这个字段，但不再用它分派任何东西）。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -14,7 +17,7 @@ use serde_json::{json, Value};
 
 use super::{ok, ApiError, AppState};
 
-/// 从请求体里取 id：网易云是数字，QQ 是 songmid 字符串，两种都收
+/// 从请求体里取歌曲 id（网易云是数字，也收字符串形式的数字）
 fn id_of(body: &Value) -> Result<String, ApiError> {
     match body.get("id") {
         Some(Value::String(s)) if !s.trim().is_empty() => Ok(s.trim().to_string()),
@@ -23,9 +26,10 @@ fn id_of(body: &Value) -> Result<String, ApiError> {
     }
 }
 
-fn source_of(body: &Value) -> Result<&'static str, ApiError> {
-    let raw = body.get("source").and_then(|v| v.as_str()).unwrap_or("");
-    crate::lyrics::normalize_source(raw).map_err(ApiError::bad_request)
+/// 只有网易云一个来源了。老调用方可能还在传 `source`，一律当网易云处理 ——
+/// 传 `qq` 也不再报「不支持的来源」，因为那个功能已经不存在了，报错只会让人困惑。
+fn source_of(_body: &Value) -> &'static str {
+    "netease"
 }
 
 /// 输出目录：请求里给了就用请求的，否则退回配置里的默认输出目录。
@@ -52,12 +56,15 @@ fn file_name(body: &Value, ext: &str, fallback: &str) -> String {
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .trim();
-    let stem = raw
-        .trim_end_matches(".lrc")
-        .trim_end_matches(".LRC")
-        .trim_end_matches(".srt")
-        .trim_end_matches(".SRT")
-        .trim();
+    // 大小写都去：用户在「文件名」里手打的情况比想象中多
+    let mut stem = raw;
+    for suffix in [".lrc", ".LRC", ".srt", ".SRT", ".mp3", ".MP3"] {
+        if let Some(rest) = stem.strip_suffix(suffix) {
+            stem = rest;
+            break;
+        }
+    }
+    let stem = stem.trim();
     let base = crate::bili::safe_title(if stem.is_empty() { fallback } else { stem });
     format!("{base}.{ext}")
 }
@@ -68,7 +75,7 @@ pub async fn search(
     State(st): State<Arc<AppState>>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    let source = source_of(&body)?;
+    let source = source_of(&body);
     let keyword = body
         .get("keyword")
         .and_then(|v| v.as_str())
@@ -80,7 +87,7 @@ pub async fn search(
     }
 
     let cfg = st.config_snapshot();
-    let songs = crate::lyrics::search(&cfg, source, &keyword)
+    let songs = crate::lyrics::search(&cfg, &keyword)
         .await
         .map_err(ApiError::internal)?;
 
@@ -93,11 +100,10 @@ pub async fn get(
     State(st): State<Arc<AppState>>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    let source = source_of(&body)?;
     let id = id_of(&body)?;
     let cfg = st.config_snapshot();
 
-    let data = crate::lyrics::fetch(&cfg, source, &id)
+    let data = crate::lyrics::fetch(&cfg, &id)
         .await
         .map_err(ApiError::internal)?;
     Ok(Json(ok(data)))
@@ -142,13 +148,8 @@ pub async fn save(
         .get("durationSec")
         .and_then(|v| v.as_u64())
         .unwrap_or(0);
-    // 来源只影响 QQ 的歌词头处理，认不出来就按网易云处理（更宽松）
-    let source = crate::lyrics::normalize_source(
-        body.get("source").and_then(|v| v.as_str()).unwrap_or(""),
-    )
-    .unwrap_or("netease");
 
-    let (text, ext) = crate::lyrics::render(&format, lyric, trans, source, duration, bilingual)
+    let (text, ext) = crate::lyrics::render(&format, lyric, trans, duration, bilingual)
         .map_err(ApiError::bad_request)?;
 
     let dir = out_dir_of(&st, &body);
@@ -244,24 +245,70 @@ pub async fn cover(
     }))))
 }
 
-/// 退出登录：把该来源的 Cookie 清空。
+/* ══════════════════════════ POST /api/lyrics/song ══════════════════════════ */
+
+/// 直链下载歌曲音频。`{ id, outDir?, name? }` → `{ path, name, size, level, format }`
+///
+/// 存到哪和歌词/封面一个规矩：请求里的 `outDir` 优先，否则用配置里的默认输出目录。
+/// 「直链」在 `crate::lyrics::download_song` 里拿（见那里的实测记录）：能拿到就下，
+/// 拿不到就把网易云给的原因如实说出来（版权受限 / 只有会员能听），不假装成功。
+pub async fn song(
+    State(st): State<Arc<AppState>>,
+    Json(body): Json<Value>,
+) -> Result<Json<Value>, ApiError> {
+    let id = id_of(&body)?;
+
+    let dir = out_dir_of(&st, &body);
+    if dir.is_empty() {
+        return Err(ApiError::bad_request("没有输出目录，请先选择目录"));
+    }
+    // 歌名兜底成歌曲 id：前端一般会传「歌名 - 歌手」，传空也不能存成无名文件。
+    // 扩展名先按 mp3 去掉，真实格式由接口回包决定（多半是 mp3，也可能是 m4a），拿到再补。
+    let stem = file_name(&body, "mp3", &id);
+    let path = PathBuf::from(&dir).join(&stem);
+
+    let cfg = st.config_snapshot();
+    let (size, level, format) = crate::lyrics::download_song(&cfg, &id, &path)
+        .await
+        // 拿不到直链 / 版权受限：这是用户能理解并自己处理的事，按 400 回（前端原样显示）
+        .map_err(ApiError::bad_request)?;
+
+    // 接口说不是 mp3（如 m4a）：把已写出的文件改名，免得扩展名和内容不符
+    let (path, name) = if format == "mp3" {
+        (path, stem)
+    } else {
+        let renamed = path.with_extension(&format);
+        let name = renamed
+            .file_name()
+            .map(|x| x.to_string_lossy().to_string())
+            .unwrap_or_else(|| format!("{stem}.{format}"));
+        std::fs::rename(&path, &renamed).map_err(|e| ApiError::internal(format!("改名失败：{e}")))?;
+        (renamed, name)
+    };
+
+    Ok(Json(ok(json!({
+        "path": path.to_string_lossy(),
+        "name": name,
+        "size": size,
+        "level": level,
+        "format": format,
+    }))))
+}
+
+/// 退出登录：把网易云的 Cookie 清空。
 ///
 /// 和 `save_netease_cookie` 对称 —— 同样走 `save_config` + 内存快照，
 /// 区别只是写进去的是空串。清空后 `cookie_of` 读到的就是空，搜索/取歌词
 /// 自动退回未登录状态，不需要别的地方配合。
-///
-/// 顺带把 QQ 也支持了：两个来源的登录态都是「config 里一个 Cookie 字段」，
-/// 没有别的状态要清（不像浏览器还要清 session、缓存之类）。
 pub async fn logout(
     State(st): State<Arc<AppState>>,
     Json(body): Json<Value>,
 ) -> Result<Json<Value>, ApiError> {
-    let source = body.get("source").and_then(|v| v.as_str()).unwrap_or("netease");
-    let key = if source == "qq" { "qqCookie" } else { "neteaseCookie" };
+    let source = source_of(&body);
 
     let mut next = st.config_snapshot();
     if let Some(map) = next.as_object_mut() {
-        map.insert(key.into(), json!(""));
+        map.insert("neteaseCookie".into(), json!(""));
     }
     crate::server::simple::save_config(&st.writable, &next).map_err(ApiError::from)?;
     if let Ok(mut guard) = st.config.lock() {

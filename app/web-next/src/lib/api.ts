@@ -64,6 +64,45 @@ const get = <T,>(path: string, params?: Record<string, string | number>, timeout
 const post = <T,>(path: string, body?: unknown, timeout?: number) =>
   request<T>(path, { method: 'POST', body, timeout })
 
+/**
+ * 发一段**已经拼好的 `FormData`**。
+ *
+ * 不能走上面的 `request()`：那条路会 `JSON.stringify` 并且**强制**
+ * `Content-Type: application/json`，而 multipart 的 Content-Type 里必须带
+ * boundary（由浏览器写，手写会漏）。所以这里单独放一份，只共用超时与
+ * `data.ok === false` 也当失败这两条约定。
+ *
+ * ⚠️ **不要给 FormData 手工设 `Content-Type`** —— 设成 `multipart/form-data`
+ * 而丢掉 boundary，后端会直接解不出来，报的还是「未检测到上传文件」这种
+ * 指不到原因的话。
+ */
+async function postForm<T>(path: string, form: FormData, timeout = 300000): Promise<T> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => controller.abort(), timeout)
+  try {
+    const res = await fetch(path, { method: 'POST', body: form, signal: controller.signal })
+    const text = await res.text()
+    let data: (T & { ok?: boolean; error?: string; code?: string }) | null
+    try {
+      data = text ? JSON.parse(text) : ({} as T)
+    } catch {
+      throw new Error(`服务端返回异常内容（HTTP ${res.status}）`)
+    }
+    if (!res.ok || data?.ok === false) {
+      const err = new Error(data?.error || `请求失败（HTTP ${res.status}）`) as ApiError
+      err.code = data?.code
+      err.status = res.status
+      throw err
+    }
+    return data as T
+  } catch (e) {
+    if ((e as Error).name === 'AbortError') throw new Error('上传超时，文件可能太大或服务没响应')
+    throw e
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
 export const api = {
   /* ── 基础 ─────────────────────────────────────────────── */
   health: () => request<HealthInfo>('/api/health', { timeout: 5000 }),
@@ -71,6 +110,50 @@ export const api = {
   config: () => request<Record<string, unknown>>('/api/config'),
   /** 配置补丁。后端接受任意字段，不用改后端就能存新键。 */
   saveConfig: (patch: Record<string, unknown>) => post<{ ok: true }>('/api/config', patch),
+
+  /* ── 音轨分离（内嵌离线引擎）──────────────────────────── */
+  /**
+   * 状态。页面每 2 秒轮询一次它 —— 服务的生死、模型的多少、下载的进度
+   * 全在这一个回包里（少一个轮询目标就少一处不一致）。
+   */
+  svsepStatus: () => request<SvsepStatus>('/api/svsep/status', { timeout: 20000 }),
+  svsepStart: () => post<{ ok: true; running: boolean; started: boolean; port: number }>('/api/svsep/start', {}, 120000),
+  svsepStop: () => post<{ ok: true; running: boolean }>('/api/svsep/stop', {}),
+  /**
+   * 下模型（约 730 MB）。**立刻返回**，进度靠 `svsepStatus().download` 看 ——
+   * 后端那边是在一个后台任务里下的，不占着这个请求。
+   */
+  svsepDownloadModels: () => post<{ ok: true; started: boolean }>('/api/svsep/models/download', {}),
+  /**
+   * 下运行时（Python + torch，几 GB，**只该下一次**）。
+   *
+   * 与 `svsepDownloadModels` 同一套：立刻返回，进度看 `svsepStatus().download`
+   * （`download.kind` 会告诉你是 `'runtime'` 还是 `'models'`，同一时刻只有
+   * 一个下载在跑）。⚠️ 它解到**程序目录** `app/data/svsep/` —— 安装版装在
+   * `Program Files` 下时那里不可写，后端会以「建目录失败」失败，页面照实显示。
+   */
+  svsepDownloadRuntime: () => post<{ ok: true; started: boolean }>('/api/svsep/runtime/download', {}),
+  /**
+   * 提交一次分离。
+   *
+   * `engine` 走查询串（`?engine=uvr|roformer`），音频走 multipart 的 `file` 字段
+   * —— 两边都是上游 Python 后端定的，不是我们定的。
+   * 超时给 5 分钟：大文件上传慢，但真开始算之后是**另一个**请求在轮询，不受这个超时管。
+   */
+  svsepSeparate: (engine: 'uvr' | 'roformer', file: File) => {
+    const form = new FormData()
+    form.append('file', file, file.name)
+    return postForm<{ ok: true; task_id: string; engine: string; task: SvsepTask }>(
+      `/api/svsep/separate?engine=${engine}`,
+      form,
+      300000,
+    )
+  },
+  svsepTask: (id: string) => get<SvsepTask>(`/api/svsep/task/${encodeURIComponent(id)}`, undefined, 30000),
+  svsepCancel: (id: string) => post<{ ok: true }>(`/api/svsep/task/${encodeURIComponent(id)}/cancel`, {}),
+  svsepOpenOutput: () => post<{ ok: true }>('/api/svsep/open-output', {}),
+  /** 分离后端自己的设备 / 队列 / 输出目录（我们只透传） */
+  svsepBackendStatus: () => request<Record<string, unknown>>('/api/svsep/backend/status', { timeout: 30000 }),
 
   /* ── 外部工具 ─────────────────────────────────────────── */
   detect: (force = true) =>
@@ -149,14 +232,16 @@ export const api = {
   resources: (reload = false) => request<Resources>('/api/resources' + (reload ? '?reload=1' : ''), { timeout: 30000 }),
   checkLinks: (ids: string[]) => post<{ jobId: string }>('/api/resources/check', { ids }),
 
-  /* ── 歌词（网易云 / QQ 音乐）──────────────────────────── */
+  /* ── 歌词（网易云专区）───────────────────────────────── */
+  /* 2026-10-02：歌词页做成网易云专区，`source` 只剩 'netease' 一个值。
+     后端仍然**收**这个字段（回包里也照旧带 `source`），所以这里继续传 —— 只是不再有第二档可选。 */
   lyricsSearch: (payload: { source: LyricsSource; keyword: string }) =>
     /* ⚠️ 真实回包是 `{ source, keyword, songs: [...] }`，字段名是 **name / artists / album / cover**，
        不是 `title / artist`（源码 `server/lyrics.rs` 的 `json!({ "source", "keyword", "songs" })`
        + `lyrics.rs` 里建歌曲对象那几行）。这里照实声明 —— 第一版照旧界面猜的形状是错的。 */
     post<{ source: LyricsSource; keyword: string; songs: LyricsHit[] }>('/api/lyrics/search', payload),
   lyricsGet: (payload: { source: LyricsSource; id: string | number }) => post<LyricsDoc>('/api/lyrics/get', payload),
-  /** ⚠️ 后端先判 QQ songmid 再判网易云 id=，顺序不能反 —— 这里只负责原样传 */
+  /** 后端现在只认网易云的 `?id=` / `/song/<id>` / 纯数字；认不出来会明确报错 */
   lyricsParseLink: (payload: { url: string }) => post<{ source: LyricsSource; id: string }>('/api/lyrics/parse-link', payload),
   /** 回包是 { source, id, song, lyric, trans, encoding }（与 get 同形，另加 encoding: utf-8 | gbk） */
   lyricsImport: (payload: { path: string }) => post<LyricsDoc & { encoding?: string }>('/api/lyrics/import', payload),
@@ -166,7 +251,16 @@ export const api = {
   lyricsSave: (payload: Record<string, unknown>) =>
     post<{ ok: true; path: string; name: string; format: string; size: number }>('/api/lyrics/save', payload),
   lyricsCover: (payload: { url: string; outDir: string; name?: string }) =>
-    post<{ path: string }>('/api/lyrics/cover', payload),
+    post<{ path: string; name?: string; size?: number }>('/api/lyrics/cover', payload),
+  /* 歌曲直链下载的回包是 `{ path, name, size, level, format }`（`server/lyrics.rs::song`）。
+     ⚠️ 拿不到直链时后端回 **400**，错误文案已经是给用户看的（版权受限 / 只有会员能听），
+     页面直接 `toast(e.message)`，不要再包一层「下载失败」。 */
+  lyricsSong: (payload: { id: string | number; outDir: string; name?: string }) =>
+    post<{ ok: true; path: string; name: string; size: number; level: string; format: string }>(
+      '/api/lyrics/song',
+      payload,
+      300000,
+    ),
   lyricsSms: (phone: string) => post<{ ok: true }>('/api/lyrics/login/sms', { phone }, 30000),
   /* ⚠️ 登录成功回的是 `{ loggedIn, phone, nickname }`（`server/lyrics.rs:406`），不只是 `ok`
      —— 页面要拿 `nickname` 显示「登录成功：xxx」，那个字段是真有的。 */
@@ -399,17 +493,35 @@ export interface ResourceItem {
   verified?: { verdict: 'ok' | 'warn' | 'dead'; status?: number; checkedAt?: string }
 }
 
-type LyricsSource = 'netease' | 'qq'
+/**
+ * 歌曲来源。2026-10-02 起歌词页是**网易云专区**，只剩这一个值 ——
+ * 类型留成联合是为了让「以后再加来源」时改动点集中在这里（`'file'` 只在
+ * 本地 `.lrc` 导入的回包里出现，不参与请求）。
+ */
+type LyricsSource = 'netease'
 
 /** 搜索结果里的一条（字段名以后端为准：`name` / `artists`，不是 `title` / `artist`） */
 interface LyricsHit {
-  /** 网易云是数字串，QQ 是 songmid 串 —— 统一按字符串传回去 */
+  /** 网易云歌曲 id（数字串）—— 统一按字符串传回去 */
   id: string
   name: string
   artists?: string
   album?: string
   cover?: string
   durationSec?: number
+  /**
+   * 网易云的收费标记：0 免费、1 VIP、8 低音质免费（还有 4 等）。
+   * ⚠️ **不是「能不能下载」**：实测同为 0 的歌，有的拿得到直链、有的拿不到。
+   * 界面只把它当标签，真正决定能不能下的看下面那个 `playable`。
+   */
+  fee?: number
+  /**
+   * 这个版本能不能拿到直链 —— 后端在搜索后**批量**打一次播放接口（`player/url/v1`）标出来的。
+   * `true` 一定能下，`false` 一定下不了（`fee` 判断不了这件事）。
+   * 探测失败时后端**不写这个字段**（回包形状没变），所以是可选值：`undefined` = 没探测到，
+   * 界面别显示成「不能下」。
+   */
+  playable?: boolean
 }
 
 /** `lyrics/get` / `lyrics/import` 里那个 `song`：与搜索结果同形，但**没有 `id`**（id 在外层） */
@@ -419,16 +531,16 @@ type LyricsSongInfo = Omit<LyricsHit, 'id'>
  * `lyrics/get` 与 `lyrics/import` 的回包。
  *
  * ⚠️ 歌曲信息**嵌在 `song` 里**，`source` / `id` / `lyric` / `trans` 在外层平铺 —— 不是全平铺。
- * 源码（`lyrics.rs:347-359` 网易云、`:395-408` QQ、`:1022-1037` 导入）三个来源都是这个形状：
- * `{ source: 'netease' | 'qq' | 'file', id, song: { name, artists, album, cover, durationSec },
+ * 源码（`lyrics.rs` 的 `netease_fetch`、`import_file`）两个来源都是这个形状：
+ * `{ source: 'netease' | 'file', id, song: { name, artists, album, cover, durationSec, fee },
  *    lyric, trans, encoding? }` —— **`song` 里那个 `id` 不存在**（这一条以前写反了），
  * 而外层的 `source` / `id` 一直都在（页面拿它们显示来源、打开所在目录）。
  */
 interface LyricsDoc {
   ok: true
-  /** netease / qq（取词）/ file（本地导入） */
+  /** netease（取词）/ file（本地导入）—— 2026-10-02 起没有 qq 了 */
   source: string
-  /** 网易云是数字串、QQ 是 songmid、导入是完整路径 */
+  /** 网易云歌曲 id、或导入时的完整路径 */
   id: string
   song?: LyricsSongInfo
   /** 原文 LRC */
@@ -437,6 +549,110 @@ interface LyricsDoc {
   trans?: string
   /** 仅导入本地文件时有：utf-8 / gbk */
   encoding?: string
+  /**
+   * 「这个版本能不能下」—— **不是后端回的**，是页面从搜索结果那条 `LyricsHit` 上带过来的
+   * （见 `pages/Lyrics.tsx` 的 `loadLyric`）：`lyrics/get` 本身不探测可下载性。
+   * `undefined` = 从链接/导入进来的，没探测过。
+   */
+  playable?: boolean
 }
+
+/* ── 音轨分离（内嵌的离线引擎）─────────────────────────────
+ *
+ * 这一组和别的都不一样：它转发给一个**跑在本机的 Python 子进程**
+ * （见 Rust 的 `svsep.rs` / `server/svsep.rs`）。所以有三条不成文的规矩：
+ *
+ *  1. **它不是随叫随到的。** 服务没起时所有路由都会报「分离服务还没启动」，
+ *     页面必须先看 `/api/svsep/status` 的 `running` 再决定给不给按钮。
+ *  2. **第一次用之前没有模型**（730 MB，不随包发）。`models` 两个字段
+ *     任一不是 `ok` 就不能提交任务，该显示「下载模型」而不是让用户白等。
+ *  3. **一次任务几分钟到几十分钟**（本机纯 CPU：二轨约 8 分钟、六轨约 11 分钟）。
+ *     提交完只拿 `task_id`，进度靠轮询 `svsepTask`。
+ */
+
+/** 一个模型的下载/落盘状态 */
+export interface SvsepModel {
+  /** `missing` | `partial`（下了一半）| `ok` */
+  state: string
+  size: number
+  expected: number
+  /** 界面上按它显示大小（后端给的是十进制 MB 口径，别自己再换算一遍） */
+  expectedBytes?: number
+  path: string
+}
+
+/** 运行时（Python + torch）的状态。**几 GB，只该下一次**。 */
+export interface SvsepRuntime {
+  /** 运行时根目录：`<程序目录>/app/data/svsep` */
+  dir: string
+  /** `python.exe` 与 `backend/app.py` 都在 —— 这才是判据 */
+  ready: boolean
+  /** 编译期常量 `svsep.rs::RUNTIME_URL`；空串 = 还没配置下载地址 */
+  downloadUrl: string
+  /** 大概多大（7.3 GB 量级），只用于展示与进度百分比 */
+  expectedBytes: number
+  python: boolean
+  backend: boolean
+  pythonPath: string
+  backendPath: string
+}
+
+/** 大包 zip 的下载进度（后端内存里的一份，不是磁盘上的） */
+export interface SvsepDownload {
+  active: boolean
+  /** 正在下的是哪个包：`'runtime'` / `'models'`；没有下载时是 `null` */
+  kind?: 'runtime' | 'models' | null
+  /** 已下字节 */
+  done: number
+  /** 总字节；`0` = 服务端没给 Content-Length，进度条改成不确定态 */
+  total: number
+  error?: string | null
+}
+
+export interface SvsepStatus {
+  ok: true
+  /** 运行时（python.exe + backend/app.py）在不在 */
+  runtimeReady: boolean
+  /** 运行时根目录（只读，随包发） */
+  dir: string
+  modelsDir: string
+  dataDir: string
+  runtime: SvsepRuntime
+  models: { uvr: SvsepModel; roformer: SvsepModel }
+  download: SvsepDownload
+  /** 分离服务在不在听 */
+  running: boolean
+  port: number | null
+  baseUrl: string | null
+  lastError: string | null
+}
+
+/** 分离后端自己的一条输出轨 */
+export interface SvsepOutput {
+  filename: string
+  /** 给人看的文件名（`(Vocals)_xxx.wav`） */
+  download_name?: string
+  /** 相对路径，拼在 `svsepFileUrl` 后面下载 */
+  download_url?: string
+  preview_url?: string
+  size?: number
+  /** 六轨时是 vocals / drums / bass / guitar / piano / other */
+  stem?: string
+}
+
+export interface SvsepTask {
+  id: string
+  engine: 'uvr' | 'roformer'
+  status: string
+  /** ⚠️ 上游是**按时间估的**，不是真进度：会长时间卡在 90% 再跳 100% */
+  progress: number
+  message?: string
+  outputs?: SvsepOutput[]
+  error?: string | null
+}
+
+/** 分离任务里一条输出轨的地址（走工作站自己的转发，不用 python 那个端口） */
+export const svsepFileUrl = (taskId: string, index: number, inline = false) =>
+  `/api/svsep/task/${encodeURIComponent(taskId)}/out/${index}${inline ? '?inline=1' : ''}`
 
 export default api
