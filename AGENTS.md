@@ -661,6 +661,30 @@ git log --all -- app/server
 git log --all -- app/data/resources.json
 ```
 
+### ⚠️ 2026-10-02 重写过一次历史（有大件被从历史里剔掉）
+
+仓库从 **83 MB 缩到 6.7 MB**：`app/web/vendor/`（JIZURA 字体，2338 个文件 / 50.7 MB）、
+`tests/manual/out/`（探针截图 78 个 / 23.7 MB）、`app/shell/`（旧 WebView2 dll）
+这三条路径**从全部历史里删掉了**（它们本来就不在 HEAD 上）。
+
+```powershell
+# 当时的做法（--prune-empty 没删掉任何提交；工作树字节级不变，HEAD 树哈希前后一致）
+git filter-branch --force --index-filter `
+  "git rm -r --cached --ignore-unmatch app/web/vendor tests/manual/out app/shell" `
+  --prune-empty --tag-name-filter cat -- --all
+```
+
+**三条要记住的：**
+
+1. **所有提交 SHA 都变了**（当时的 `refs/tags/v1.2.0` 从 `48049c4` 变 `ca0ff84`，
+   `assets-v1` 从 `341d234` 变 `9f03e02`）。文档或聊天里出现的旧 SHA 已经不存在，
+   别再照它们 `git show`。三个 tag 都是 force push 上去的，**Release 靠 tag 名绑定、附件没丢**。
+2. `git log --all -- app/web/vendor`（或 `tests/manual/out`、`app/shell`）**现在恒为空**——
+   不是「没删过」，是历史里没有了，别再怀疑命令写错。
+   `app/server`（Node 后端）、`app/web/js`（旧前端）这些小体积历史**故意留着**，仍可考古。
+3. **`app/web/vendor/jizura/` 在磁盘上还在**（2338 个文件，靠 `fetch-tools.ps1` 补），
+   只是不入库 —— 别因为「历史里搜不到」就以为它被误删了。
+
 ---
 
 ## 附一、新前端玻璃材质（**动那部分代码前先读**）
