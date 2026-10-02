@@ -173,6 +173,11 @@ pub fn router(state: Arc<AppState>) -> Router {
             "/api/svsep/runtime/download",
             post(svsep::runtime_download),
         )
+        // 大包下载的暂停 / 停止，以及「把这些依赖全删了」。三个都不占请求：
+        // 只是给下载循环立个旗标，真正的收场在后台任务里。
+        .route("/api/svsep/download/pause", post(svsep::download_pause))
+        .route("/api/svsep/download/stop", post(svsep::download_stop))
+        .route("/api/svsep/deps/delete", post(svsep::deps_delete))
         // 提交分离：音频以 multipart 原样转发给分离后端。默认 body 上限 2MB
         // 连一首 3 分钟的 wav（约 32MB）都装不下，放宽到 600MB。
         .route(

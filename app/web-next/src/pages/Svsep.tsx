@@ -108,6 +108,8 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
   const [busy, setBusy] = useState(false)
   const [starting, setStarting] = useState(false)
   const [task, setTask] = useState<SvsepTask | null>(null)
+  /* 「删除全部依赖」的两段式确认：第一下只是把这个立起来，第二下才真删 */
+  const [armDelete, setArmDelete] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
 
   /** 拉一次总体状态。失败**不弹 toast**（轮询失败会刷屏），把错误放进 err 显示 */
@@ -259,6 +261,50 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
     try {
       await api.svsepDownloadRuntime()
       onToast(`开始下载运行时（压缩包约 ${DL_RUNTIME_ZIP}，解压后约 7.4 GB），会下一阵子`, 'info')
+      void refresh()
+    } catch (e) {
+      onToast(errText(e), 'err')
+    }
+  }
+
+  /* 暂停：`.part` 留着，下次点下载会带 Range 接着下。
+     ⚠️ 后端是在**下一块数据到达时**才收手，所以按钮按下去到进度条停住之间
+     还有一两秒 —— toast 说的是「正在暂停」，不是「已暂停」。 */
+  const doPauseDownload = async () => {
+    try {
+      await api.svsepPauseDownload()
+      onToast('正在暂停…下载的进度会留着，下次接着下', 'info')
+    } catch (e) {
+      onToast(errText(e), 'err')
+    }
+  }
+
+  /* 停止：连 `.part` 一起删掉，下次从头下。
+     界面必须把这句说清楚 —— 用户对「暂停」和「停止」的全部区别就在于要不要重下 4.7 GB。 */
+  const doStopDownload = async () => {
+    try {
+      await api.svsepStopDownload()
+      onToast('已停止下载，半个包也删掉了，下次从头下', 'info')
+    } catch (e) {
+      onToast(errText(e), 'err')
+    }
+  }
+
+  /* 一键删掉所有下下来的依赖（模型 730 MB + 运行时 7.4 GB + ffmpeg）。
+     ⚠️ **不在这里弹确认框**：这个页面没有确认对话框组件，`window.confirm` 又和
+     整站的玻璃面板不是一个东西。所以做成**两段式按钮** —— 第一下把按钮变成
+     「确认删除（要重下 8 GB）」，第二下才真删；旁边有「算了」。点别处不清除，
+     但轮询每 2 秒刷一次状态，所以这个态最多活到用户走开再回来。
+     几万个文件，后端在后台删，进度看 st.download.delete。 */
+  const doDeleteDeps = async () => {
+    if (!armDelete) {
+      setArmDelete(true)
+      return
+    }
+    setArmDelete(false)
+    try {
+      await api.svsepDeleteDeps()
+      onToast('开始删除依赖文件，删完要重新下载才能用离线分离', 'warn')
       void refresh()
     } catch (e) {
       onToast(errText(e), 'err')
@@ -421,7 +467,7 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
                 </>
               )}
               到右边「离线引擎」那张卡上点对应的按钮，下完会自动解压到 <code>{st.dir}</code>，
-              不用手动放。**只需要下一次**（之后升级工作站不用再下）。
+              不用手动放。<strong>只需要下一次</strong>（之后升级工作站不用再下）。
               {!st.runtime?.downloadUrl && (
                 <>
                   {' '}
@@ -435,7 +481,7 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
             <Finding level="warn" title="还没有模型，先下载">
               模型单独打包：压缩包约 {DL_MODELS_ZIP}、解压后 731 MB（六轨那个 BS-RoFormer
               自己就 667 MB，二轨的 UVR 只有 64 MB）。到右边「离线引擎」那张卡上点「下载模型」，
-              下完会自动解压，不用手动放。**只需要下一次**。
+              下完会自动解压，不用手动放。<strong>只需要下一次</strong>。
               {!st.models?.downloadUrl && (
                 <>
                   {' '}
@@ -528,10 +574,20 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
                   style={dl.total > 0 ? { width: `${dlPct}%` } : undefined}
                 />
               </div>
+              {/* 两个按钮的差别只有「下次要不要重下」这一件事，所以文案里直说 */}
+              <div className="btn-row svsep-dl-acts">
+                <Button icon="pause" onClick={() => void doPauseDownload()}>
+                  暂停
+                </Button>
+                <Button variant="ghost" icon="x" onClick={() => void doStopDownload()}>
+                  停止（删掉已下的）
+                </Button>
+              </div>
               {dl.kind === 'runtime' && (
                 <p className="hint">
                   这一包几 GB，下完还要解压两万多个文件，可能要几十分钟 ——
-                  下的时候可以让它自己跑，别关工作站。
+                  下的时候可以让它自己跑，别关工作站。暂停只是不再往下拿数据，
+                  已经下好的那部分留着，下次点「继续下载」接着下。
                 </p>
               )}
             </div>
@@ -540,6 +596,20 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
             <Finding level="warn" title="上次下载没成功">
               {dl.error}
             </Finding>
+          )}
+          {/* 删到一半就别让用户以为卡住了 —— 几万个文件，几十秒很正常 */}
+          {dl?.delete?.active && (
+            <div className="svsep-progress">
+              <div className="svsep-progress-head">
+                <span>正在删除依赖文件…</span>
+                <span className="svsep-dim">
+                  {dl.delete.files} 个 / {formatBytes(dl.delete.bytes)}
+                </span>
+              </div>
+              <div className="svsep-bar">
+                <span className="svsep-bar-fill svsep-bar-unknown" />
+              </div>
+            </div>
           )}
 
           <div className="btn-row">
@@ -555,29 +625,80 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
             {!runtimeReady && (
               <Button
                 icon="download"
-                disabled={!!dl?.active}
+                disabled={!!dl?.active || !!dl?.delete?.active}
                 onClick={() => void doDownloadRuntime()}
               >
-                {dl?.active && dl.kind === 'runtime' ? '下载中…' : '下载运行时'}
+                {dl?.active && dl.kind === 'runtime'
+                  ? '下载中…'
+                  : dl?.pausedKind === 'runtime'
+                    ? '继续下载运行时'
+                    : '下载运行时'}
               </Button>
             )}
             {runtimeReady && !modelsOk && (
               <Button
                 icon="download"
-                disabled={!!dl?.active}
+                disabled={!!dl?.active || !!dl?.delete?.active}
                 onClick={() => void doDownloadModels()}
               >
-                {dl?.active && dl.kind === 'models' ? '下载中…' : '下载模型'}
+                {dl?.active && dl.kind === 'models'
+                  ? '下载中…'
+                  : dl?.pausedKind === 'models'
+                    ? '继续下载模型'
+                    : '下载模型'}
               </Button>
             )}
             <Button variant="ghost" icon="folder" onClick={() => void api.fsOpen({ path: st?.dataDir })}>
               输出目录
             </Button>
           </div>
+          {/* 上次暂停过（或者上次下载到一半被关掉了）：状态里只有一句「有半个包」，
+              而用户真正需要知道的是「再点就是接着下，已经下过的那部分还在」 */}
+          {dl?.resumable && !dl.active && (
+            <p className="hint">
+              {dl.pausedKind === 'runtime' ? '运行时' : '模型'}已经下好{' '}
+              {formatBytes(dl.pausedBytes)}，就存在磁盘上 —— 再点上面的下载按钮是
+              <b>接着下</b>，不会从头再来（程序重启过也一样）。
+            </p>
+          )}
           <p className="hint">
             服务只在需要时跑，用完点「停止服务」把内存还回来（它会占约 5 GB）。
             关闭工作站时会自动停掉。
           </p>
+          {/* 一键删依赖：两段式确认，因为删完要重下 8 GB 才能再用离线分离。
+              不做条件渲染 —— 引擎还没下全的时候也该留着这个入口，用户可能想
+              把之前下了一半的东西清掉。 */}
+          <div className="svsep-danger">
+              <div className="svsep-danger-head">删除全部依赖</div>
+              {armDelete ? (
+                <>
+                  <p className="hint">
+                    要删掉：运行时（解压后 7.4 GB）、模型（解压后 730 MB）、分离引擎自带的 ffmpeg。
+                    删完离线分离就用不了了，得重新下 <strong>约 8 GB</strong>。
+                    已经分离出来的音频<strong>不会被删</strong>。
+                  </p>
+                  <div className="btn-row">
+                    <Button icon="trash" onClick={() => void doDeleteDeps()}>
+                      确认删除（要重下约 8 GB）
+                    </Button>
+                    <Button variant="ghost" onClick={() => setArmDelete(false)}>
+                      算了
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="hint">
+                    离线分离的引擎和模型占了约 8 GB。用不上了可以删掉腾地方，什么时候想用再下回来。
+                  </p>
+                  <div className="btn-row">
+                    <Button variant="ghost" icon="trash" onClick={() => void doDeleteDeps()}>
+                      删除全部依赖
+                    </Button>
+                  </div>
+                </>
+              )}
+            </div>
           {st?.lastError && (
             <Finding level="warn" title="上次启动失败">
               {st.lastError}

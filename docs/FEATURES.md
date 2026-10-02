@@ -73,11 +73,11 @@ WebView2 窗口（Tauri 2）
 
 ---
 
-## 2. 路由总表（53 条，逐条）
+## 2. 路由总表（56 条，逐条）
 
 路由表在 `app/desktop/src/server/mod.rs::router`（53 个 `.route(...)`；`/api/config` 与 `/api/svsep/backend/inference` 各挂 GET+POST 两个方法，末尾还有一个 `fallback` 静态文件处理器，不计入 53）。
 
-> 2026-10-02：加了「音轨分离」一页（41~53），路由从 40 涨到 53。前 40 条见下，顺序与 `router()` 一致。
+> 2026-10-02：加了「音轨分离」一页（41~56），路由从 40 涨到 56（其中 46~48 是暂停 / 停止 / 一键删除依赖）。前 40 条见下，顺序与 `router()` 一致。
 
 「用的页面」列指**新前端** `app/web-next/src/pages/*.tsx`（另有 `components/` 与 `lib/`）。
 
@@ -128,14 +128,17 @@ WebView2 窗口（Tauri 2）
 | 43 | POST | `/api/svsep/stop` | `svsep.rs::stop` | 停它（`taskkill /T /F` 整棵树） | Svsep |
 | 44 | POST | `/api/svsep/runtime/download` | `svsep.rs::runtime_download` | **下运行时 zip（几 GB）并解压**，立刻返回 `{started}` | Svsep |
 | 45 | POST | `/api/svsep/models/download` | `svsep.rs::models_download` | **下模型 zip（462 MB，解压后 730.7 MB）并解压**，立刻返回 `{started}` | Svsep |
-| 46 | POST | `/api/svsep/separate` | `svsep.rs::separate` | 提交一次分离（multipart **原样转发**；`?engine=`） | Svsep |
-| 47 | GET | `/api/svsep/task/{id}` | `svsep.rs::task` | 查任务（进度**是估的**，见 §3.9） | Svsep |
-| 48 | POST | `/api/svsep/task/{id}/cancel` | `svsep.rs::cancel` | 取消任务 | Svsep |
-| 49 | GET | `/api/svsep/task/{id}/out/{index}` | `svsep.rs::output` | 取输出轨（**流式转发**，不整个读进内存；`?inline=1` 试听） | Svsep |
-| 50 | POST | `/api/svsep/open-output` | `svsep.rs::open_output` | 打开输出目录 | Svsep |
-| 51 | GET | `/api/svsep/backend/status` | `svsep.rs::backend_status` | 分离后端原始 `/api/status`（设备 / 队列 / 输出目录） | Svsep |
-| 52 | GET | `/api/svsep/backend/system-stats` | `svsep.rs::system_stats` | 分离后端的 CPU / 内存 | Svsep |
-| 53 | GET+POST | `/api/svsep/backend/inference` | `svsep.rs::inference_get` / `inference_set` | 推理模式 auto / cpu / gpu | Svsep |
+| 46 | POST | `/api/svsep/download/pause` | `svsep.rs::download_pause` | **暂停下载**（`.part` 留着，下次接着下） | Svsep |
+| 47 | POST | `/api/svsep/download/stop` | `svsep.rs::download_stop` | **停止下载**（连 `.part` 一起删掉，下次从头下） | Svsep |
+| 48 | POST | `/api/svsep/deps/delete` | `svsep.rs::deps_delete` | **一键删除依赖**（运行时 / 模型 / ffmpeg），立刻返回，进度看 status | Svsep |
+| 49 | POST | `/api/svsep/separate` | `svsep.rs::separate` | 提交一次分离（multipart **原样转发**；`?engine=`） | Svsep |
+| 50 | GET | `/api/svsep/task/{id}` | `svsep.rs::task` | 查任务（进度**是估的**，见 §3.9） | Svsep |
+| 51 | POST | `/api/svsep/task/{id}/cancel` | `svsep.rs::cancel` | 取消任务 | Svsep |
+| 52 | GET | `/api/svsep/task/{id}/out/{index}` | `svsep.rs::output` | 取输出轨（**流式转发**，不整个读进内存；`?inline=1` 试听） | Svsep |
+| 53 | POST | `/api/svsep/open-output` | `svsep.rs::open_output` | 打开输出目录 | Svsep |
+| 54 | GET | `/api/svsep/backend/status` | `svsep.rs::backend_status` | 分离后端原始 `/api/status`（设备 / 队列 / 输出目录） | Svsep |
+| 55 | GET | `/api/svsep/backend/system-stats` | `svsep.rs::system_stats` | 分离后端的 CPU / 内存 | Svsep |
+| 56 | GET+POST | `/api/svsep/backend/inference` | `svsep.rs::inference_get` / `inference_set` | 推理模式 auto / cpu / gpu | Svsep |
 
 ---
 
@@ -543,7 +546,18 @@ resources.json
 
 绿色版「可写」= `<root>/app/data`；安装版在 `%APPDATA%` 下（Program Files 只读）。⚠️ 于是安装版的**模型在 APPDATA、运行时在 Program Files**，两者分开 —— `config.py` 的 `MODEL_DIR` 被加了一个 `CHIXIAOYANG_MODELS_DIR` 环境变量分支来表达这个组合（上游原本只能表达「只读目录旁边有就有」，那段带注释标了「V-Synth-Studio 加的」，是**唯一一处**对上游源码的改动）。
 
-**模型下载**：`svsep.rs::MODEL_URL` **是空串** —— zip 由用户传服务器后填。空链接时界面明确说「还没配置下载地址」，不转圈失败。下载走 `download_models()` → 写 `<models>/svsep-models.zip.part` → `extract_zip(..., "models/", ...)` 解到 `models/` 的父目录 → 删 zip。运行时同理（`RUNTIME_URL`、`svsep-runtime.zip`，`strip = ""` 因为要留着 `runtime/` 那一层）。**没有断点续传**（理由：730 MB 重下一次可接受，且用户很可能放本地服务器）。
+**模型下载**：`svsep.rs::MODEL_URL` **是空串** —— zip 由用户传服务器后填。空链接时界面明确说「还没配置下载地址」，不转圈失败。下载走 `download_models()` → 写 `<models>/svsep-models.zip.part` → `extract_zip(..., "models/", ...)` 解到 `models/` 的父目录 → 删 zip。运行时同理（`RUNTIME_URL`、`svsep-runtime.zip`，`strip = ""` 因为要留着 `runtime/` 那一层）。
+
+**暂停 / 继续 / 停止（2026-10-02 补）**：下载中途可以「暂停」（下一块数据到达时收手，`.part` 留着，下次带 `Range` 接着下）或「停止」（连 `.part` 一起删，下次从头下）。判据全在盘上，不在内存里：
+
+- `svsep.rs::part_path(root, writable, kind)` 走 `Bundle` 拿落点 —— **不要自己拼 `dest.join(...)`**（两个包的落点不一样：模型的在 `models/`，运行时的在 `svsep/` 那一层）。
+- `.part` 旁边有个 `<包名>.part.url`（几十字节），记着「这半个包是哪条链接下的」。理由：`.part` 只有字节没有出处，用户换了下载服务器后拿旧半个包接新链接的 `Range`，会拼出「旧包前半段 + 新包后半段」的坏 zip，**要到解压才炸**，还看着像解析器有问题。链接对不上就当没有。⚠️ **记号缺失算「可以续」**（老版本留的 `.part`、或写记号那一下失败）：盘上有几个 GB 而记号只是附属品，为它丢掉几个 GB 是坏交易；**记号在且写着别的链接**才当无效 —— 这才是这个记号存在的理由。
+- ★ 出过的事：续传信息第一版只看**内存**里的 `(种类, 链接)` 记号，于是「暂停 → 关掉工作站 → 第二天再打开」时界面会说「没下过」（`resumable: false`），用户一点就从零开始，白下几个 GB。现在 `download_state()` 现查盘（`resume_point`），重启后照样报 `resumable: true` + `pausedKind` + `pausedBytes`。
+- HTTP：`POST /api/svsep/download/pause`（立 `DL_PAUSE`）、`/download/stop`（立 `DL_STOP`，更彻底）、`/deps/delete`。响应 206 才追加，**200 就把 `already` 归零从头写**（追加会拼坏）。⚠️ 解压那一句必须在 `?` 之前 —— 直接从解压 `return` 会留下几 GB 的残包。
+- 真包回归测试 `svsep::tests::pauses_and_resumes_the_real_models_pack_when_asked`（`VSS_REAL_MODELS_URL` + `VSS_REAL_RESUME_DEST`）：第一轮下到 12 MB 就暂停，第二轮接着下。**「真续上了」的判据是第一次进度回调等于 `(12058624, 484976642)`** —— 没带 Range 时第一次会是 `(0, 整包)`。⚠️ `models.zip` 的真实字节数是 **484,976,642**。
+- ⚠️ 本地那台 18080 静态服务器**不认 Range（回 200 整包）**，「206 → 追加」那条分支根本走不到；验这条链要另起一个真会回 206 的服务器。
+
+**一键删除依赖**：`delete_dependencies(root, writable, cancelled, on_progress)` 逐文件 `remove_file`（**不用 `remove_dir_all`** —— 几万个文件里总有几个被杀软或残留 python 占着，一个失败就整段放弃最糟；删不掉的收进 `locked`，最多 8 条）。删的是**模型 + `runtime/` + `bin/`**，⚠️ **不是整个 `svsep/`**：`backend/*.py` 是随程序打包的，`data/ logs/ outputs/ uploads/` 是运行期目录，都不该动（写错不会报错，只会在用户点「开始分离」时现形）。半截的 `.part` 与 `.part.url` 用 `sweep_part_files` 单独扫一遍（**一次前置 pass，不要塞进目录循环**，否则同一个文件会被数两遍；运行时的 `.part` 落在 `svsep/` 那一层，不在那三个目录里面）。界面在删除前要讲清代价：**删完要重新下约 8 GB**。
 
 ⚠️ **runtime 包里必须同时有 `runtime\`、`backend\`、`bin\` 三样**（2026-10-02 修）：判据 `runtime_ready()` 看的是 `runtime/python.exe` 与 `backend/app.py` 两个文件，而 `bin/ffmpeg.exe` 是分离引擎自己要用的（`backend/config.py::_ensure_ffmpeg_on_path` 把 `<svsep>\bin` 塞进 PATH）。打包脚本第一版用 `CreateFromDirectory` 只装了 `runtime\` 一个顶层目录 —— 用户下完 4.5 GB 仍然起不来，界面还只会说「分离引擎还没装」。修法：`tools/svsep-pack.ps1` 改成 `ZipFile.Open` + `CreateEntryFromFile` 手工加条目（一个包可以放多个顶层目录，条目名用正斜杠），`$pairs` 里 `runtime` 那项是 `Dirs = @('runtime','backend','bin')`。回归测试 `svsep::tests::extracts_the_whole_real_runtime_pack_when_asked` 会逐个断言这三样 + 一个偏移超 4 GiB 的条目（`torch_cpu.lib`）。
 

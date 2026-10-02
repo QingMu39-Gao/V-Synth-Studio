@@ -213,3 +213,32 @@
   font-size: 0.9em;
   word-break: break-all;
 }
+
+/* 下载中那两个动作（暂停 / 停止）—— 进度条正下方，别和它分开 */
+.svsep-dl-acts {
+  margin-top: var(--lg-space-2);
+}
+
+/* ── 删除全部依赖 ───────────────────────────────────────── */
+/* 用 --lg-red 把它和「启动服务 / 下载」那排按钮分开：它是这一页唯一不可逆的
+   操作（删完要重下 8 GB），混在同一排里迟早被点错。红色 token 全站就一个
+   （`index.css` 的 `.toast[data-tone='err']` / `.lyrics-alert[data-tone='err']`
+   用的也是它），所以这里直接引，不改名。 */
+.svsep-danger {
+  margin-top: var(--lg-space-4);
+  padding: 11px 13px;
+  border-radius: 11px;
+  border: 1px solid color-mix(in srgb, var(--lg-red) 30%, transparent);
+  background: color-mix(in srgb, var(--lg-red) 6%, transparent);
+}
+
+.svsep-danger-head {
+  margin-bottom: 6px;
+  color: var(--lg-red);
+  font-size: 0.9em;
+  font-weight: 600;
+}
+
+.svsep-danger .hint {
+  margin-bottom: 8px;
+}

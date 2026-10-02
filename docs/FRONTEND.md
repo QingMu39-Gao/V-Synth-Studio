@@ -55,7 +55,7 @@ app/web-next/
     App.tsx             外壳：顶栏（只有品牌）/ 侧栏 / 导航 / 路由（hash）/ toast / 主题
     index.css           **共用样式**：布局 + 共用类（.panel/.field/.job/.dir-…），零手写玻璃
     lib/
-      api.ts            后端调用（53 条路由的 1:1 封装，绝对路径 /api/*）
+      api.ts            后端调用（56 条路由的 1:1 封装，绝对路径 /api/*）
       types.ts          后端数据结构（照 tests/contract/fixtures 定义）
       format.ts         formatBytes / Duration / Number（时钟时间的 formatTime 等暂时没人用）
       useJob.ts         任务进度订阅：SSE + 轮询兜底

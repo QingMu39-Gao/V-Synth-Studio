@@ -34,6 +34,7 @@
 
 use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -88,6 +89,34 @@ pub const RUNTIME_URL: &str = "";
 /// 而不是转圈然后失败。
 pub const MODEL_URL: &str = "";
 
+/// **只给开发机用的临时覆盖**（`VSS_SVSEP_MODEL_URL` / `VSS_SVSEP_RUNTIME_URL`）。
+///
+/// 为什么留这个口子：这两个链接是编译期常量，而「暂停 → 续传」「下载中点删除」
+/// 这类事**必须在真下载跑着的时候**才能验。要是每次都改常量再重编，测完还得
+/// 记得改回来 —— 漏一次就会把开发机地址发出去。用环境变量就在进程外解决。
+/// ⚠️ 发布版**不要设这两个变量**，设了就是拿本地文件当下载源。
+#[cfg(debug_assertions)]
+fn url_override(key: &str, default: &'static str) -> String {
+    match std::env::var(key) {
+        Ok(v) if !v.trim().is_empty() => v.trim().to_string(),
+        _ => default.to_string(),
+    }
+}
+#[cfg(not(debug_assertions))]
+fn url_override(_key: &str, default: &'static str) -> String {
+    default.to_string()
+}
+
+/// 这一次真的要用的模型下载地址（常量，或开发机用环境变量顶掉的那个）。
+pub fn model_url() -> String {
+    url_override("VSS_SVSEP_MODEL_URL", MODEL_URL)
+}
+
+/// 这一次真的要用的运行时下载地址。
+pub fn runtime_url() -> String {
+    url_override("VSS_SVSEP_RUNTIME_URL", RUNTIME_URL)
+}
+
 /* ══════════════════════════════════ 路径 ══════════════════════════════════ */
 
 /// 运行时根目录：`<root>/app/data/svsep`
@@ -134,7 +163,9 @@ pub fn runtime_status(root: &Path) -> Value {
     json!({
         "dir": dir.to_string_lossy(),
         "ready": runtime_ready(root),
-        "downloadUrl": RUNTIME_URL,
+        // ⚠️ 用 `runtime_url()` 不用常量：开发机用环境变量顶掉链接时，界面显示的
+        //    也得是那个顶掉的地址，否则会出现「界面说没配、其实配了」这种鬼状态。
+        "downloadUrl": runtime_url(),
         // 「大概多大」用于展示与进度百分比，不是判据
         "expectedBytes": RUNTIME_BYTES as f64,
         "python": py.is_file(),
@@ -188,7 +219,7 @@ pub fn models_status(writable: &Path) -> Value {
         "ok": uvr_state == "ok" && rof_state == "ok" && missing_index.is_empty(),
         "downloadedBytes": total,
         "expectedBytes": (UVR_MODEL_FULL + ROFORMER_MODEL_FULL) as f64,
-        "downloadUrl": MODEL_URL,
+        "downloadUrl": model_url(),
         "items": [
             { "key": "uvr", "name": UVR_MODEL, "label": "二轨 · 人声 / 伴奏",
               "state": uvr_state, "size": uvr_size, "expectedSize": UVR_MODEL_FULL },
@@ -197,6 +228,77 @@ pub fn models_status(writable: &Path) -> Value {
         ],
         "missingIndex": missing_index,
     })
+}
+
+/* ══════════════════════ 半个包（暂停留下的续传点）══════════════════════ */
+
+/// 某个包没下完时 `.part` 落在哪。
+///
+/// 两个包的落点不一样（模型的 `dest` 是 `models/`，运行时的是 `svsep/` 本身），
+/// 所以别自己拼 `dest.join(...)` —— 走 `Bundle`，落点只有一个定义处。
+pub fn part_path(root: &Path, writable: &Path, kind: &str) -> Option<PathBuf> {
+    let b = match kind {
+        "models" => Bundle::models(writable, None),
+        "runtime" => Bundle::runtime(root, None),
+        _ => return None,
+    };
+    Some(b.dest.join(format!("{}.part", b.zip_name)))
+}
+
+/// `.part` 旁边那个小文件里记着「这半个包是谁的」。见 `stored_resume`。
+fn url_marker(part: &Path) -> PathBuf {
+    let mut s = part.as_os_str().to_os_string();
+    s.push(".url");
+    PathBuf::from(s)
+}
+
+/// 暂停时把这个包的链接记在 `.part` 旁边。
+fn write_url_marker(part: &Path, url: &str) -> std::io::Result<()> {
+    std::fs::write(url_marker(part), url)
+}
+
+/// 盘上那半个包**是不是这个链接**的。
+///
+/// 为什么要记：`.part` 只有字节，没有出处。用户换了下载服务器（或者我们在
+/// 安装版里换了个地址）之后，拿旧的半个包去接新链接的 `Range`，拼出来的是
+/// 「旧包的前半段 + 新包的后半段」—— 一个要到解压才炸的坏 zip，而且看着像
+/// 我们的解析器有问题。链接对不上就当没有，从头下。
+///
+/// ⚠️ **记号缺失**（老版本留下的 `.part`、或者写记号那一下失败了）算「可以续」，
+/// 不算「换了链接」：盘上有几个 GB 而记号只是个几十字节的附属品，为了它丢掉
+/// 几个 GB 是坏交易。反过来，**记号在且写着别的链接**就必须当真 —— 那才是
+/// 这个函数存在的理由。两种情况的区别是「`read_to_string` 失败」还是
+/// 「读出来不等于 url」。
+fn stored_resume(part: &Path, url: &str) -> bool {
+    if !part.is_file() {
+        return false;
+    }
+    match std::fs::read_to_string(url_marker(part)) {
+        Ok(s) => s.trim() == url,
+        // 没有记号文件（或读不出来）：按能续处理，第一次发 Range 之前会把记号补上
+        Err(_) => true,
+    }
+}
+
+/// 这个包有没有「可以接着下」的半个包，有就回它的字节数。
+///
+/// ⚠️ **看盘，不看内存里的记号**：工作站在下载中途被关掉、或者进程重启之后，
+/// 那个 `(种类, 链接)` 的记忆就没了，而 4.7 GB 的半个包还在盘上 —— 只看内存
+/// 会让界面以为「没下过」，用户一点就从零开始，白下几个 GB。
+pub fn resume_point(root: &Path, writable: &Path, kind: &str, url: &str) -> Option<u64> {
+    let part = part_path(root, writable, kind)?;
+    if !stored_resume(&part, url) {
+        return None;
+    }
+    let n = file_size(&part);
+    (n > 0).then_some(n)
+}
+
+/// 收场之后收拾记号：暂停留着（下次还要用），下完/出错/停止都删掉。
+pub fn clear_resume_marker(root: &Path, writable: &Path, kind: &str) {
+    if let Some(part) = part_path(root, writable, kind) {
+        let _ = std::fs::remove_file(url_marker(&part));
+    }
 }
 
 /* ══════════════════════════════ 子进程管理 ══════════════════════════════ */
@@ -743,6 +845,66 @@ fn brief(s: &str) -> String {
 
 /* ══════════════════════════════ 下载 ══════════════════════════════ */
 
+/// 一次下载的三种收场。
+#[derive(Debug)]
+pub enum FetchOutcome {
+    /// 下完、解好、临时文件已清
+    Done(Value),
+    /// 用户按了暂停：`.part` 留着，下次带 Range 接着下
+    Paused { bytes: u64 },
+    /// 用户按了停止：`.part` 已删，下次从头下
+    Cancelled,
+}
+
+/// 下载/解压过程中的「暂停 / 停止」开关与「这次能不能续传」。
+///
+/// 用 `AtomicBool` 而不是 `CancellationToken`：这两个标志是**全局单例**的
+/// （同一时刻只可能有一个大包在动，见 `server/svsep.rs` 的 `DL_*`），
+/// 引一层 token 只是为了给它找个主人。`static` 的生命周期也不受 `tokio::spawn`
+/// 的 `'static` 限制。
+pub struct DownloadCtl {
+    pause: &'static AtomicBool,
+    cancel: &'static AtomicBool,
+    /// 续传时要用的链接（`None` = 这次不许续传，`.part` 视为无效）
+    pub resume_url: Option<String>,
+}
+
+impl DownloadCtl {
+    pub fn new(
+        pause: &'static AtomicBool,
+        cancel: &'static AtomicBool,
+        resume_url: Option<String>,
+    ) -> Self {
+        pause.store(false, Ordering::Relaxed);
+        cancel.store(false, Ordering::Relaxed);
+        Self {
+            pause,
+            cancel,
+            resume_url: resume_url.map(|u| u.trim().to_string()),
+        }
+    }
+
+    /// 该停一下了吗（暂停或停止都算）
+    fn check(&self) -> bool {
+        self.pause.load(Ordering::Relaxed) || self.cancel.load(Ordering::Relaxed)
+    }
+
+    pub fn cancelled(&self) -> bool {
+        self.cancel.load(Ordering::Relaxed)
+    }
+
+    /// 收场是「暂停」还是「停止」。
+    ///
+    /// ⚠️ 现在**没有生产代码用它**：收场的三种情形是从返回值
+    /// （`FetchOutcome` / 回包里的 `paused` / `cancelled` 标志）读的，
+    /// 比回头问旗标可靠。留着是因为它和 `cancelled()` 是一对语义
+    /// （两个都立着时按「停止」算），单测也拿它当判据。
+    #[allow(dead_code)]
+    pub fn paused(&self) -> bool {
+        self.pause.load(Ordering::Relaxed) && !self.cancel.load(Ordering::Relaxed)
+    }
+}
+
 /// 一个可下载的包：链接、落点、zip 里那一层壳的名字、出错时怎么称呼它。
 struct Bundle<'a> {
     /// svsep.rs 里那个常量（`MODEL_URL` / `RUNTIME_URL`）
@@ -797,14 +959,21 @@ impl<'a> Bundle<'a> {
 
 /// 下载一个包、解压、清掉临时文件。`download_models` / `download_runtime` 都走这里。
 ///
-/// ⚠️ 没有断点续传：中断了再点一次是从头下。理由见 `download_models` 的注释。
+/// 三种收场，见 `FetchOutcome`：下完解好 / 用户按了暂停（留着 `.part`，下次接着下）
+/// / 用户按了停止（删掉 `.part`，下次从头下）。
+///
+/// ⚠️ **续传是按 `.part` 在不在判的**：文件在那儿就发 `Range: bytes=<已有>-`，
+///    服务端回 206 就从那儿接着写。回到 200（不认 Range 的服务器，比如某些
+///    简单的静态托管）就**从头写**：追加会得到一个前一段 + 整段拼起来的坏 zip，
+///    而且要到解压时才炸 —— 那比重新下更糟。
 /// ⚠️ 下载途中写的是 `<dest>/<zip_name>.part`，**不是 `.zip`** —— 万一用户
 ///    中途去点了「开始分离」，`runtime_ready()` 看到的是半个 zip，不会把它
 ///    当成装好了。
 async fn fetch_bundle(
     b: &Bundle<'_>,
+    ctl: &DownloadCtl,
     on_progress: &(impl Fn(u64, Option<u64>) + Send + Sync),
-) -> Result<Value, String> {
+) -> Result<FetchOutcome, String> {
     let url = b.resolved_url();
     if url.is_empty() {
         return Err(format!(
@@ -820,25 +989,60 @@ async fn fetch_bundle(
     std::fs::create_dir_all(&b.dest).map_err(|e| format!("建目录失败：{e}"))?;
     let zip_path = b.dest.join(format!("{}.part", b.zip_name));
 
-    let res = crate::net::client()
+    // 已有多少字节（上次暂停留下的）。调用方说不能续传时当成 0，并且把旧的那个
+    // 半个文件删掉 —— 留着它只会让下次误判。
+    //
+    // ⚠️ 光有 `resume_url` 还不够：那个链接必须和 `.part` 旁边记的**对得上**，
+    //    否则这半个包是别的文件的，接上去会拼出一个坏 zip（见 `stored_resume`）。
+    let mut already = match ctl.resume_url.as_deref() {
+        Some(u) if stored_resume(&zip_path, u) => file_size(&zip_path),
+        _ => 0,
+    };
+    if already == 0 {
+        let _ = std::fs::remove_file(&zip_path);
+        let _ = std::fs::remove_file(url_marker(&zip_path));
+    } else {
+        // 记一笔「这半个包是这个链接的」。写在发请求**之前**：万一进程在这儿
+        // 被杀掉，下次也知道它属于谁。
+        let _ = write_url_marker(&zip_path, url);
+    }
+
+    // 从头下 / 接着下的差异只在这三行：一个 Range 头、一个追加标志、一个起始计数
+    let mut req = crate::net::client()
         .get(url)
         // 6 小时：这个包可能有好几 GB，超时是按「整个响应」算的，
         // 用 reqwest 默认的 30 秒会在第一块数据之后被掐断。
-        .timeout(Duration::from_secs(6 * 3600))
+        .timeout(Duration::from_secs(6 * 3600));
+    if already > 0 {
+        req = req.header(reqwest::header::RANGE, format!("bytes={already}-"));
+    }
+
+    let res = req
         .send()
         .await
         .map_err(|e| format!("下载{}失败：{e}", b.label))?;
-    if !res.status().is_success() {
-        return Err(format!(
-            "下载{}失败：HTTP {}",
-            b.label,
-            res.status().as_u16()
-        ));
+    let status = res.status();
+    if !status.is_success() {
+        return Err(format!("下载{}失败：HTTP {}", b.label, status.as_u16()));
     }
-    let total = res.content_length();
+    // 206 = 服务端认了 Range；200 = 不认，要从头写
+    let resumed = status.as_u16() == 206 && already > 0;
+    if !resumed {
+        already = 0;
+    }
+    // 206 时 Content-Length 是「还剩多少」，总长要把已有的加上
+    let total = res.content_length().map(|len| len + already);
 
-    let mut file = std::fs::File::create(&zip_path).map_err(|e| format!("写临时文件失败：{e}"))?;
-    let mut got: u64 = 0;
+    let mut file = if resumed {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&zip_path)
+            .map_err(|e| format!("打开临时文件失败：{e}"))?
+    } else {
+        std::fs::File::create(&zip_path).map_err(|e| format!("写临时文件失败：{e}"))?
+    };
+    let mut got: u64 = already;
+    on_progress(got, total);
     let mut stream = res.bytes_stream();
     use futures_util::StreamExt;
     use std::io::Write;
@@ -848,42 +1052,74 @@ async fn fetch_bundle(
             .map_err(|e| format!("写文件失败（磁盘满了？）：{e}"))?;
         got += chunk.len() as u64;
         on_progress(got, total);
+        // ⚠️ 这个判断要放在写盘之后、下一块之前：放到外面会让一次暂停多下几 MB
+        if ctl.check() {
+            let _ = file.flush();
+            drop(file);
+            return Ok(if ctl.cancelled() {
+                // 停止 = 这次不算数，半个文件也删掉，下次从头下
+                let _ = std::fs::remove_file(&zip_path);
+                let _ = std::fs::remove_file(url_marker(&zip_path));
+                on_progress(0, None);
+                FetchOutcome::Cancelled
+            } else {
+                // 暂停 = 半个包留着，记号也留着（下次要拿它发 Range）
+                FetchOutcome::Paused { bytes: got }
+            });
+        }
     }
     drop(file);
 
+    // ⚠️ 解压放在 `?` 之前：解压失败要落在下面的收尾里把 zip 删掉，
+    //    不能直接从这儿 return（那样会留下几 GB 的残包）
     let report = extract_zip(&zip_path, &b.dest, b.strip, |done, all| {
         on_progress(done, Some(all))
     });
     // 不论成败都把 zip 删掉 —— 它有几 GB，留着毫无用处
     // （`.part` 这个名字也保证了下次不会误当成 .zip 用）
     let _ = std::fs::remove_file(&zip_path);
+    // 记号跟着走：包已经解完（或解失败），没有「半个包」可续了
+    let _ = std::fs::remove_file(url_marker(&zip_path));
     let report = report?;
 
-    Ok(json!({
+    Ok(FetchOutcome::Done(json!({
         "ok": true,
         "dir": b.dest.to_string_lossy(),
         "files": report.files,
         "bytes": report.bytes,
-    }))
+    })))
 }
 
 /// 下载模型 zip 并解压到 `<可写>/svsep/models/`。
 ///
-/// ⚠️ 重复点同名按钮不会下第二遍（调用方用 `DL_ACTIVE` 挡着），但中断之后
-/// 再点是**从头下**，没有断点续传：730 MB 在国内网络下重下一次的成本可以接受，
-/// 而且用户很可能把它放在本地服务器上（那样几秒就下完了）。
+/// 用户可以暂停 / 停止（`ctl`），暂停后 `.part` 留着、下次 `resume_url` 指同一条
+/// 链接就接着下；停止会把 `.part` 删掉，下次从头下。
 pub async fn download_models(
     writable: &Path,
     url: &str,
+    ctl: &DownloadCtl,
     on_progress: impl Fn(u64, Option<u64>) + Send + Sync + 'static,
-) -> Result<Value, String> {
+) -> Result<FetchOutcome, String> {
     let given = if url.trim().is_empty() { None } else { Some(url) };
     let b = Bundle::models(writable, given);
-    let mut out = fetch_bundle(&b, &on_progress).await?;
-    if let Some(o) = out.as_object_mut() {
-        o.insert("models".into(), models_status(writable));
-    }
-    Ok(out)
+    // 三种收场统一成「一个带 paused / cancelled 标志的对象」，界面只看这两个
+    // 标志决定进度条是消失还是留着。落盘状态（`models` / `runtime`）由
+    // `server/svsep.rs` 拼 —— 它本来就在拼 `/api/svsep/status`。
+    Ok(match fetch_bundle(&b, ctl, &on_progress).await? {
+        FetchOutcome::Done(mut v) => {
+            if let Some(o) = v.as_object_mut() {
+                o.insert("paused".into(), Value::Bool(false));
+                o.insert("cancelled".into(), Value::Bool(false));
+            }
+            FetchOutcome::Done(v)
+        }
+        FetchOutcome::Paused { bytes } => FetchOutcome::Done(json!({
+            "ok": true, "paused": true, "cancelled": false, "bytes": bytes,
+        })),
+        FetchOutcome::Cancelled => FetchOutcome::Done(json!({
+            "ok": true, "paused": false, "cancelled": true, "bytes": 0,
+        })),
+    })
 }
 
 /// 下载运行时 zip 并解压到 `<root>/app/data/svsep/`（`runtime/` 那一层留着）。
@@ -893,15 +1129,162 @@ pub async fn download_models(
 pub async fn download_runtime(
     root: &Path,
     url: &str,
+    ctl: &DownloadCtl,
     on_progress: impl Fn(u64, Option<u64>) + Send + Sync + 'static,
-) -> Result<Value, String> {
+) -> Result<FetchOutcome, String> {
     let given = if url.trim().is_empty() { None } else { Some(url) };
     let b = Bundle::runtime(root, given);
-    let mut out = fetch_bundle(&b, &on_progress).await?;
-    if let Some(o) = out.as_object_mut() {
-        o.insert("runtime".into(), runtime_status(root));
+    Ok(match fetch_bundle(&b, ctl, &on_progress).await? {
+        FetchOutcome::Done(mut v) => {
+            if let Some(o) = v.as_object_mut() {
+                o.insert("paused".into(), Value::Bool(false));
+                o.insert("cancelled".into(), Value::Bool(false));
+            }
+            FetchOutcome::Done(v)
+        }
+        FetchOutcome::Paused { bytes } => FetchOutcome::Done(json!({
+            "ok": true, "paused": true, "cancelled": false, "bytes": bytes,
+        })),
+        FetchOutcome::Cancelled => FetchOutcome::Done(json!({
+            "ok": true, "paused": false, "cancelled": true, "bytes": 0,
+        })),
+    })
+}
+
+/// 删掉一个目录里所有 `*.part`（没下完的半个 zip）与它旁边的 `*.part.url`，
+/// 返回删掉的文件数与字节数。
+///
+/// 为什么单独来一遍：`.part` 的落点是 `Bundle::dest`，模型的在 `models/` 里
+/// （会被上面的递归带走），**但运行时的在 `svsep/` 那一层**，不在
+/// `runtime/` 里 —— 不专门扫一遍就会留下几 GB 的半个 zip，而界面显示「已删除」。
+/// ⚠️ `.part.url` 只有几十字节，但**必须一起删**：留着它而 `.part` 没了，
+/// 下次 `resume_point` 会看到「记号在、包不在」，白查一遍（虽然也不会出错）。
+fn sweep_part_files(dir: &Path) -> (u64, u64) {
+    let (mut files, mut bytes) = (0u64, 0u64);
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return (files, bytes);
+    };
+    for ent in rd.flatten() {
+        let p = ent.path();
+        let is_part = p
+            .file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| n.ends_with(".part") || n.ends_with(".part.url"))
+            .unwrap_or(false);
+        if !is_part || !p.is_file() {
+            continue;
+        }
+        let size = ent.metadata().map(|m| m.len()).unwrap_or(0);
+        if std::fs::remove_file(&p).is_ok() {
+            files += 1;
+            bytes += size;
+        }
     }
-    Ok(out)
+    (files, bytes)
+}
+
+/// 一键删除所有「下下来的依赖」：模型、运行时、ffmpeg。
+///
+/// ⚠️ **运行时也在里面**，用户点之前必须知道：删完要重新下 4.7 GB 才能用分离。
+/// ⚠️ **只删「下下来的」那几层，不是整个 `svsep/`**。这个区别是最容易写错的地方：
+///    `runtime_dir()` 指的是整个 `<root>/app/data/svsep/`，而那一层下面还住着
+///    `backend/`（分离后端的 .py，**随程序打包、不该删**）和运行期的
+///    `data/ logs/ outputs/ uploads/`（用户的东西）。所以要拼三个具体目录：
+///      · 模型   `<可写>/svsep/models`（下模型包时解到这儿）
+///      · 运行时 `<root>/app/data/svsep/runtime`（下运行时包时解到这儿）
+///      · ffmpeg `<root>/app/data/svsep/bin`（跟运行时同一个包里的，见
+///        `backend/config.py::_ensure_ffmpeg_on_path` —— 删了等于没装）
+/// ⚠️ 三个目录都是一个一个删文件（不是 `remove_dir_all`）：几万个文件里总有几个
+///    被别的进程占着（杀软扫描、残留的 python），一个失败就整段放弃最糟 ——
+///    那会留下一个「删了一半、界面还说有 7 GB」的目录。删不掉的记下来照实报。
+/// ⚠️ 只删目录**里面**的东西，目录本身留着：`models/` 是 `MODEL_DIR`，
+///    引擎启动时会检查它在不在。
+/// `cancelled` 是「用户按了停止」的探针（删除几万个文件要几十秒）。
+/// `on_progress` 收 `FnMut` —— 它的调用方基本都是就地改一个计数器，
+/// 收 `Fn` 会逼着每个人套一层 `Cell`。
+pub fn delete_dependencies(
+    root: &Path,
+    writable: &Path,
+    cancelled: impl Fn() -> bool,
+    mut on_progress: impl FnMut(u64, u64),
+) -> Value {
+    let svsep = runtime_dir(root);
+    let targets = [
+        ("模型", models_dir(writable)),
+        ("运行时", svsep.join("runtime")),
+        ("ffmpeg", svsep.join("bin")),
+    ];
+    let mut removed_bytes: u64 = 0;
+    let mut removed_files: u64 = 0;
+    let mut locked: Vec<String> = Vec::new();
+    let mut stopped = false;
+
+    // ⚠️ 没下完的半个 zip 先单独扫一遍，**而且只扫 `svsep/` 这一层**（不递归）：
+    //    `.part` 的落点就是 `Bundle::dest` —— 模型包的 `dest` 是 `models/`（会跟着
+    //    下面的 walk 一起走），运行时包的 `dest` 是 `svsep/` 本身，它**不在**那三个
+    //    目标目录里面，不专门扫就会留下几 GB 的半个 zip，而界面显示「已删除」。
+    //    ⚠️ 这一遍必须在 walk **之前**、且不能放进下面那个循环里：放进循环会把
+    //    `models/` 里的 `.part` 数两遍（先扫掉一次，walk 时文件已经没了但计数早加过），
+    //    于是报「已删 7 个」而实际只有 6 个文件 —— 第一版就是这么写的，试出来的。
+    for d in [svsep.clone(), writable.join("svsep")] {
+        let (f, b) = sweep_part_files(&d);
+        removed_files += f;
+        removed_bytes += b;
+    }
+
+    'outer: for (label, dir) in targets {
+        let mut stack = vec![dir.clone()];
+        while let Some(d) = stack.pop() {
+            if cancelled() {
+                stopped = true;
+                break 'outer;
+            }
+            let rd = match std::fs::read_dir(&d) {
+                Ok(rd) => rd,
+                // 目录不在 = 没什么可删，不是错误
+                Err(_) => continue,
+            };
+            for ent in rd.flatten() {
+                if cancelled() {
+                    stopped = true;
+                    break 'outer;
+                }
+                let p = ent.path();
+                let is_dir = ent.file_type().map(|t| t.is_dir()).unwrap_or(false);
+                if is_dir {
+                    stack.push(p);
+                    continue;
+                }
+                let size = ent.metadata().map(|m| m.len()).unwrap_or(0);
+                match std::fs::remove_file(&p) {
+                    Ok(()) => {
+                        removed_files += 1;
+                        removed_bytes += size;
+                        // 界面每 200 个文件刷一次就够（它 2 秒才轮询一次状态）
+                        if removed_files % 200 == 0 {
+                            on_progress(removed_files, removed_bytes);
+                        }
+                    }
+                    Err(_) => {
+                        if locked.len() < 8 {
+                            locked.push(format!("{label}：{}", p.display()));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    on_progress(removed_files, removed_bytes);
+
+    json!({
+        "ok": true,
+        "cancelled": stopped,
+        "removedBytes": removed_bytes,
+        "removedFiles": removed_files,
+        // 界面只报「有 N 个文件删不掉」，不把 8 条路径全铺开
+        "lockedCount": locked.len(),
+        "locked": locked,
+    })
 }
 
 #[derive(Debug)]
@@ -1752,7 +2135,11 @@ mod tests {
         let seen = std::sync::Arc::new(std::sync::Mutex::new((0u64, 0usize)));
         let seen2 = seen.clone();
         let t = std::time::Instant::now();
-        let out = download_models(&dest, &url, move |got, _total| {
+        // 这次真跑不允许暂停/停止，只验「下完 → 解好 → 临时文件清掉」
+        static NO_PAUSE: AtomicBool = AtomicBool::new(false);
+        static NO_STOP: AtomicBool = AtomicBool::new(false);
+        let ctl = DownloadCtl::new(&NO_PAUSE, &NO_STOP, None);
+        let out = download_models(&dest, &url, &ctl, move |got, _total| {
             let mut s = seen2.lock().unwrap();
             s.0 = got;
             s.1 += 1;
@@ -1761,8 +2148,13 @@ mod tests {
         .expect("下载真包失败");
         let (got, ticks) = *seen.lock().unwrap();
         println!(
-            "下了 {got} 字节（{ticks} 次进度回调），耗时 {:?}；回包 {out}",
-            t.elapsed()
+            "下了 {got} 字节（{ticks} 次进度回调），耗时 {:?}；收场 {}",
+            t.elapsed(),
+            match out {
+                FetchOutcome::Done(_) => "Done",
+                FetchOutcome::Paused { .. } => "Paused",
+                FetchOutcome::Cancelled => "Cancelled",
+            }
         );
         assert!(got > 400_000_000, "下载字节数太少：{got}");
         assert!(ticks > 10, "进度回调只被调了 {ticks} 次");
@@ -1790,6 +2182,115 @@ mod tests {
         let st = models_status(&dest);
         println!("models_status = {st}");
         assert_eq!(st["ok"], serde_json::Value::Bool(true), "状态复查说模型没齐");
+
+        let _ = std::fs::remove_dir_all(&dest);
+    }
+
+    /// 走一遍**真的暂停 → 续传**：下到一半立暂停旗标，看 `.part` 留着；再带着
+    /// `resume_url` 下第二次，看它真的从断点接上（不是从头下）。
+    ///
+    /// 为什么非要真打一次 HTTP：`Range` 的语义是**服务端**的事 —— 我们发
+    /// `bytes=N-`，服务端可以回 206，也可以不理会回 200 一整份。两种情况下代码
+    /// 都得不出坏包，而这件事只有真的挂上一个会回 206 的服务器才验得出来。
+    /// （本地那个 `python -m http.server` 就回 206；测试用的 18080 也是它。）
+    ///
+    ///     $env:VSS_REAL_MODELS_URL='http://127.0.0.1:18080/models.zip'
+    ///     $env:VSS_REAL_RESUME_DEST='H:\工作站\tmp-svsep-resume'
+    ///     cargo test --bins pause_and_resume -- --nocapture
+    #[tokio::test]
+    async fn pauses_and_resumes_the_real_models_pack_when_asked() {
+        let Ok(url) = std::env::var("VSS_REAL_MODELS_URL") else {
+            return;
+        };
+        let dest = std::env::var("VSS_REAL_RESUME_DEST")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|_| std::env::temp_dir().join("vss-svsep-resume-real"));
+        let _ = std::fs::remove_dir_all(&dest);
+        let models = models_dir(&dest);
+        std::fs::create_dir_all(&models).unwrap();
+        let part = models.join("svsep-models.zip.part");
+
+        /* ── 第一轮：下到 12 MB 就暂停 ───────────────────── */
+        static PAUSE: AtomicBool = AtomicBool::new(false);
+        static STOP: AtomicBool = AtomicBool::new(false);
+        let ctl = DownloadCtl::new(&PAUSE, &STOP, None);
+        let marks = std::sync::Arc::new(std::sync::Mutex::new(0u64));
+        let marks2 = marks.clone();
+        let out = download_models(&dest, &url, &ctl, move |got, _| {
+            let mut m = marks2.lock().unwrap();
+            *m = got;
+            // ⚠️ 旗标是**另一条手臂**在真实场景里立的（HTTP 请求进来），这里就地立；
+            //    立在回调里等价 —— `fetch_bundle` 每写完一块就查一次。
+            if got > 12_000_000 {
+                PAUSE.store(true, Ordering::Relaxed);
+            }
+        })
+        .await
+        .expect("第一轮下载失败");
+        let paused_at = *marks.lock().unwrap();
+        /* ⚠️ 别断言 `FetchOutcome::Paused` —— `download_models` / `download_runtime`
+           会把三种收场**统一成 `Done(一个带标志的对象)`**（上面那段 match：
+           `{"ok":true,"paused":true,"bytes":N}`），因为 HTTP 那一层只认一种形状。
+           第一次就是在这儿写错了断言。 */
+        let flag = |v: &FetchOutcome, k: &str| -> bool {
+            match v {
+                FetchOutcome::Done(j) => j[k] == Value::Bool(true),
+                _ => false,
+            }
+        };
+        assert!(
+            flag(&out, "paused"),
+            "下到 {paused_at} 字节时立了暂停，收场却不是「暂停」：{out:?}"
+        );
+        assert!(!flag(&out, "cancelled"), "只是暂停，不该算成停止");
+        let half = std::fs::metadata(&part).map(|m| m.len()).unwrap_or(0);
+        println!("暂停在 {paused_at} 字节处，盘上 .part = {half} 字节");
+        assert!(half > 8_000_000, "暂停后 .part 太小：{half}");
+        assert!(half < 484_000_000, "暂停后 .part 已经是一整包了：{half}");
+        // 暂停**不能**留下解压产物 —— 半个包解不出东西来
+        assert!(
+            !models.join(ROFORMER_MODEL).exists(),
+            "还没下完就解压出模型了"
+        );
+
+        /* ── 第二轮：带 resume_url 接着下 ────────────────── */
+        let ctl2 = DownloadCtl::new(&PAUSE, &STOP, Some(url.clone()));
+        assert!(ctl2.paused() == false && ctl2.cancelled() == false, "构造时该清旗标");
+        let resumed_from = ctl2.resume_url.clone().unwrap();
+        assert_eq!(resumed_from, url);
+        let seen = std::sync::Arc::new(std::sync::Mutex::new(Vec::<(u64, u64)>::new()));
+        let seen2 = seen.clone();
+        let t = std::time::Instant::now();
+        let out2 = download_models(&dest, &resumed_from, &ctl2, move |got, total| {
+            seen2.lock().unwrap().push((got, total.unwrap_or(0)));
+        })
+        .await
+        .expect("续传失败");
+        let ticks = seen.lock().unwrap().len();
+        let first = seen.lock().unwrap().first().copied().unwrap_or((0, 0));
+        println!("续传耗时 {:?}，{ticks} 次进度回调，第一次是 {first:?}", t.elapsed());
+        /* ★ 这条才是「真的续上了」的证据：`fetch_bundle` 在开始拉数据**之前**
+           先回调一次 on_progress(got = already, total = 剩余 + already)。要是没带
+           Range / 服务端没认，第一次回调会是 (0, 整包大小) —— 那就成了从头下。 */
+        assert!(
+            first.0 >= half,
+            "续传第一次回调是 {first:?}，比盘上已有的 {half} 字节还少 —— 这是在从头下"
+        );
+        /* ⚠️ 总长是 `Content-Length: 484976642`（= 整个 `models.zip` 的字节数），
+           不是 `models_status` 里那个 `expectedBytes`，也不是我先前记的
+           `484975838`（那个数是我凭空写的，第一次跑就红在这条断言上）。 */
+        assert_eq!(first.1, 484_976_642, "续传报的总长不对：{first:?}");
+        assert!(flag(&out2, "paused") == false && flag(&out2, "cancelled") == false);
+        assert!(matches!(out2, FetchOutcome::Done(_)), "续传没有下完：{out2:?}");
+
+        // 下完就该跟没暂停过一样：模型齐、.part 与 .zip 都清掉
+        for name in [UVR_MODEL, ROFORMER_MODEL, "download_checks.json", "BS-Roformer-SW.yaml"] {
+            assert!(models.join(name).is_file(), "续传后缺文件：{name}");
+        }
+        assert!(!part.exists(), "下完了 .part 还在");
+        assert!(!models.join("svsep-models.zip").exists(), "下完了 zip 还在");
+        let st = models_status(&dest);
+        assert_eq!(st["ok"], serde_json::Value::Bool(true), "续传后状态复查说没齐");
 
         let _ = std::fs::remove_dir_all(&dest);
     }
@@ -1872,6 +2373,159 @@ mod tests {
         let err = extract_zip(&zip_path, &base.join("out"), "models/", |_, _| {})
             .expect_err("带 .. 的条目必须直接报错");
         assert!(err.contains("不安全"), "错误文案要说得清：{err}");
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    // ── 下载的暂停 / 停止（2026-10-02 用户要求）──────────────────────
+
+    #[test]
+    fn download_ctl_stops_on_either_flag_and_tells_them_apart() {
+        static P: AtomicBool = AtomicBool::new(false);
+        static C: AtomicBool = AtomicBool::new(false);
+
+        let ctl = DownloadCtl::new(&P, &C, Some("  https://a/b.zip  ".into()));
+        // 构造时把两个旗标都清了 —— 上一轮下载留下的 true 不能让这一轮立刻收手
+        assert!(!ctl.check());
+        assert!(!ctl.paused());
+        assert!(!ctl.cancelled());
+        // 链接两边的空格要去掉，否则 Range 请求头里会带上一段空白
+        assert_eq!(ctl.resume_url.as_deref(), Some("https://a/b.zip"));
+
+        P.store(true, Ordering::Relaxed);
+        assert!(ctl.check() && ctl.paused() && !ctl.cancelled());
+
+        // 两个都立着时按「停止」算：停止更彻底（要删 .part），宁可多删不可少删
+        C.store(true, Ordering::Relaxed);
+        assert!(ctl.check() && !ctl.paused() && ctl.cancelled());
+
+        // 空链接 = 不许续传（调用方没传链接），不能变成一个空串 Range
+        let ctl2 = DownloadCtl::new(&P, &C, Some("".into()));
+        assert_eq!(ctl2.resume_url.as_deref(), Some(""));
+        assert_eq!(DownloadCtl::new(&P, &C, None).resume_url, None);
+    }
+
+    #[test]
+    fn delete_dependencies_clears_both_dirs_and_the_half_downloaded_zip() {
+        // 摆出真实布局：<writable> 与 <root> 是两个不同的地方，只有
+        // `models/` 在 writable 下、`runtime/` 在 root 下 —— 删错一个都不会报错，
+        // 只会在用户点「开始分离」时才现形。
+        let base = std::env::temp_dir().join("vss-svsep-del-test");
+        // ⚠️ 先清干净再摆：留着上一轮跑剩的文件时，个数断言会随上一次成不成而变
+        //    （第一次踩到就是上一轮中断留下的两个索引 json 让我算出 7 而不是 6）。
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("root");
+        let writable = base.join("writable");
+        let svsep = root.join("app").join("data").join("svsep");
+        let models = writable.join("svsep").join("models");
+        std::fs::create_dir_all(models.join("sub")).unwrap();
+        std::fs::create_dir_all(svsep.join("runtime").join("Lib")).unwrap();
+        std::fs::create_dir_all(svsep.join("bin")).unwrap();
+        // 随程序打包的分离后端 + 用户的输出目录：**删依赖时一个都不该动**
+        std::fs::create_dir_all(svsep.join("outputs")).unwrap();
+
+        std::fs::write(models.join("BS-Roformer-SW.ckpt"), vec![7u8; 4096]).unwrap();
+        std::fs::write(models.join("sub").join("x.yaml"), b"y").unwrap();
+        // 没下完的半个 zip：模型的落在 models/ 里，运行时的落在 svsep/ 那一层
+        std::fs::write(models.join("svsep-models.zip.part"), vec![0u8; 2048]).unwrap();
+        std::fs::write(svsep.join("svsep-runtime.zip.part"), vec![0u8; 8192]).unwrap();
+        std::fs::write(svsep.join("runtime").join("python.exe"), vec![0u8; 1024]).unwrap();
+        std::fs::write(svsep.join("runtime").join("Lib").join("a.dll"), vec![0u8; 512]).unwrap();
+        std::fs::write(svsep.join("bin").join("ffmpeg.exe"), vec![0u8; 64]).unwrap();
+        // 这一份**不该**被删：随程序打包的分离后端
+        std::fs::write(svsep.join("app.py"), b"print(1)").unwrap();
+        std::fs::write(svsep.join("config.py"), b"X = 1").unwrap();
+
+        let mut last = (0u64, 0u64);
+        let v = delete_dependencies(&root, &writable, || false, |f, b| last = (f, b));
+
+        let files = v.get("removedFiles").and_then(|x| x.as_u64()).unwrap();
+        let bytes = v.get("removedBytes").and_then(|x| x.as_u64()).unwrap();
+        // 7 个文件 = 模型 2 + models 里的半个 zip 1 + runtime 2 + bin 1 + svsep 里的
+        // 半个 zip 1。摆进 base 的文件一共就这 7 个，删完正好一个不剩 —— 所以这个
+        // 数同时也是「有没有漏删」的判据；多一个就说明 walk 把同一个文件数了两遍。
+        assert_eq!(
+            files, 7,
+            "模型 2 + models 里的 .part 1 + runtime 2 + bin 1 + svsep 里的 .part 1，实际：{v}"
+        );
+        assert_eq!(bytes, 4096 + 1 + 2048 + 1024 + 512 + 64 + 8192);
+        assert_eq!(last, (7, bytes), "最后一次进度回调要是最终值");
+        assert_eq!(v.get("lockedCount").and_then(|x| x.as_u64()), Some(0));
+
+        // 目录本身留着（`models/` 是引擎的 MODEL_DIR，删了它会以为没装）
+        assert!(models.is_dir(), "models 目录不该被删掉");
+        assert!(svsep.join("runtime").is_dir());
+        // ★ 随程序打包的那些**一个都不能少**：backend 的 .py、以及运行期目录
+        assert!(svsep.join("app.py").is_file(), "backend 的 .py 不该被删");
+        assert!(svsep.join("config.py").is_file());
+        assert!(svsep.join("outputs").is_dir(), "用户的输出目录不该被删");
+        assert!(!svsep.join("svsep-runtime.zip.part").exists(), "运行时那半个 zip 要清掉");
+
+        // 再删一次：目录都空了，不能再报出个数来（否则按钮会一直说「已删 5 个」）
+        let v2 = delete_dependencies(&root, &writable, || false, |_, _| {});
+        assert_eq!(v2.get("removedFiles").and_then(|x| x.as_u64()), Some(0));
+
+        // 用户按了停止：一个都不删
+        std::fs::write(models.join("again.onnx"), b"z").unwrap();
+        let v3 = delete_dependencies(&root, &writable, || true, |_, _| {});
+        assert_eq!(v3.get("cancelled").and_then(|x| x.as_bool()), Some(true));
+        assert_eq!(v3.get("removedFiles").and_then(|x| x.as_u64()), Some(0));
+        assert!(models.join("again.onnx").is_file());
+
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn resume_point_reads_the_disk_and_matches_the_url() {
+        // 「重启之后还认不认那半个包」全靠这个函数 —— 它必须看盘上的字节，
+        // 而不是任何内存里的记号（进程重启后记号就没了）。
+        let base = std::env::temp_dir().join("vss-svsep-resume-test");
+        let _ = std::fs::remove_dir_all(&base);
+        let root = base.join("root");
+        let writable = base.join("writable");
+        std::fs::create_dir_all(writable.join("svsep").join("models")).unwrap();
+        let url = "https://example.test/svsep-models.zip";
+
+        // ① 什么都没有：不能续
+        assert_eq!(resume_point(&root, &writable, "models", url), None);
+        // 未知的种类（拼错 kind 不该 panic，也不该乱指一个目录）
+        assert_eq!(part_path(&root, &writable, "nope"), None);
+
+        // ② 只有半个包、没有记号：不认。`.part` 只有字节没有出处，拿它接一个
+        //    别的链接的 Range 会拼出坏 zip（要到解压才炸）。
+        let part = part_path(&root, &writable, "models").unwrap();
+        assert_eq!(
+            part,
+            writable.join("svsep").join("models").join("svsep-models.zip.part"),
+            "落点要跟着 Bundle 走，不能自己拼"
+        );
+        std::fs::write(&part, vec![0u8; 1234]).unwrap();
+        assert_eq!(
+            resume_point(&root, &writable, "models", url),
+            Some(1234),
+            "记号缺失（老版本留的半个包）算能续：为了几十字节的记号丢掉几个 GB 是坏交易"
+        );
+        // 补上记号之后还是同一个答案
+        write_url_marker(&part, url).unwrap();
+        assert_eq!(resume_point(&root, &writable, "models", url), Some(1234));
+
+        // ③ 记号写着**别的**链接：不认 —— 这才是那个记号存在的理由
+        write_url_marker(&part, "https://other.test/svsep-models.zip").unwrap();
+        assert_eq!(resume_point(&root, &writable, "models", url), None);
+
+        // ④ 记号是空文件（写到一半被杀）：也当「对不上」，宁可从零下
+        std::fs::write(url_marker(&part), b"").unwrap();
+        assert_eq!(resume_point(&root, &writable, "models", url), None);
+
+        // ⑤ 收场后清记号：半个包不再算数
+        write_url_marker(&part, url).unwrap();
+        clear_resume_marker(&root, &writable, "models");
+        assert!(!url_marker(&part).exists());
+        assert_eq!(resume_point(&root, &writable, "models", url), Some(1234));
+
+        // ⑥ 空文件不算数：续到 0 字节等于没续，还得白跑一次 Range 请求
+        std::fs::write(&part, b"").unwrap();
+        assert_eq!(resume_point(&root, &writable, "models", url), None);
+
         let _ = std::fs::remove_dir_all(&base);
     }
 }

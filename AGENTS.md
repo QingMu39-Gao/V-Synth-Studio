@@ -1,4 +1,4 @@
-# AGENTS.md —— 给接手这个项目的开发者 / 智能体
+﻿# AGENTS.md —— 给接手这个项目的开发者 / 智能体
 
 **先读这一份，再动手。** 这里写的是「看代码看不出来」的东西：架构为什么长这样、
 踩过哪些坑、下一步该往哪走。`README.md` 只讲产品与使用。
@@ -28,7 +28,7 @@
 ```
 ┌─ Tauri 2 外壳（原生窗口）
 │   └─ 同进程内嵌 axum HTTP 服务（http://127.0.0.1:17878）
-│        ├─ 提供 REST API（53 条路由）
+│        ├─ 提供 REST API（56 条路由）
 │        └─ 伺服前端静态文件（app/web/）
 └─ 窗口用 WebviewUrl::External 加载那个本地地址
 ```
@@ -86,7 +86,7 @@ app/
         Job.tsx       任务进度（库的 GlassProgress + 取消 + 日志）
         DirPicker.tsx 目录选择（库的 GlassDialog + PathBar + List）/ DirectoryInput
       lib/
-        api.ts        后端调用（53 条路由；API 在根路径 /api/*，**必须写绝对路径**）
+        api.ts        后端调用（56 条路由；API 在根路径 /api/*，**必须写绝对路径**）
         types.ts      后端数据结构（照 tests/contract/fixtures 定义）
         format.ts     formatBytes / formatDuration / formatNumber
         useJob.ts     任务订阅：SSE + 轮询兜底（旧 watchJob 的 React 版）
@@ -229,7 +229,7 @@ Remove-Item Env:\GITHUB_TOKEN
 | 环节 | 需要 Node 吗 |
 |---|---|
 | 用户运行打包好的 exe | **不需要** —— 产物是静态 HTML/JS/CSS，exe 是 Rust |
-| 后端运行时 | **不需要** —— 53 条路由全在 Rust，`node.exe` 进程数为 0 |
+| 后端运行时 | **不需要** —— 56 条路由全在 Rust，`node.exe` 进程数为 0 |
 | **编译前端**（`build.ps1` 第一步） | **需要** —— Vite 是 Node 工具 |
 
 `app/web-next/node_modules/` 约 91 MB，**但不进安装包**：
@@ -520,7 +520,7 @@ Get-Process -Name 'msedge' -EA SilentlyContinue | Where-Object { $_.MainWindowHa
 | `mime_of` | 已补齐（2026-10-02）：`.jpg/.jpeg/.webp/.gif/.woff/.ttf/.mp3/.wav/.mp4/.txt/.map` 都有映射，两张背景图实测回 `image/jpeg` |
 | `backdrop-filter` 降级 | 无该特性环境的降级方案没做视觉验证 |
 | `audio.rs` 顶部注释 | 写着「ffmpeg 不随程序分发」，与事实相反（注释是旧的） |
-| Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 53 条路由 |
+| Rust 代码行数 | README 曾写「约 5,900 行 / 31 条路由」，**都是旧数字**，现为 56 条路由 |
 | **工程转换** | 选项键已改用 LibreSVIP **官方选项名**，VSQX 参数曲线崩溃已**自动降级**（16 个真样本 15 通过，剩下 1 个是源工程自身音符重叠）。⚠️ `音高信息输入模式` 默认档是官方 `plain`（≈ 只带"已编辑"部分），要完整保留手画音高就在选项面板选「完整」。选项表与实现见 `docs/FEATURES.md` §3.1 |
 
 ### 打包：CI 出 MSI，真机装过、验证通过

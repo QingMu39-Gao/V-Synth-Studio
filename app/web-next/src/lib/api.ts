@@ -120,12 +120,15 @@ export const api = {
   svsepStart: () => post<{ ok: true; running: boolean; started: boolean; port: number }>('/api/svsep/start', {}, 120000),
   svsepStop: () => post<{ ok: true; running: boolean }>('/api/svsep/stop', {}),
   /**
-   * 下模型（约 730 MB）。**立刻返回**，进度靠 `svsepStatus().download` 看 ——
-   * 后端那边是在一个后台任务里下的，不占着这个请求。
+   * 下模型（压缩包 462 MB，解压后 730 MB）。**立刻返回**，进度靠
+   * `svsepStatus().download` 看 —— 后端那边是在一个后台任务里下的，不占着这个请求。
+   *
+   * ⚠️ 上次是**暂停**收场的话，后端自己会带 `Range` 接着下 —— 前端不用传任何
+   * 「从哪继续」的参数，`.part` 在不在、链接还对不对是后端的事。
    */
   svsepDownloadModels: () => post<{ ok: true; started: boolean }>('/api/svsep/models/download', {}),
   /**
-   * 下运行时（Python + torch，几 GB，**只该下一次**）。
+   * 下运行时（Python + torch，压缩包 4.7 GB、解压后 7.4 GB，**只该下一次**）。
    *
    * 与 `svsepDownloadModels` 同一套：立刻返回，进度看 `svsepStatus().download`
    * （`download.kind` 会告诉你是 `'runtime'` 还是 `'models'`，同一时刻只有
@@ -133,6 +136,28 @@ export const api = {
    * `Program Files` 下时那里不可写，后端会以「建目录失败」失败，页面照实显示。
    */
   svsepDownloadRuntime: () => post<{ ok: true; started: boolean }>('/api/svsep/runtime/download', {}),
+  /**
+   * 暂停下载：`.part` 留着，下次点下载会带 `Range` 接着下。
+   *
+   * 不是立刻停 —— 后端是在下一块数据到达时才收手，所以按完按钮界面还会走一两秒。
+   * 真正的「停了」由 `svsepStatus().download.active` 变 false 表示。
+   */
+  svsepPauseDownload: () => post<{ ok: true; pausing: boolean }>('/api/svsep/download/pause', {}),
+  /**
+   * 停止下载：连 `.part` 一起删掉，下次从头下。
+   *
+   * 和暂停的区别只有这一个 —— 用户看到的是「要不要重新下 4.7 GB」。
+   */
+  svsepStopDownload: () => post<{ ok: true; stopping: boolean }>('/api/svsep/download/stop', {}),
+  /**
+   * 一键删掉**所有下下来的依赖**：模型（730 MB）+ 运行时（7.4 GB）+ ffmpeg。
+   *
+   * ⚠️ 界面必须先让用户确认 —— 删完要重新下 4.7 GB 才能再用离线分离。
+   * ⚠️ 这个调用**立刻返回**（几万个文件，后端在后台删），进度看
+   * `svsepStatus().download.delete`；删完 `status` 里的 `runtimeReady` / `models.ok`
+   * 自己就变 false 了。
+   */
+  svsepDeleteDeps: () => post<{ ok: true; started: boolean }>('/api/svsep/deps/delete', {}),
   /**
    * 提交一次分离。
    *
@@ -630,6 +655,24 @@ export interface SvsepDownload {
   /** 总字节；`0` = 服务端没给 Content-Length，进度条改成不确定态 */
   total: number
   error?: string | null
+  /**
+   * 上次**暂停**留了半个包，再点下载会接着下（不是从头）。
+   *
+   * 后端按**盘上**有没有 `<包名>.part`、以及它旁边那个 `.part.url` 里记的链接
+   * 还是不是这一次要下的那一条来判：所以工作站在下载中途被关掉、第二天再打开，
+   * 这个值照样是 true（内存里那个「上次暂停的是哪个包」重启就没了，别指望它）。
+   */
+  resumable: boolean
+  /** 留了半个包的是哪个包 —— 界面靠它决定哪一行按钮写「继续下载」 */
+  pausedKind: 'runtime' | 'models' | null
+  /** 那半个包已经有多少字节（`resumable` 为假时是 0） */
+  pausedBytes: number
+  /** 一键删除的进度（几万个文件，删起来要几十秒） */
+  delete: {
+    active: boolean
+    files: number
+    bytes: number
+  }
 }
 
 export interface SvsepStatus {
