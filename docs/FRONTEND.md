@@ -203,7 +203,7 @@ export function Resources({
 | 工具 | 管什么 |
 |---|---|
 | `node tests/contract/verify.mjs 8891` | 后端接口契约（17 项，**必须全绿**） |
-| `node tests/manual/next-smoke.mjs 8891` | 8 页逐页渲染：控制台无报错 + 非占位 + 有玻璃面 + 该页文案命中（**必须 8/8**） |
+| `node tests/manual/next-smoke.mjs 8891` | 9 页逐页渲染：控制台无报错 + 非占位 + 有玻璃面 + 该页文案命中（**必须 9/9**） |
 | `node tests/manual/glass-probe.mjs 8891 <light\|dark> <frosted\|half\|liquid>` | 玻璃计算值 + 截图 + 启动画面 + 侧栏高亮块逐帧采样 + 两个导航的对齐 + 滑块拖动 |
 | `node tests/manual/pv-verify.mjs [port]` | JIZURA iframe 内的交接（CDP） |
 | `node tests/manual/pv-export-probe.mjs [port] [输出目录]` | PV 导出链路 |
@@ -226,7 +226,7 @@ Start-Process -FilePath 'H:\工作站\v-synth-studio.exe' `
 
 ## 7. 人工验收清单（自动化测不到的那些）
 
-自动化能覆盖的已经覆盖了（`next-smoke.mjs` 8/8、契约 17/17）。
+自动化能覆盖的已经覆盖了（`next-smoke.mjs` 9/9、契约 17/17）。
 **下面这些「要真跑一遍才知道」**，也正是冒烟脚本**测不到**的部分：
 
 > 打开方式：双击 `启动工作站.bat`。

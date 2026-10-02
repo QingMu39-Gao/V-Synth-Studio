@@ -752,7 +752,7 @@ git filter-branch --force --index-filter `
 | **滑条动画 + `Panel` 只换材质不重建**（2026-10-02） | 用户报「玻璃等级那个滑条没有任何动画，一帧拉过去」。两个独立原因：① 库没给 `.lg-slider-lens` 的位置做 transition（`index.css` 补了，见那儿的注释，含为什么必须 `!important`）；② **主因** —— `Panel` 原本在两个组件**类型**间切换（`MaterialView` ↔ `GlassLayer`），React 到类型边界整棵重建，新 lens 一出生就带终态、没东西可插值。改成两档都渲染 `MaterialView`、只用类名切材质。⚠️ **子树形状也必须一样**：`{cond ? <div>{children}</div> : children}` 仍会重建孩子，两个分支都要包一层。根因/实测/教训全在 **`docs/GLASS-HANDOFF.md` §2.5**，回归探针 `tests/manual/slider-probe.mjs` |
 | **设置页小节导航复用主侧栏那套** | `lib/useNavLens.ts` + `.app-nav` / `.nav-row` / `.nav-lens`，两处外框参数逐项相同 |
 | **8 页全部搬到 React**（2026-10-02；当天下午加「音轨分离」成 9 页） | 旧 `views/*.js` → `pages/*.tsx`（约 7,200 行）；`lib/api.ts` 补齐 53 条路由；任务进度 / 目录选择 / 表单共用件在 `components/`。迁移中翻出并修掉旧前端 4 处接口契约错误（见 `docs/FRONTEND.md` 第 5 节） |
-| **`next-smoke.mjs`** | 8 页逐页冒烟：控制台报错 / 占位页 / 玻璃面 / 该页文案，8/8 全绿（文件名里的 `next-` 是历史遗留） |
+| **`next-smoke.mjs`** | 逐页冒烟：控制台报错 / 占位页 / 玻璃面 / 该页文案，9/9 全绿（文件名里的 `next-` 是历史遗留） |
 
 ### ✅ 已完成：歌词页做成「网易云专区」（2026-10-02 落地）
 

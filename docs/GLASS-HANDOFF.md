@@ -5,7 +5,7 @@
 > 项目整体架构看 `AGENTS.md`，产品与使用看 `README.md`。
 
 **写于**：玻璃材质从手写换成 `@ttqtt/liquid-glass-react` 之后。
-**当前状态**：能跑（契约 17/17、旧前端冒烟 8/8），**两个缺陷已定位并修掉**（见第二节）。
+**当前状态**：能跑（契约 17/17、冒烟 9/9 —— 2026-10-02 加了「音轨分离」一页），**两个缺陷已定位并修掉**（见第二节）。
 明亮模式与深色模式的实测截图在 `tests/manual/out/`。
 
 ---
@@ -278,7 +278,7 @@ body::before { inset: calc(var(--bg-blur) * -2); }   /* 够采样，几乎不放
 **实测（修复后）**：`滑块根 / input / slider-row / panel-head / 面板` 五处全部同一节点，
 换档期间 MutationObserver 移除数 = 0；位置轨迹 4→2 有 19 个不同位置、2→4 有 21 个
 （带 `--lg-spring` 的过冲）。回归：`tests/manual/slider-probe.mjs` 由红转绿
-（8 / 37 个中间帧）、`next-smoke.mjs` 8/8。
+（8 / 37 个中间帧）、`next-smoke.mjs` 9/9。
 
 **教训**：给一个元素补 `transition` 之前，先确认**那个元素在状态切换时会不会被换掉**。
 `getBoundingClientRect()` 对不存在的 / 已脱离 DOM 的元素**不报错，返回全 0 的矩形** ——
@@ -392,7 +392,7 @@ $p = Start-Process -FilePath 'H:\工作站\v-synth-studio.exe' `
 Start-Sleep -Seconds 8
 
 node tests\contract\verify.mjs 8891                                   # 应 17/17
-node tests\manual\next-smoke.mjs 8891                                 # 应 8/8（8 页渲染 + 文案断言）
+node tests\manual\next-smoke.mjs 8891                                 # 应 9/9（9 页渲染 + 文案断言）
 
 # 玻璃材质专项：取计算值 + 截图 + 高亮块的逐帧/首帧采样
 node tests\manual\glass-probe.mjs 8891 light frosted
@@ -494,8 +494,8 @@ localStorage 改了、DOM 不动，看着就是「切材质没有任何用」。
    **换完之后再判断 shadcn 还需不需要**：库已经提供了 66 个控件，
    `AGENTS.md` 第十一节里「接 shadcn/ui」这条待办可能是多余的。
 2. ~~**一页页搬页面到 React**~~ **已完成（2026-10-02）**：8 页全部搬完，
-   旧前端与 `ui-smoke.ps1` 已于 2026-10-02 一起删除。
-3. ~~**给新前端补冒烟**~~ **已完成**：`tests/manual/next-smoke.mjs` 覆盖 8 页
+   旧前端与 `ui-smoke.ps1` 已于 2026-10-02 一起删除。（当天下午又加了「音轨分离」，现 9 页。）
+3. ~~**给新前端补冒烟**~~ **已完成**：`tests/manual/next-smoke.mjs` 覆盖 9 页
    （控制台报错 / 占位页 / 玻璃面 / 该页文案），跑法见上面第五节。
 4. **`resolve_paths()` 改用 `resource_dir()`**（`AGENTS.md` 第八节的核心遗留问题，
    修掉 MSI 与 macOS bundle 都靠它）。
