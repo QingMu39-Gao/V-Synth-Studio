@@ -127,7 +127,7 @@ WebView2 窗口（Tauri 2）
 | 42 | POST | `/api/svsep/start` | `svsep.rs::start` | 起离线分离服务（Python 子进程） | Svsep |
 | 43 | POST | `/api/svsep/stop` | `svsep.rs::stop` | 停它（`taskkill /T /F` 整棵树） | Svsep |
 | 44 | POST | `/api/svsep/runtime/download` | `svsep.rs::runtime_download` | **下运行时 zip（几 GB）并解压**，立刻返回 `{started}` | Svsep |
-| 45 | POST | `/api/svsep/models/download` | `svsep.rs::models_download` | **下模型 zip（730 MB）并解压**，立刻返回 `{started}` | Svsep |
+| 45 | POST | `/api/svsep/models/download` | `svsep.rs::models_download` | **下模型 zip（462 MB，解压后 730.7 MB）并解压**，立刻返回 `{started}` | Svsep |
 | 46 | POST | `/api/svsep/separate` | `svsep.rs::separate` | 提交一次分离（multipart **原样转发**；`?engine=`） | Svsep |
 | 47 | GET | `/api/svsep/task/{id}` | `svsep.rs::task` | 查任务（进度**是估的**，见 §3.9） | Svsep |
 | 48 | POST | `/api/svsep/task/{id}/cancel` | `svsep.rs::cancel` | 取消任务 | Svsep |
@@ -516,7 +516,7 @@ resources.json
 |---|---|---|
 | 怎么用 | 打开 `https://mvsep.com/zh`（默认浏览器），自己上传 | 页面上传 → 本机 Python 跑模型 |
 | 音频出不出本机 | **出**（所以有 `<Chip tone="warn">需上传</Chip>` 与隐私提示） | 不出 |
-| 依赖 | 浏览器 + 网 | 运行时（7.3 GB）+ 模型（730 MB），第一次要下 |
+| 依赖 | 浏览器 + 网 | 运行时（下 4.7 GB / 解压 7.4 GB）+ 模型（下 462 MB / 解压 730.7 MB），第一次要下 |
 | 速度 | 看对方排队 | 本机纯 CPU 实测：二轨约 8 分钟、六轨约 11 分钟（20 秒测试音频） |
 
 **架构**：Tauri 进程里**再起一个 Python 子进程**当分离服务（`crate::svsep::Svsep`，默认端口 17879，占用则 +1 重试），Rust 这层只是转发。**为什么不直接让前端打 Python**：前端只认一个后端、一套错误形状，而且「服务没起来」这话说得比 Python 的英文堆栈清楚。
@@ -528,15 +528,33 @@ resources.json
   ├─ runtime/python.exe         Python 3.10 embeddable + torch + CUDA 运行库
   ├─ backend/                   app.py 等 12 个 .py（**上游前端已删**）
   └─ bin/ffmpeg.exe
-<可写>/svsep/models/            模型（**不随包发**，730 MB，用户按需下）
+<可写>/svsep/models/            模型（**不随包发**，730.7 MB，用户按需下）
 <可写>/svsep/{uploads,outputs,logs,data}/
 ```
+
+⚠️ **两个包的量级（界面上必须分开说，2026-10-02 用户被绕进去过一次）**：
+
+| | 压缩包（要下多少） | 解压后（占多少盘） | 里面是什么 |
+|---|---|---|---|
+| 运行时 | **4.7 GB** | **7.4 GB**（26,817 个文件） | Python 3.10 + torch + CUDA 运行库 + backend + ffmpeg |
+| 模型 | **462 MB** | **730.7 MB**（6 个文件） | BS-Roformer 的 ckpt 自己就 **667 MB**，UVR 的 onnx 只有 63.7 MB |
+
+用户看到的「下载模型 730 MB」会以为整个功能只要 730 MB，**真正的大头是运行时**。所以界面上的规则是：**下载按钮的 toast 说压缩包大小、`<Stat>` 的副标题把两个数都给**（`下 4.7 GB · 解压 7.4 GB`），缺两样时再说一句「这次总共还要下约 X」。⚠️ **不要在界面里硬编码容量** —— `needBytes` 由 `models.items[].expectedSize` / `runtime.expectedBytes` 算出来，只有压缩包大小是常量（`DL_RUNTIME_ZIP` / `DL_MODELS_ZIP`，后端不知道 zip 的字节数）。
 
 绿色版「可写」= `<root>/app/data`；安装版在 `%APPDATA%` 下（Program Files 只读）。⚠️ 于是安装版的**模型在 APPDATA、运行时在 Program Files**，两者分开 —— `config.py` 的 `MODEL_DIR` 被加了一个 `CHIXIAOYANG_MODELS_DIR` 环境变量分支来表达这个组合（上游原本只能表达「只读目录旁边有就有」，那段带注释标了「V-Synth-Studio 加的」，是**唯一一处**对上游源码的改动）。
 
 **模型下载**：`svsep.rs::MODEL_URL` **是空串** —— zip 由用户传服务器后填。空链接时界面明确说「还没配置下载地址」，不转圈失败。下载走 `download_models()` → 写 `<models>/svsep-models.zip.part` → `extract_zip(..., "models/", ...)` 解到 `models/` 的父目录 → 删 zip。运行时同理（`RUNTIME_URL`、`svsep-runtime.zip`，`strip = ""` 因为要留着 `runtime/` 那一层）。**没有断点续传**（理由：730 MB 重下一次可接受，且用户很可能放本地服务器）。
 
 ⚠️ **runtime 包里必须同时有 `runtime\`、`backend\`、`bin\` 三样**（2026-10-02 修）：判据 `runtime_ready()` 看的是 `runtime/python.exe` 与 `backend/app.py` 两个文件，而 `bin/ffmpeg.exe` 是分离引擎自己要用的（`backend/config.py::_ensure_ffmpeg_on_path` 把 `<svsep>\bin` 塞进 PATH）。打包脚本第一版用 `CreateFromDirectory` 只装了 `runtime\` 一个顶层目录 —— 用户下完 4.5 GB 仍然起不来，界面还只会说「分离引擎还没装」。修法：`tools/svsep-pack.ps1` 改成 `ZipFile.Open` + `CreateEntryFromFile` 手工加条目（一个包可以放多个顶层目录，条目名用正斜杠），`$pairs` 里 `runtime` 那项是 `Dirs = @('runtime','backend','bin')`。回归测试 `svsep::tests::extracts_the_whole_real_runtime_pack_when_asked` 会逐个断言这三样 + 一个偏移超 4 GiB 的条目（`torch_cpu.lib`）。
+
+### ⚠️ `status` 回包的形状：`models` 是对象，模型列表在 `models.items[]`（2026-10-02 的 bug）
+
+`GET /api/svsep/status` 的 `models` 是 `{dir, ok, downloadedBytes, expectedBytes, downloadUrl, items[], missingIndex[]}` —— **不是** `{uvr, roformer}` 两个键。`items[]` 每条是 `{key, name, label, state, size, expectedSize}`，`state` 三态 `missing` / `partial` / `ok`。
+
+出过的事：前端写的是 `st?.models?.uvr?.state === 'ok' && st?.models?.roformer?.state === 'ok'` —— 字段不存在，于是 `modelsOk` **恒为 `false`**：模型明明在盘上（`models.ok === true`），界面照样把两个模型都显示成「缺失」、把「下载模型」按钮一直摆着，用户于是问「为什么下载模型提示大概 730mb 不应该好几个 g 吗」。`lib/api.ts` 的 `SvsepModel` 当时也是凭空写的（`{state,size,expected,path}`），与后端对不上。
+
+**护栏**：`tests/manual/next-smoke.mjs` 的 `PAGES[].probe` —— 该页可以自带一段在页面里跑的断言，先 `fetch('/api/svsep/status')` 看后端真回了什么，再反查界面（`models.ok === true` 时不该有「下载模型」按钮；`runtimeReady === true` 时不该有「分离引擎还没装」）。**修好之后才加的，没在真 bug 上验证过**，但它检的正是那个字段名。加它的理由：光验「渲染 + 文案」抓不到字段写错 —— 页面照样渲染、关键词也照样命中（当时冒烟是全绿的），只有数字悄悄变成 0、状态恒为「缺失」。
+
 
 **`extract_zip()` 是手写的**（`svsep.rs`，只支持「存 + deflate」）：为解一个 zip 引 `zip` crate 不划算，`flate2` 本来就在依赖树里。⚠️ `strip` 参数两个包不一样，写错不会报错，只会在用户点「开始分离」时才现形。⚠️ 累计压缩体积要在循环外先 `sum()` 一次（runtime 有 2.4 万个条目，每轮重算就是 6 亿次加法）。
 

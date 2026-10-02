@@ -570,15 +570,38 @@ interface LyricsDoc {
  *     提交完只拿 `task_id`，进度靠轮询 `svsepTask`。
  */
 
-/** 一个模型的下载/落盘状态 */
+/**
+ * 一个模型的落盘状态（`svsep.rs::models_status()` 的 `items[]` 里一条）。
+ *
+ * ⚠️ **`size` 与 `expectedSize` 都是字节**（Rust 那边是 `u64` → JSON 数字），
+ * 直接丢给 `formatBytes()`；别再假设它是十进制 MB。
+ * 每条的判据是 `state === 'ok'`（`missing` 没下 / `partial` 下了一半）。
+ */
 export interface SvsepModel {
+  /** `uvr` | `roformer` */
+  key: string
+  /** 磁盘上的文件名 */
+  name: string
+  /** 给人看的中文名（「二轨 · 人声 / 伴奏」） */
+  label: string
   /** `missing` | `partial`（下了一半）| `ok` */
   state: string
   size: number
-  expected: number
-  /** 界面上按它显示大小（后端给的是十进制 MB 口径，别自己再换算一遍） */
-  expectedBytes?: number
-  path: string
+  expectedSize: number
+}
+
+/** `status` 回包里 `models` 那一整块 */
+export interface SvsepModels {
+  dir: string
+  /** 两个模型都好、且索引文件齐全 */
+  ok: boolean
+  downloadedBytes: number
+  expectedBytes: number
+  /** 编译期常量 `svsep.rs::MODEL_URL`；空串 = 还没配置下载地址 */
+  downloadUrl: string
+  items: SvsepModel[]
+  /** 缺哪几个索引文件（`download_checks.json` 等） */
+  missingIndex: string[]
 }
 
 /** 运行时（Python + torch）的状态。**几 GB，只该下一次**。 */
@@ -618,7 +641,8 @@ export interface SvsepStatus {
   modelsDir: string
   dataDir: string
   runtime: SvsepRuntime
-  models: { uvr: SvsepModel; roformer: SvsepModel }
+  /** ⚠️ 是**对象**不是数组：`{dir, ok, downloadedBytes, expectedBytes, downloadUrl, items[], missingIndex[]}` */
+  models: SvsepModels
   download: SvsepDownload
   /** 分离服务在不在听 */
   running: boolean

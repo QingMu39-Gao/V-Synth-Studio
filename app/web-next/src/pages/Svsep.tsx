@@ -18,7 +18,10 @@ import './Svsep.css'
  *
  *   * 服务**可以没起**（`running` 假）—— 那就先给一颗「启动服务」，别让用户
  *     点了「开始分离」再看一句 red toast。
- *   * 第一次用**一定没有模型**（730 MB，不随包发）—— 那就先给「下载模型」。
+ *   * 第一次用**两样都没有**：运行时 4.7 GB（解压 7.4 GB）+ 模型 462 MB
+ *     （解压 731 MB），**都不随包发**。所以界面上必须把「要下多少」写清楚 ——
+ *     用户看到「下载模型 730 MB」会以为是整个功能只要 730 MB，而真正的大头
+ *     是运行时。两样缺哪样就下哪样，缺两样时把总字节数一并说出来。
  *     没有模型时提交任务会白等几十分钟再失败，绝不能画那颗按钮。
  *   * 一次任务**几分钟到几十分钟**（本机纯 CPU：二轨约 8 分钟、六轨约 11 分钟）
  *     —— 所以进度是这一页的主角，`running` 时必须自动轮询。
@@ -184,11 +187,25 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
      `models.uvr` 不存在（老版本后端的回包、或者字段改名）时照样抛
      `Cannot read properties of undefined (reading 'state')`。
      抛在这里 = 整棵 React 树卸载（导航也一起消失），下面几页全黑。
-     所以每一层都要 `?.`，显示用的地方给兜底值。 */
-  const modelsOk = st?.models?.uvr?.state === 'ok' && st?.models?.roformer?.state === 'ok'
+     所以每一层都要 `?.`，显示用的地方给兜底值。
+     ⚠️ **`models` 是对象、模型列表在 `models.items[]` 里**（`svsep.rs::models_status()`）。
+     2026-10-02 这里写成过 `st?.models?.uvr?.state` —— 字段不存在，于是恒为 `false`：
+     模型明明在盘上，界面照样说「缺失」并把「下载模型」按钮一直摆着。 */
+  const modelItems = st?.models?.items ?? []
+  const modelsOk = modelItems.length > 0 && modelItems.every((m) => m.state === 'ok')
   const runtimeReady = !!st?.runtimeReady
   const dl = st?.download
   const dlPct = dl && dl.total > 0 ? Math.min(100, Math.round((dl.done / dl.total) * 100)) : 0
+
+  /* 缺哪样、还要下多少 —— 数字全部来自后端（字节），**不要在界面里硬编码容量** */
+  const modelBytes = modelItems.reduce(
+    (n, m) => n + (m.state === 'ok' ? 0 : (m.expectedSize || 0)),
+    0,
+  ) || (st?.models?.expectedBytes || 0)
+  const needBytes = (runtimeReady ? 0 : (st?.runtime?.expectedBytes || 0)) + (modelsOk ? 0 : modelBytes)
+  /* 压缩包大小（下的是 zip），与解压后的大小是两回事 —— 两个数都给用户看 */
+  const DL_RUNTIME_ZIP = '4.7 GB'
+  const DL_MODELS_ZIP = '462 MB'
 
   const inference = (backend?.inference || {}) as Record<string, unknown>
   const acceleration = (backend?.acceleration || {}) as Record<string, unknown>
@@ -229,7 +246,9 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
   const doDownloadModels = async () => {
     try {
       await api.svsepDownloadModels()
-      onToast('开始下载模型，约 730 MB', 'info')
+      /* ⚠️ 说的是**压缩包**大小（462 MB），和界面上那个「解压后」的数是两回事。
+         之前这里写「约 730 MB」（那是解压后的大小），用户会以为下 730 MB 就够了。 */
+      onToast(`开始下载模型（压缩包约 ${DL_MODELS_ZIP}，解压后约 731 MB）`, 'info')
       void refresh()
     } catch (e) {
       onToast(errText(e), 'err')
@@ -239,7 +258,7 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
   const doDownloadRuntime = async () => {
     try {
       await api.svsepDownloadRuntime()
-      onToast('开始下载运行时，几 GB，会下一阵子', 'info')
+      onToast(`开始下载运行时（压缩包约 ${DL_RUNTIME_ZIP}，解压后约 7.4 GB），会下一阵子`, 'info')
       void refresh()
     } catch (e) {
       onToast(errText(e), 'err')
@@ -392,13 +411,21 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
           </div>
           {!runtimeReady && st && (
             <Finding level="warn" title="分离引擎还没装">
-              运行时（Python + torch + 后端程序，解压后约 7.3 GB）不随程序分发。
-              点下面「下载运行时」，下完会自动解压到 <code>{st.dir}</code>，
-              不用手动放。**只需要下一次** —— 之后升级工作站不用再下。
+              运行时（Python + torch + 后端程序）与模型都不随程序分发，要下两次：
+              运行时压缩包约 {DL_RUNTIME_ZIP}、解压后 7.4 GB
+              {!modelsOk && <>，模型压缩包约 {DL_MODELS_ZIP}、解压后 731 MB</>}。
+              {needBytes > 0 && (
+                <>
+                  {' '}
+                  这次总共还要下 <strong>约 {formatBytes(needBytes)}</strong>。
+                </>
+              )}
+              到右边「离线引擎」那张卡上点对应的按钮，下完会自动解压到 <code>{st.dir}</code>，
+              不用手动放。**只需要下一次**（之后升级工作站不用再下）。
               {!st.runtime?.downloadUrl && (
                 <>
                   {' '}
-                  ⚠️ 现在还没有配置下载地址（`svsep.rs` 里的 `RUNTIME_URL` 是空的），
+                  ⚠️ 现在还没有配置下载地址（<code>svsep.rs</code> 里的 <code>RUNTIME_URL</code> 是空的），
                   点了会明确报一句「还没配置下载地址」。
                 </>
               )}
@@ -406,8 +433,15 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
           )}
           {runtimeReady && !modelsOk && (
             <Finding level="warn" title="还没有模型，先下载">
-              模型有 730 MB，不随程序分发。到右边「离线引擎」那张卡上点「下载模型」，
-              下完会自动解压，不用手动放。
+              模型单独打包：压缩包约 {DL_MODELS_ZIP}、解压后 731 MB（六轨那个 BS-RoFormer
+              自己就 667 MB，二轨的 UVR 只有 64 MB）。到右边「离线引擎」那张卡上点「下载模型」，
+              下完会自动解压，不用手动放。**只需要下一次**。
+              {!st.models?.downloadUrl && (
+                <>
+                  {' '}
+                  ⚠️ 现在还没有配置下载地址（<code>svsep.rs</code> 里的 <code>MODEL_URL</code> 是空的）。
+                </>
+              )}
             </Finding>
           )}
         </Panel>
@@ -457,15 +491,17 @@ export function Svsep({ onNavigate, onToast }: PageProps) {
             <Stat
               label="运行时"
               value={runtimeReady ? '就绪' : '缺失'}
-              sub={runtimeReady ? undefined : `约 ${formatBytes(st?.runtime.expectedBytes ?? 0)}`}
+              /* ⚠️ `expectedBytes` 是**解压后**的容量（7.4 GB），要下的是 4.7 GB 的压缩包。
+                 缺的时候两个数都给，不然用户会以为要下 7.4 GB。 */
+              sub={runtimeReady ? undefined : `下 ${DL_RUNTIME_ZIP} · 解压 ${formatBytes(st?.runtime?.expectedBytes ?? 0)}`}
             />
             <Stat
               label="模型"
               value={modelsOk ? '就绪' : '缺失'}
               sub={
-                st
-                  ? `${formatBytes(st.models?.uvr?.size ?? 0)} + ${formatBytes(st.models?.roformer?.size ?? 0)}`
-                  : undefined
+                modelsOk
+                  ? modelItems.map((m) => formatBytes(m.size)).join(' + ')
+                  : `下 ${DL_MODELS_ZIP} · 解压 ${formatBytes(modelBytes)}`
               }
             />
             {badge && <Stat label="设备" value={badge} />}

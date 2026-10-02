@@ -34,12 +34,41 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 /**
  * 每页的期望。`any` 是**或**关系：搬家时文案可能微调，只要还认得出这一页在讲什么就行。
  * 新增页面/改文案后，这里跟着改 —— 它同时也是「这一页到底该有什么」的清单。
+ *
+ * 可选的 `probe`：**跨「后端回的字段形状」与「界面怎么读它」的那条断言**。
+ * 光验「渲染 + 文案」抓不到字段名写错 —— 页面照样渲染，只是数字是 0、状态恒为
+ * 「缺失」，而文案里那几个关键词其实到处都是。`probe` 里可以 `await fetch()`
+ * 先看后端真回了什么，再决定界面该显示成什么样。
  */
 const PAGES = [
   { id: 'dashboard', name: '总览', any: ['欢迎回来', '格式支持'] },
   { id: 'convert', name: '工程转换', any: ['来源工程', '源工程', '目标格式', '输出目录'] },
   { id: 'video', name: '视频解析', any: ['解析', '下载', '链接'] },
-  { id: 'svsep', name: '音轨分离', any: ['音轨分离', 'MVSEP', '离线', '分离'] },
+  {
+    id: 'svsep',
+    name: '音轨分离',
+    any: ['音轨分离', 'MVSEP', '离线', '分离'],
+    /**
+     * ⚠️ 这条是 2026-10-02 补的回归护栏。当时的 bug：后端 `models` 回的是
+     * `{dir, ok, items:[…]}`，界面却读 `st.models.uvr.state` —— **字段根本不存在**，
+     * 于是模型明明在盘上，界面照样显示「缺失」并把「下载模型」按钮一直摆着。
+     * 冒烟当时是绿的（关键词全命中）。所以这里按**后端真回的东西**反查界面。
+     */
+    probe: `(async () => {
+      const st = await (await fetch('/api/svsep/status')).json()
+      const text = document.body.innerText || ''
+      // 后端说两个模型都在 → 界面上那颗按钮就该换成别的，不该再写着「下载模型」
+      if (st.models && st.models.ok) {
+        const btn = [...document.querySelectorAll('button')].find((b) => (b.textContent || '').trim() === '下载模型')
+        if (btn) return '后端说两个模型都在（models.ok=true），界面却还摆着「下载模型」按钮'
+      }
+      // 后端说运行时在 → 界面上不该出现「分离引擎还没装」那张卡
+      if (st.runtimeReady && text.includes('分离引擎还没装')) {
+        return '后端说 runtimeReady=true，界面却还显示「分离引擎还没装」'
+      }
+      return ''
+    })()`,
+  },
   { id: 'audio', name: '音频工具', any: ['音频', '采样率', '音高', '响度', '格式'] },
   { id: 'lyrics', name: '网易云专栏', any: ['歌词', '搜索', '网易云', '下载歌曲'] },
   { id: 'pv', name: '文字 PV', any: ['PV', 'JIZURA', '歌词'] },
@@ -188,6 +217,19 @@ try {
     if (errors.length) {
       verdict = 'FAIL'
       notes.push(`控制台 ${errors.length} 条报错：${errors[0]}`)
+    }
+    // 页面自带的 probe（跨「后端字段形状 ↔ 界面读法」的断言），只在没红时才有意义
+    if (verdict === 'PASS' && p.probe) {
+      try {
+        const why = await cdp.evalJs(p.probe)
+        if (why) {
+          verdict = 'FAIL'
+          notes.push(why)
+        }
+      } catch (e) {
+        verdict = 'FAIL'
+        notes.push(`probe 跑不起来：${e.message}`)
+      }
     }
     results.push({ ...p, verdict, glass: state.glass, notes })
   }
