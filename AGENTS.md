@@ -771,9 +771,55 @@ git filter-branch --force --index-filter `
   **测试时绝不要调 `lyricsSms`（真会发短信）**、封面 `url` 必须 http 开头且下载**不带 Cookie**。
 - `docs/FRONTEND.md` §3「新增/修改页面的标准动作」（145 行）。
 
-⚠️ **别照猜写。** 下音频要先摸清网易云那边怎么拿直链 —— 歌词接口的回包里带没带、
-要不要 `MUSIC_U` cookie、会不会也撞反爬，都得先用 `curl.exe` 直连实测
-（网易云不用走代理；见第六节「网络」那行）。
+#### ⚠️ 先看这份实测：网易云「直链下歌」匿名拿不到（2026-10-02 `curl.exe` 直连实测）
+
+动手前必须知道这条 —— **它决定了这个功能能做多大**。全部用
+`curl.exe` 直连（不走代理）+ 桌面 Chrome UA + `Referer: https://music.163.com/` 实测：
+
+**① 歌词 / 搜索 / 详情这一路（现成功能用的）匿名全通**，不用 cookie：
+
+| 接口 | 结果 |
+|---|---|
+| `api/cloudsearch/pc?s=<kw>&type=1&limit=20`（**后端 `netease_search()` 在用的就是这个**） | `code=200`，明文 JSON，`result.songs` 正常 |
+| `api/song/detail/?ids=[<id>]` | 明文 JSON，元数据齐全 |
+| `api/song/lyric?id=<id>&lv=-1&kv=-1&tv=-1` | 同左 |
+
+搜索结果里每条带 **`fee`** 字段：`0`=免费、`1`=VIP、`8`=低音质免费/高音质 VIP。
+**可以在 UI 上用它给「这歌能不能下」打标。**
+
+**② 播放直链这一路匿名全死**（这是本功能最大的约束）：
+
+| 老办法 | 实测结果 |
+|---|---|
+| `music.163.com/song/media/outer/url?id=<id>.mp3` | **302 → `https://music.163.com/404`**，落盘是 107,191 B 的 HTML 错误页。**换哪个 id 都一样**，免费歌也照样 404 —— 这个流传最广的招**已经废了** |
+| `api/song/enhance/player/url?id=X&ids=[X]&br=320000` | HTTP 200 外壳，但 `data[0].url = null`、`code: 404`、`br: 0`、`fee: 0`（**免费歌也一样**）、`freeTrialPrivilege.cannotListenReason = 1` |
+| `api/song/enhance/player/url/v1?ids=[X]&level=standard&encodeType=mp3` | **逐字节同款响应**（742 B，`url` 仍是 `null`） |
+| `api/song/enhance/download/url?id=X&br=320000` | `{"data":null,"code":301}` —— 明确要登录 |
+
+关键判断：**接口没有被加密拦住**（回 200 + 合法 JSON，不是 `8821`、不是乱码），
+**拦住的是登录态**。所以：
+
+- 带真 `MUSIC_U` cookie 时 `player/url` 会不会吐出真 url —— **没实测**（需要真登录；
+  而 `lyricsSms` 是**不许调**的，别为了测试去发短信）。
+- 因此**先做能确定的部分**：搜索 + 封面 + 歌词 + 把 `fee` 展示出来；
+  「下音频」要么**明确要求用户已登录**（并如实报错「需要登录网易云」），
+  要么先只对 `fee=0` 的歌尝试。
+- ⚠️ **别为了让直链出来去接第三方解析站或 `eapi` 加密** —— 前者是侵权灰产，
+  后者是几百行签名代码换一个可能同样要登录的结果。要做的话先跟用户确认范围。
+
+**③ 封面能匿名下，但有两个坑：**
+
+- **`picUrl` 给的是原图，大得离谱**：实测一个封面
+  `http://p1.music.126.net/diGAyEmpymX8G7JcnElncQ==/109951163699673355.jpg`
+  原始 **7,172,604 B（7.1 MB）**；加 **`?param=300y300` → 102,216 B**、
+  `?param=500y500` → 249,916 B。**页面现在把 `picUrl` 原样丢给 `/api/lyrics/cover`
+  （`Lyrics.tsx:347-357`），下的是 7 MB 原图** —— 顺手修掉（拼 `?param=` 即可）。
+- **别信扩展名和 `Content-Type`**：URL 结尾是 `.jpg`、响应头写 `image/jpg`，
+  **字节实际是 PNG**（`89 50 4E 47 0D 0A 1A 0A`），加不加 `?param=` 都一样。
+  存文件时要么嗅探魔数，要么就固定 `-<name>.png`。
+- `picUrl` 是 **`http://`** 开头（不是 https）→ 和 FEATURES §3.4 那条
+  「封面 `url` 必须 http 开头」对得上，**别改成只认 https**。
+- `Range` 可用（回 `206`），大图能续传。
 
 #### QQ 音乐的全部落点（2026-10-02 grep 实测，删的时候照这张表过一遍）
 
