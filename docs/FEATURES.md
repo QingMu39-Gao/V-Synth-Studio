@@ -546,7 +546,7 @@ resources.json
 
 绿色版「可写」= `<root>/app/data`；安装版在 `%APPDATA%` 下（Program Files 只读）。⚠️ 于是安装版的**模型在 APPDATA、运行时在 Program Files**，两者分开 —— `config.py` 的 `MODEL_DIR` 被加了一个 `CHIXIAOYANG_MODELS_DIR` 环境变量分支来表达这个组合（上游原本只能表达「只读目录旁边有就有」，那段带注释标了「V-Synth-Studio 加的」，是**唯一一处**对上游源码的改动）。
 
-**模型下载**：`svsep.rs::MODEL_URL` **是空串** —— zip 由用户传服务器后填。空链接时界面明确说「还没配置下载地址」，不转圈失败。下载走 `download_models()` → 写 `<models>/svsep-models.zip.part` → `extract_zip(..., "models/", ...)` 解到 `models/` 的父目录 → 删 zip。运行时同理（`RUNTIME_URL`、`svsep-runtime.zip`，`strip = ""` 因为要留着 `runtime/` 那一层）。
+**模型下载**：`svsep.rs::MODEL_URL` / `RUNTIME_URL` 指向用户自己上传到 123 云盘 CDN 的两个包（2026-10-04 填上，末尾那个 `#` 是原始链接的一部分，**不要「顺手」删掉**）。下载走 `download_models()` → 写 `<models>/svsep-models.zip.part` → `extract_zip(..., "models/", ...)` 解到 `models/` 的父目录 → 删 zip。运行时同理（`svsep-runtime.zip`，`strip = ""` 因为要留着 `runtime/` 那一层）。链接为空时界面明确说「还没配置下载地址」，不转圈失败 —— 那一段现在是给「以后要把链接挪走」留的。⚠️ **改了链接就等于作废盘上那个半个包**：`.part.url` 里是旧链接，`stored_resume` 会判成「别的包的」而从头下。
 
 **暂停 / 继续 / 停止（2026-10-02 补）**：下载中途可以「暂停」（下一块数据到达时收手，`.part` 留着，下次带 `Range` 接着下）或「停止」（连 `.part` 一起删，下次从头下）。判据全在盘上，不在内存里：
 

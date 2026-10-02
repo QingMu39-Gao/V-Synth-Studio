@@ -79,15 +79,18 @@ const MODEL_INDEX_FILES: &[&str] = &[
 /// 换版本而变，只有「两个入口文件存在」是稳的。
 pub const RUNTIME_BYTES: u64 = 7_855_000_000;
 
-/// 运行时下载链接。**留空** —— 与 `MODEL_URL` 同理，用户上传后填。
-pub const RUNTIME_URL: &str = "";
-
-/// 模型下载链接。
+/// 运行时下载链接（123 云盘 CDN，用户自己上传的包）。
 ///
-/// **留空** —— 用户自己把打包好的 `svsep-models.zip` 传服务器后再填。
+/// ⚠️ 末尾那个 `#` **不要删**：那是用户给的原始链接，去掉它可能 404。
+/// ⚠️ 换链接之前先想清楚：盘上那个 `.part` 旁边的 `.part.url` 记着旧链接，
+/// 换了之后旧的半个包会被当成「别的包的」丢掉、从头下（见 `stored_resume`）。
+pub const RUNTIME_URL: &str = "https://1856610041.cdn.123clouddisk.com/1856610041/V-Synth-Studio/runtime.zip#";
+
+/// 模型下载链接（同上，123 云盘 CDN）。
+///
 /// 界面上「下载模型」按钮在没有链接时会明确说「还没配置下载地址」，
 /// 而不是转圈然后失败。
-pub const MODEL_URL: &str = "";
+pub const MODEL_URL: &str = "https://1856610041.cdn.123clouddisk.com/1856610041/V-Synth-Studio/models.zip#";
 
 /// **只给开发机用的临时覆盖**（`VSS_SVSEP_MODEL_URL` / `VSS_SVSEP_RUNTIME_URL`）。
 ///
