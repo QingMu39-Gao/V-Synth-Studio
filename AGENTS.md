@@ -775,6 +775,55 @@ git filter-branch --force --index-filter `
 要不要 `MUSIC_U` cookie、会不会也撞反爬，都得先用 `curl.exe` 直连实测
 （网易云不用走代理；见第六节「网络」那行）。
 
+#### QQ 音乐的全部落点（2026-10-02 grep 实测，删的时候照这张表过一遍）
+
+后端 `app/desktop/src/`：
+
+| 文件:行 | 内容 |
+|---|---|
+| `lyrics.rs:1` | 模块文档注释「网易云 / QQ 音乐的搜索、歌词抓取…」 |
+| `lyrics.rs:31` | 注释 + `const QQ_UA`（QQ 搜索接口认的手机 UA，桌面 UA 会被要求签名） |
+| `lyrics.rs:80-81` | `cookie_of()` 的 `if source == "qq" { return str_at(cfg, "qqCookie") }` |
+| `lyrics.rs:215` | `normalize_source()` 的 `"qq" => Ok("qq")` |
+| `lyrics.rs:226` / `313` | `search()` / `fetch()` 里的 `if source == "qq"` 分支（各一整段实现） |
+| `lyrics.rs:371` | 错误文案「QQ 音乐接口返回错误码 {retcode}…」 |
+| `lyrics.rs:396` | 回包里的 `"source": "qq"` |
+| `lyrics.rs:479` / `486` / `502` | `parse_link()` 三段判定 QQ 链接（**顺序不能调**，见 FEATURES §3.4） |
+| `lyrics.rs:505` | 兜底错误文案「…或 QQ 音乐的 songDetail 链接 / songmid」 |
+| `lyrics.rs:833` / `843` | `parse_lrc` 里 `source == "qq"` 的 `[offset:0]` / `[kana:` 处理 |
+| `lyrics.rs:1243` | 单测 `parse_lrc(raw, "qq")` |
+| `lyrics.rs:1290` | 单测 `cookie_of(&json!({"qqCookie":"abc"}), "qq")` |
+| `lyrics.rs:1445` / `1450` / `1458` | `parse_link` 的三个 qq 单测 |
+| `server/lyrics.rs:260` | `let key = if source == "qq" { "qqCookie" } else { "neteaseCookie" }` |
+| `server/simple.rs:88-90` | 默认 config 的 `"qqCookie": ""`（**字段先别删**，见上） |
+
+前端 `app/web-next/src/`：
+
+| 文件:行 | 内容 |
+|---|---|
+| `App.tsx:68` | 侧栏副标题「网易云 / QQ 音乐搜词，导出 LRC · SRT」 |
+| `lib/api.ts:152` / `402` / `423` | 注释、`type LyricsSource = 'netease' \| 'qq'`、返回类型注释 |
+| `pages/Lyrics.tsx:13` / `26` | 文件头注释（**本来就已过期**，见 FEATURES §3.4） |
+| `pages/Lyrics.tsx:45` | 来源分段 `{ value: 'qq', label: 'QQ 音乐' }` |
+| `pages/Lyrics.tsx:190` | `const [qqCookie, setQqCookie] = useState('')` |
+| `pages/Lyrics.tsx:239` / `258` | `api.lyricsSearch` / `lyricsGet` 的 `'netease' \| 'qq'` 断言 |
+| `pages/Lyrics.tsx:285` | toast「已识别为 QQ 音乐 / 网易云」 |
+| `pages/Lyrics.tsx:399-402` | `isQq` / `loginKey` / `sourceLabel` |
+| `pages/Lyrics.tsx:467` | `api.lyricsLogout(source as 'netease' \| 'qq')` |
+| `pages/Lyrics.tsx:486` | `saveCookie(key: 'neteaseCookie' \| 'qqCookie', …)` |
+| `pages/Lyrics.tsx:517-518` / `542` | 状态文案、以及「QQ 音乐走的是手机端搜索接口…」那段提示 |
+| `pages/Lyrics.tsx:597` | 粘贴框 hint「…以及 QQ 音乐的 songDetail 链接 / songmid」 |
+| `pages/Lyrics.tsx:768-784` | QQ Cookie 的 `Field` + 保存 / 清除两个 `Button` |
+
+文档：`README.md:142`（歌词那条功能描述）、`docs/FEATURES.md:292`（§3.4 界面描述）、
+`docs/FEATURES.md:412`（`default_config()` 键表里的 `qqCookie`）、
+`docs/FEATURES.md:562`（§6 未核实项里的「QQ 音乐手机 UA 搜索」）、
+`AGENTS.md:448`（第六节「网络」行的「网易云、QQ 音乐直连」）。
+另有 `app/data/config.json:10` 的 `"qqCookie": ""`（**开发机上的实际配置文件**，不是源码）。
+
+⚠️ `lyrics.rs` 里 qq 相关的单测有三个在 `parse_link` 上 —— **删功能时这些测试要一起删或改**，
+不然 `cargo test --bins` 会红。
+
 ---
 
 ### 待办，按优先级
