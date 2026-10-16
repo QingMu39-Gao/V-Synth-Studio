@@ -1756,19 +1756,39 @@ fn decode_text(bytes: &[u8]) -> (String, &'static str) {
 /// （`libc` 也已在依赖里）。
 #[cfg(windows)]
 fn gbk_to_string(bytes: &[u8]) -> Option<String> {
-    use windows_sys::Win32::Globalization::MultiByteToWideChar;
+    use windows_sys::Win32::Globalization::{MB_ERR_INVALID_CHARS, MultiByteToWideChar};
 
     const CP_GBK: u32 = 936;
     let len = bytes.len() as i32;
+    /* ⚠️ `MB_ERR_INVALID_CHARS` 不能省：不带它时非法字节被**静默换成默认字符**
+    （CP936 的默认字符是 U+F8F5），函数照样返回成功、`need > 0`，
+    于是调用方分不出「这是 GBK」与「这根本不是 GBK」，乱码会被当正文收下。
+    带上它，非法序列回 0 个码元，两条 `<= 0` 判据才真的在判非法。 */
     // 先问要多少个 UTF-16 码元，再一次性转（两步是 Win32 的固定用法）
-    let need =
-        unsafe { MultiByteToWideChar(CP_GBK, 0, bytes.as_ptr(), len, std::ptr::null_mut(), 0) };
+    let need = unsafe {
+        MultiByteToWideChar(
+            CP_GBK,
+            MB_ERR_INVALID_CHARS,
+            bytes.as_ptr(),
+            len,
+            std::ptr::null_mut(),
+            0,
+        )
+    };
     if need <= 0 {
         return None;
     }
     let mut buf = vec![0u16; need as usize];
-    let got =
-        unsafe { MultiByteToWideChar(CP_GBK, 0, bytes.as_ptr(), len, buf.as_mut_ptr(), need) };
+    let got = unsafe {
+        MultiByteToWideChar(
+            CP_GBK,
+            MB_ERR_INVALID_CHARS,
+            bytes.as_ptr(),
+            len,
+            buf.as_mut_ptr(),
+            need,
+        )
+    };
     if got <= 0 {
         return None;
     }
