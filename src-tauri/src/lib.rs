@@ -26,6 +26,26 @@ mod update;
 mod upgrade;
 mod wallpaper;
 
+/// `app.log` 超过这个大小就滚成 `app.log.1`。
+///
+/// 只留一代是有意为之：这份日志是给用户贴进 issue 的，要的是「最近发生了什么」，
+/// 不是归档 —— 于是磁盘占用上限是它的两倍。
+const LOG_MAX_BYTES: u64 = 5 * 1024 * 1024;
+
+/// 超限时把 `app.log` 滚成 `app.log.1`（上一代直接丢掉）。
+///
+/// ⚠️ Windows 的 `rename` **不覆盖**已存在的目标，所以必须先删掉旧的 `.1`：
+/// 少了这一步，第二次滚动起就静默失败，日志又回到无限增长。
+fn rotate_log(dir: &Path, limit: u64) {
+    let log = dir.join("app.log");
+    if std::fs::metadata(&log).map(|m| m.len()).unwrap_or(0) < limit {
+        return;
+    }
+    let old = dir.join("app.log.1");
+    let _ = std::fs::remove_file(&old);
+    let _ = std::fs::rename(&log, &old);
+}
+
 /// 追加一行日志到 `<可写目录>/app.log`。
 ///
 /// 不写 stdout：程序是 windows 子系统（无控制台窗口），打出去的东西没人看得见。
@@ -40,6 +60,7 @@ pub(crate) fn log_line(msg: &str) {
         .map(|p| p.writable)
         .unwrap_or_else(std::env::temp_dir);
     let _ = std::fs::create_dir_all(&dir);
+    rotate_log(&dir, LOG_MAX_BYTES);
 
     let ts = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -542,4 +563,70 @@ fn urlencode(s: &str) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /* 日志滚动。`app.log` 是无限追加的，写满用户盘时 `writeln!` 只是失败 ——
+    界面上一句提示都没有，所以上限只能靠这里保证。 */
+    fn log_dir(name: &str) -> PathBuf {
+        let d = std::env::temp_dir().join(format!("vss-log-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).expect("建临时目录");
+        d
+    }
+
+    #[test]
+    fn rotation_moves_an_oversized_log_aside() {
+        let d = log_dir("rotate");
+        std::fs::write(d.join("app.log"), vec![b'x'; 16]).unwrap();
+
+        rotate_log(&d, 8);
+
+        assert!(!d.join("app.log").exists(), "超限那份该被滚走");
+        assert_eq!(std::fs::read(d.join("app.log.1")).unwrap().len(), 16);
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn rotation_leaves_a_small_log_in_place() {
+        let d = log_dir("small");
+        std::fs::write(d.join("app.log"), b"hi").unwrap();
+
+        rotate_log(&d, 8);
+
+        assert_eq!(std::fs::read(d.join("app.log")).unwrap(), b"hi");
+        assert!(!d.join("app.log.1").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    /// Windows 的 `rename` 不覆盖已存在的目标 —— 不先删旧的 `.1` 时，这一条会失败
+    /// （`app.log` 原地不动、继续涨），而 Unix 上照样是绿的。
+    #[test]
+    fn rotation_replaces_the_previous_file() {
+        let d = log_dir("replace");
+        std::fs::write(d.join("app.log.1"), b"old-old-old-old").unwrap();
+        std::fs::write(d.join("app.log"), b"new-new-new-new").unwrap();
+
+        rotate_log(&d, 8);
+
+        assert_eq!(
+            std::fs::read(d.join("app.log.1")).unwrap(),
+            b"new-new-new-new"
+        );
+        assert!(!d.join("app.log").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
+
+    #[test]
+    fn rotation_without_a_log_does_nothing() {
+        let d = log_dir("missing");
+
+        rotate_log(&d, 8);
+
+        assert!(!d.join("app.log.1").exists());
+        let _ = std::fs::remove_dir_all(&d);
+    }
 }
