@@ -67,7 +67,7 @@ pub fn read_hkcu_string(subkey: &str, value: &str) -> Option<String> {
             return None;
         }
         let end = buf.iter().position(|c| *c == 0).unwrap_or(buf.len());
-        return Some(String::from_utf16_lossy(&buf[..end]));
+        Some(String::from_utf16_lossy(&buf[..end]))
     }
 }
 

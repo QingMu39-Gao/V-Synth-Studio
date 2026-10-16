@@ -116,10 +116,7 @@ pub fn run() {
             };
             note!("  根目录：{}", platform::clean_path(&paths.root));
             if paths.installed {
-                note!(
-                    "  配置目录：{}",
-                    platform::clean_path(&paths.writable)
-                );
+                note!("  配置目录：{}", platform::clean_path(&paths.writable));
             }
 
             /*
@@ -154,11 +151,11 @@ pub fn run() {
                 let handle = handle.clone();
                 std::thread::spawn(move || {
                     std::thread::sleep(std::time::Duration::from_secs(6));
-                    if let Some(w) = handle.get_webview_window("main") {
-                        if !w.is_visible().unwrap_or(false) {
-                            note!("前端未在 6 秒内显示窗口，兜底显示");
-                            let _ = w.show();
-                        }
+                    if let Some(w) = handle.get_webview_window("main")
+                        && !w.is_visible().unwrap_or(false)
+                    {
+                        note!("前端未在 6 秒内显示窗口，兜底显示");
+                        let _ = w.show();
                     }
                 });
             }
@@ -296,6 +293,7 @@ pub fn run() {
 /// - **安装版**（MSI/NSIS 装到 Program Files）：界面和工具在 Tauri 的
 ///   resource_dir 下，而**那里是只读的** —— 配置必须写到用户目录，
 ///   否则保存设置会失败（Program Files 需要管理员权限才能写）。
+///
 /// 只读数据目录（`resources.json`、`pinyin.json`，随包分发不改）是
 /// `<root>/data/`，由 `AppState` 自己拼，所以这里不需要一个同名的访问器。
 #[derive(Clone)]
@@ -355,10 +353,10 @@ fn resolve_paths(resource_dir: Option<PathBuf>, app_data_dir: Option<PathBuf>) -
         .as_deref()
         .is_some_and(|rd| rd.to_string_lossy().contains(".app/Contents/"));
     let mut root_from_resource: Option<PathBuf> = None;
-    if let Some(rd) = resource_dir {
-        if has_data(&rd) {
-            root_from_resource = Some(rd);
-        }
+    if let Some(rd) = resource_dir
+        && has_data(&rd)
+    {
+        root_from_resource = Some(rd);
     }
     if let Some(rd) = root_from_resource {
         let local_data = rd.join("data");
@@ -388,10 +386,10 @@ fn resolve_paths(resource_dir: Option<PathBuf>, app_data_dir: Option<PathBuf>) -
 
     // ── 2/3. 绿色版 / 开发：从 exe 和 cwd 往上找 ──
     let mut bases: Vec<PathBuf> = Vec::new();
-    if let Ok(exe) = std::env::current_exe() {
-        if let Some(dir) = exe.parent() {
-            bases.push(dir.to_path_buf());
-        }
+    if let Ok(exe) = std::env::current_exe()
+        && let Some(dir) = exe.parent()
+    {
+        bases.push(dir.to_path_buf());
     }
     if let Ok(cwd) = std::env::current_dir() {
         bases.push(cwd);
@@ -529,7 +527,7 @@ fn show_error(app: &tauri::AppHandle, message: &str) {
         .build()
     {
         let encoded = urlencode(message);
-        let _ = w.eval(&format!("location.hash='{encoded}';location.reload();"));
+        let _ = w.eval(format!("location.hash='{encoded}';location.reload();"));
     }
 }
 

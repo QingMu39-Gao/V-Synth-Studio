@@ -120,10 +120,10 @@ pub fn boundaries_to_regions(boundaries: &[bool], mask: Option<&[bool]>) -> Vec<
                 acc += 1;
             }
             let mut r = acc + 1;
-            if let Some(m) = mask {
-                if !m[i] {
-                    r = 0;
-                }
+            if let Some(m) = mask
+                && !m[i]
+            {
+                r = 0;
             }
             r
         })
@@ -276,12 +276,12 @@ pub fn decode_gaussian_blurred_probs(
     let mut num = 0f64;
     let mut den = 0f64;
     let mut peak = f32::NEG_INFINITY;
-    for i in 0..n {
-        if probs[i] > peak {
-            peak = probs[i];
+    for (i, &p) in probs.iter().enumerate() {
+        if p > peak {
+            peak = p;
         }
         if i >= start && i < end {
-            let w = probs[i] as f64;
+            let w = p as f64;
             // equivalent to linspace(min_val, max_val, n)[i]
             let v = min_val as f64 + (max_val - min_val) as f64 * i as f64 / (n - 1) as f64;
             num += w * v;
@@ -452,7 +452,7 @@ pub fn slice_waveform(y: &[f32], sample_rate: u32) -> Vec<(f64, Vec<f32>)> {
         (sample_rate as f32 * MIN_LENGTH_MS / 1000.0 / hop_size as f32).round() as usize;
     let min_interval = (min_interval_samples / hop_size as f32).round() as usize;
     // `(samples.shape[0] + hop - 1) // hop <= min_length` -> leave it whole.
-    let hop_frames = (y.len() + hop_size - 1) / hop_size;
+    let hop_frames = y.len().div_ceil(hop_size);
     if hop_frames <= min_length || y.is_empty() {
         return split_oversized(0.0, y.to_vec(), sample_rate);
     }
@@ -531,12 +531,12 @@ pub fn slice_waveform(y: &[f32], sample_rate: u32) -> Vec<(f64, Vec<f32>)> {
     // RMS pass actually produced, which is one more than the `div_ceil` count
     // used for the short-input test above.
     let total_frames = rms.len();
-    if let Some(s) = silence_start {
-        if total_frames - s >= min_interval {
-            let silence_end = total_frames.min(s + SIL_WINDOW_FRAMES);
-            let pos = argmin_range(&rms, s, silence_end + 1).unwrap_or(s);
-            sil_tags.push((pos, total_frames + 1));
-        }
+    if let Some(s) = silence_start
+        && total_frames - s >= min_interval
+    {
+        let silence_end = total_frames.min(s + SIL_WINDOW_FRAMES);
+        let pos = argmin_range(&rms, s, silence_end + 1).unwrap_or(s);
+        sil_tags.push((pos, total_frames + 1));
     }
 
     if sil_tags.is_empty() {

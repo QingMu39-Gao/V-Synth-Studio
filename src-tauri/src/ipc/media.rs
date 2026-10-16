@@ -73,28 +73,27 @@ fn set_progress(
     let snapshot = match guard.items.get_mut(id) {
         Some(job) => {
             if let Some(m) = job.as_object_mut() {
-                if let Some(p) = percent {
-                    if p >= 0.0 {
-                        m.insert("percent".into(), json!(p.clamp(0.0, 100.0)));
-                    }
+                if let Some(p) = percent
+                    && p >= 0.0
+                {
+                    m.insert("percent".into(), json!(p.clamp(0.0, 100.0)));
                 }
-                if let Some(msg) = message {
-                    if !msg.is_empty() {
-                        m.insert("message".into(), json!(msg));
-                    }
+                if let Some(msg) = message
+                    && !msg.is_empty()
+                {
+                    m.insert("message".into(), json!(msg));
                 }
-                if !extra.is_null() {
-                    if let Some(prog) = m.get_mut("progress").and_then(|v| v.as_object_mut()) {
-                        if let Some(src) = extra.as_object() {
-                            // null 值 = 删该字段。下载阶段的回调用 `{}` 表示「无附加字段」，
-                            // 不能在每次更新时顺带清速率 —— 那会抹掉另一路并发回调刚写的值
-                            for (k, v) in src {
-                                if v.is_null() {
-                                    prog.remove(k);
-                                } else {
-                                    prog.insert(k.clone(), v.clone());
-                                }
-                            }
+                if !extra.is_null()
+                    && let Some(prog) = m.get_mut("progress").and_then(|v| v.as_object_mut())
+                    && let Some(src) = extra.as_object()
+                {
+                    // null 值 = 删该字段。下载阶段的回调用 `{}` 表示「无附加字段」，
+                    // 不能在每次更新时顺带清速率 —— 那会抹掉另一路并发回调刚写的值
+                    for (k, v) in src {
+                        if v.is_null() {
+                            prog.remove(k);
+                        } else {
+                            prog.insert(k.clone(), v.clone());
                         }
                     }
                 }
@@ -594,7 +593,7 @@ async fn download_bilibili(
         let mp4_dest = joined(target_dir, &format!("{safe}.mp4"));
         if ffmpeg.is_some() {
             /* 下载阶段最后那个速率/剩余还挂在 progress 上，不清就会一直显示在
-               合并这几分钟里；显式传 null 走上面的删除分支。 */
+            合并这几分钟里；显式传 null 走上面的删除分支。 */
             set_progress(
                 st,
                 job,
@@ -659,19 +658,18 @@ async fn download_bilibili(
         .get("downloadCover")
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
+        && let Some(cover) = cover.filter(|c| !c.is_empty())
     {
-        if let Some(cover) = cover.filter(|c| !c.is_empty()) {
-            let dest = joined(target_dir, &format!("{safe}.jpg"));
-            match client
-                .download_asset(&cover, Path::new(&dest), &[], 1, cancel_ref, &|_| {})
-                .await
-            {
-                Ok(_) => {
-                    written.push(dest.clone());
-                    super::jobs::log_job(st, job, &format!("已保存封面：{}", basename(&dest)));
-                }
-                Err(e) => super::jobs::log_job(st, job, &format!("⚠ 封面下载失败：{e}")),
+        let dest = joined(target_dir, &format!("{safe}.jpg"));
+        match client
+            .download_asset(&cover, Path::new(&dest), &[], 1, cancel_ref, &|_| {})
+            .await
+        {
+            Ok(_) => {
+                written.push(dest.clone());
+                super::jobs::log_job(st, job, &format!("已保存封面：{}", basename(&dest)));
             }
+            Err(e) => super::jobs::log_job(st, job, &format!("⚠ 封面下载失败：{e}")),
         }
     }
 
@@ -965,13 +963,12 @@ pub fn decode_video_pick(streams: &Value, quality: Option<i64>) -> Option<Value>
     if list.is_empty() {
         return None;
     }
-    if let Some(q) = quality {
-        if let Some(exact) = list
+    if let Some(q) = quality
+        && let Some(exact) = list
             .iter()
             .find(|v| v.get("id").and_then(|x| x.as_i64()) == Some(q))
-        {
-            return Some(prefer_avc(list, exact));
-        }
+    {
+        return Some(prefer_avc(list, exact));
     }
     // 默认取最高画质，优先 H.264
     Some(prefer_avc(list, &list[0]))
@@ -1006,13 +1003,12 @@ pub fn decode_audio_pick(streams: &Value, audio_quality: Option<i64>) -> Option<
     if list.is_empty() {
         return None;
     }
-    if let Some(q) = audio_quality {
-        if let Some(exact) = list
+    if let Some(q) = audio_quality
+        && let Some(exact) = list
             .iter()
             .find(|a| a.get("id").and_then(|x| x.as_i64()) == Some(q))
-        {
-            return Some(exact.clone());
-        }
+    {
+        return Some(exact.clone());
     }
     Some(
         list.iter()
@@ -1251,7 +1247,10 @@ pub async fn preview_fetch(app: tauri::AppHandle, url: String, src: Option<Strin
     才因此可信。目标已存在时改名可能被拒 —— 那只可能是另一次并发预览先落了盘，
     它的那份同样完整，删掉自己手上这份、按命中返回。 */
     if let Err(e) = tokio::fs::rename(&part, &dest).await {
-        let cached = tokio::fs::metadata(&dest).await.map(|m| m.len()).unwrap_or(0);
+        let cached = tokio::fs::metadata(&dest)
+            .await
+            .map(|m| m.len())
+            .unwrap_or(0);
         let _ = tokio::fs::remove_file(&part).await;
         let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
         if cached == 0 {
@@ -1346,12 +1345,11 @@ fn is_known_host(host: &str) -> bool {
 fn collect_hosts(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::String(s) => {
-            if let Ok(u) = reqwest::Url::parse(s) {
-                if matches!(u.scheme(), "http" | "https") {
-                    if let Some(h) = u.host_str() {
-                        out.push(h.to_lowercase());
-                    }
-                }
+            if let Ok(u) = reqwest::Url::parse(s)
+                && matches!(u.scheme(), "http" | "https")
+                && let Some(h) = u.host_str()
+            {
+                out.push(h.to_lowercase());
             }
         }
         Value::Array(a) => a.iter().for_each(|x| collect_hosts(x, out)),

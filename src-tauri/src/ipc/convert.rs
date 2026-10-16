@@ -70,12 +70,11 @@ fn collect_into(dir: &Path, known: &[String], out: &mut Vec<String>, depth: usiz
         let Ok(ft) = e.file_type() else { continue };
         if ft.is_dir() {
             collect_into(&p, known, out, depth + 1);
-        } else if ft.is_file() {
-            if let Some(ext) = p.extension().and_then(|x| x.to_str()) {
-                if known.contains(&ext.to_lowercase()) {
-                    out.push(p.to_string_lossy().to_string());
-                }
-            }
+        } else if ft.is_file()
+            && let Some(ext) = p.extension().and_then(|x| x.to_str())
+            && known.contains(&ext.to_lowercase())
+        {
+            out.push(p.to_string_lossy().to_string());
         }
     }
 }
@@ -211,10 +210,40 @@ struct Capability {
 /// 让预检去报「不认识」，而不是默默什么都不提示。
 const VOCAL_PROJECT: &[&str] = &[
     // 既有条目
-    "vsqx", "vpr", "vsq", "svp", "s5p", "ustx", "ccs", "acep", "dv", "dspx", "ufdata",
+    "vsqx",
+    "vpr",
+    "vsq",
+    "svp",
+    "s5p",
+    "ustx",
+    "ccs",
+    "acep",
+    "dv",
+    "dspx",
+    "ufdata",
     // 随包另外 22 个插件（原先不在表里，预检对它们一句话都不说）
-    "ace", "aisp", "ds", "json", "mtp", "nn", "ppsf", "ps_project", "svip", "svip3", "tlp",
-    "tlpx", "tsmsln", "tssln", "vfp", "vog", "vshp", "vspx", "vvproj", "vxf", "xvsq", "y77",
+    "ace",
+    "aisp",
+    "ds",
+    "json",
+    "mtp",
+    "nn",
+    "ppsf",
+    "ps_project",
+    "svip",
+    "svip3",
+    "tlp",
+    "tlpx",
+    "tsmsln",
+    "tssln",
+    "vfp",
+    "vog",
+    "vshp",
+    "vspx",
+    "vvproj",
+    "vxf",
+    "xvsq",
+    "y77",
 ];
 
 fn capability(format: &str) -> Option<Capability> {
@@ -557,10 +586,46 @@ mod tests {
     #[test]
     fn every_bundled_plugin_id_has_a_capability_entry() {
         const BUNDLED: [&str; 40] = [
-            "ace", "acep", "aisp", "ass", "ccs", "ds", "dspx", "dv", "json", "lrc", "mid", "mtp",
-            "musicxml", "nn", "ppsf", "ps_project", "s5p", "srt", "svg", "svip", "svip3", "svp",
-            "tlp", "tlpx", "tsmsln", "tssln", "ufdata", "ust", "ustx", "vfp", "vog", "vpr", "vshp",
-            "vspx", "vsq", "vsqx", "vvproj", "vxf", "xvsq", "y77",
+            "ace",
+            "acep",
+            "aisp",
+            "ass",
+            "ccs",
+            "ds",
+            "dspx",
+            "dv",
+            "json",
+            "lrc",
+            "mid",
+            "mtp",
+            "musicxml",
+            "nn",
+            "ppsf",
+            "ps_project",
+            "s5p",
+            "srt",
+            "svg",
+            "svip",
+            "svip3",
+            "svp",
+            "tlp",
+            "tlpx",
+            "tsmsln",
+            "tssln",
+            "ufdata",
+            "ust",
+            "ustx",
+            "vfp",
+            "vog",
+            "vpr",
+            "vshp",
+            "vspx",
+            "vsq",
+            "vsqx",
+            "vvproj",
+            "vxf",
+            "xvsq",
+            "y77",
         ];
         for id in BUNDLED {
             assert!(capability(id).is_some(), "能力表漏了「{id}」");

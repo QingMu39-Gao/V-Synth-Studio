@@ -631,17 +631,17 @@ pub async fn convert_audio(
 
     let mut ff: Vec<String> = vec!["-i".into(), input.clone(), "-vn".into()];
     ff.extend(preset_args);
-    if let Some(sr) = opt_num(args, "sampleRate") {
-        if sr != 0.0 {
-            ff.push("-ar".into());
-            ff.push(num_text(sr));
-        }
+    if let Some(sr) = opt_num(args, "sampleRate")
+        && sr != 0.0
+    {
+        ff.push("-ar".into());
+        ff.push(num_text(sr));
     }
-    if let Some(ch) = opt_num(args, "channels") {
-        if ch != 0.0 {
-            ff.push("-ac".into());
-            ff.push(num_text(ch));
-        }
+    if let Some(ch) = opt_num(args, "channels")
+        && ch != 0.0
+    {
+        ff.push("-ac".into());
+        ff.push(num_text(ch));
     }
     ff.push(output.clone());
 
@@ -730,7 +730,8 @@ pub async fn change_tempo(
 ) -> Result<Value, String> {
     let input = require_input(args)?;
     let ratio = opt_num(args, "ratio").unwrap_or(1.0);
-    if !(ratio > 0.0) {
+    // 非正数与 NaN 都不合法 —— 写成 `ratio > 0.0` 的反面就是这一条
+    if ratio <= 0.0 || ratio.is_nan() {
         return Err("速度比例不合法".to_string());
     }
     let output = prepare_out(args)?;

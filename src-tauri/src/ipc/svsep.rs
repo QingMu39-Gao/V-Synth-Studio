@@ -472,10 +472,10 @@ fn start_dml_download(st: &Arc<super::AppState>) -> Result<Value, String> {
         if let Ok(mut k) = DL_KIND.lock() {
             *k = None;
         }
-        if let Err(e) = res {
-            if let Ok(mut slot) = DL_ERROR.lock() {
-                *slot = Some(e);
-            }
+        if let Err(e) = res
+            && let Ok(mut slot) = DL_ERROR.lock()
+        {
+            *slot = Some(e);
         }
     });
     Ok(json!({ "started": true }))
@@ -694,11 +694,11 @@ pub async fn svsep_separate(st: super::St<'_>, path: String, engine: Option<Stri
         .map_err(|e| e.to_string())?;
     // 任务对象捋平：前端拿 `res.task` 直接当任务记录用，而它读的是 `task.id` ——
     // 上游发的是 `task_id`、还包在 `task` 里。
-    if let Some(o) = out.as_object_mut() {
-        if o.contains_key("task") {
-            let t = flat_task(o.get("task").cloned().unwrap_or(Value::Null));
-            o.insert("task".to_string(), t);
-        }
+    if let Some(o) = out.as_object_mut()
+        && o.contains_key("task")
+    {
+        let t = flat_task(o.get("task").cloned().unwrap_or(Value::Null));
+        o.insert("task".to_string(), t);
     }
     Ok(out)
 }
@@ -708,10 +708,10 @@ pub async fn svsep_separate(st: super::St<'_>, path: String, engine: Option<Stri
 pub async fn svsep_task(st: super::St<'_>, id: String) -> Cmd {
     /* 服务已经自动关了（任务跑完就关，见 `auto_stop_when_idle`）：这时 `get()` 只会
     回「分离服务还没启动」，可界面要的恰恰是最后那道 `done` —— 先看快照。 */
-    if !st.inner().svsep.probe().await {
-        if let Some(t) = recall_task(&id) {
-            return Ok(t);
-        }
+    if !st.inner().svsep.probe().await
+        && let Some(t) = recall_task(&id)
+    {
+        return Ok(t);
     }
     let v = st
         .inner()
@@ -777,10 +777,10 @@ pub async fn svsep_backend_status(st: super::St<'_>) -> Cmd {
 #[tauri::command]
 pub async fn svsep_inference_get(st: super::St<'_>) -> Cmd {
     let user = crate::svsep::read_infer_mode(&st.inner().svsep.data());
-    if st.inner().svsep.probe().await {
-        if let Ok(v) = st.inner().svsep.get("/api/inference-settings").await {
-            return Ok(stamp_user_mode(v, &user));
-        }
+    if st.inner().svsep.probe().await
+        && let Ok(v) = st.inner().svsep.get("/api/inference-settings").await
+    {
+        return Ok(stamp_user_mode(v, &user));
     }
     Ok(infer_reply(&user, true))
 }
@@ -811,8 +811,8 @@ pub async fn svsep_set_inference(st: super::St<'_>, mode: String) -> Cmd {
         dml_downloading = start_dml_download(st.inner()).is_ok();
     }
 
-    if st.inner().svsep.probe().await {
-        if let Ok(v) = st
+    if st.inner().svsep.probe().await
+        && let Ok(v) = st
             .inner()
             .svsep
             .post_json(
@@ -820,9 +820,8 @@ pub async fn svsep_set_inference(st: super::St<'_>, mode: String) -> Cmd {
                 &json!({ "mode": engine_mode(&mode) }),
             )
             .await
-        {
-            return Ok(with_dml_flag(stamp_user_mode(v, &mode), dml_downloading));
-        }
+    {
+        return Ok(with_dml_flag(stamp_user_mode(v, &mode), dml_downloading));
     }
     Ok(with_dml_flag(infer_reply(&mode, true), dml_downloading))
 }
@@ -861,10 +860,8 @@ fn stamp_user_mode(mut v: Value, user: &str) -> Value {
 
 /// 标一下「加速包正在下」——界面据此把进度条挂到下载状态上。
 fn with_dml_flag(mut v: Value, downloading: bool) -> Value {
-    if downloading {
-        if let Some(o) = v.as_object_mut() {
-            o.insert("dmlDownloading".into(), json!(true));
-        }
+    if downloading && let Some(o) = v.as_object_mut() {
+        o.insert("dmlDownloading".into(), json!(true));
     }
     v
 }
@@ -902,10 +899,10 @@ fn flat_task(v: Value) -> Value {
     } else {
         v
     };
-    if let Some(o) = t.as_object_mut() {
-        if let Some(id) = o.get("task_id").cloned() {
-            o.entry("id").or_insert(id);
-        }
+    if let Some(o) = t.as_object_mut()
+        && let Some(id) = o.get("task_id").cloned()
+    {
+        o.entry("id").or_insert(id);
     }
     t
 }
@@ -941,9 +938,9 @@ async fn auto_stop_when_idle(st: Arc<super::AppState>) {
     st.svsep.stop();
 }
 
-/// 推理方式的读写全在 `crate::svsep`（`read_infer_mode` / `write_infer_mode` /
-/// `apply_infer_mode`）—— 启动路径（`ipc/state.rs`）也要用同一份，放在这一层
-/// 它就得被 import 两次，判据也会分叉。
+// 推理方式的读写全在 `crate::svsep`（`read_infer_mode` / `write_infer_mode` /
+// `apply_infer_mode`）—— 启动路径（`ipc/state.rs`）也要用同一份，放在这一层
+// 它就得被 import 两次，判据也会分叉。
 
 /// 服务没跑时给界面的回包 —— 键跟上游 `public_settings()` 对得上，`offline`
 /// 让界面知道这不是现探的硬件。

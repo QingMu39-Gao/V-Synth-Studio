@@ -68,11 +68,23 @@ const MAC: &str = "macos";
 const LINUX: &str = "linux";
 
 const MUST_HAVE: &[(&str, &str, &str)] = &[
-    ("../data/resources.json", "资源库清单（resolve_paths 的启动哨兵）", ANY),
+    (
+        "../data/resources.json",
+        "资源库清单（resolve_paths 的启动哨兵）",
+        ANY,
+    ),
     ("../data/pinyin.json", "拼音词典", ANY),
     // ffmpeg 没有 Linux 行：deb 不带它（Depends 装系统包），MUST_HAVE 只查随包物
-    ("../tools/ffmpeg/bin/ffmpeg.exe", "ffmpeg（音频转换 / 合并 / 扒谱解码）", WIN),
-    ("../tools/ffmpeg/bin/ffmpeg", "ffmpeg（同左，macOS 版）", MAC),
+    (
+        "../tools/ffmpeg/bin/ffmpeg.exe",
+        "ffmpeg（音频转换 / 合并 / 扒谱解码）",
+        WIN,
+    ),
+    (
+        "../tools/ffmpeg/bin/ffmpeg",
+        "ffmpeg（同左，macOS 版）",
+        MAC,
+    ),
     ("../tools/yt-dlp.exe", "yt-dlp（MV 解析下载）", WIN),
     ("../tools/yt-dlp", "yt-dlp（同左，macOS 版）", MAC),
     ("../tools/yt-dlp", "yt-dlp（同左，Linux 版）", LINUX),
@@ -92,7 +104,7 @@ const MUST_HAVE: &[(&str, &str, &str)] = &[
         LINUX,
     ),
     /* ⚠️ 这条必须留着：exe 在、插件目录空 = 工程格式互转认不出任何格式，且不报错。
-       只查 exe 是不够的，所以这里连插件目录一起数。 */
+    只查 exe 是不够的，所以这里连插件目录一起数。 */
     (
         "../tools/libresvip/libresvip-cli/_internal/libresvip/plugins",
         "LibreSVIP 的格式插件（目录空 = 认不出任何格式）",
@@ -115,14 +127,18 @@ const MUST_HAVE: &[(&str, &str, &str)] = &[
         LINUX,
     ),
     /* jizura 经 `frontendDist` 进包（Vite 把 `public/` 拷进 `dist/`），机制与
-       `bundle.resources` 不同，但缺了的后果一样 —— PV 页静默少字体。这四条都不是
-       源码、不入库，全由 tools/fetch_jizura_fonts.mjs 现场产出。 */
+    `bundle.resources` 不同，但缺了的后果一样 —— PV 页静默少字体。这四条都不是
+    源码、不入库，全由 tools/fetch_jizura_fonts.mjs 现场产出。 */
     (
         "../public/vendor/jizura/index.html",
         "JIZURA 页面（PV 的 iframe 指向它；从上游取并打补丁）",
         ANY,
     ),
-    ("../public/vendor/jizura/LICENSE", "JIZURA 的 MIT 许可（从上游取）", ANY),
+    (
+        "../public/vendor/jizura/LICENSE",
+        "JIZURA 的 MIT 许可（从上游取）",
+        ANY,
+    ),
     (
         "../public/vendor/jizura/fonts.css",
         "JIZURA 字体清单（由 tools/fetch_jizura_fonts.mjs 生成）",
@@ -137,9 +153,9 @@ const MUST_HAVE: &[(&str, &str, &str)] = &[
 
 fn main() {
     /* ⚠️ 必须声明这两个 —— 否则 cargo 会缓存 build script 的执行结果，
-       改了环境变量也不会重跑，检查就形同虚设（加了 `VSS_CHECK_BUNDLE=1`
-       也不会有任何反应）。`CARGO_CFG_TARGET_OS` 与 `PROFILE` 是 cargo 给的、
-       随目标变化，不需要声明。 */
+    改了环境变量也不会重跑，检查就形同虚设（加了 `VSS_CHECK_BUNDLE=1`
+    也不会有任何反应）。`CARGO_CFG_TARGET_OS` 与 `PROFILE` 是 cargo 给的、
+    随目标变化，不需要声明。 */
     println!("cargo:rerun-if-env-changed=VSS_CHECK_BUNDLE");
     println!("cargo:rerun-if-env-changed=VSS_SKIP_BUNDLE_CHECK");
 
@@ -170,7 +186,7 @@ fn check_resources() {
     }
 
     /* 只查**这个目标平台**的那些 —— 另一个平台的二进制在交叉编译/本机构建里本来就不该在，
-       查它必然误报（`ffmpeg.exe` 在 mac 上永远不会存在）。 */
+    查它必然误报（`ffmpeg.exe` 在 mac 上永远不会存在）。 */
     let missing: Vec<String> = MUST_HAVE
         .iter()
         .filter(|(_, _, only)| *only == ANY || *only == target_os)

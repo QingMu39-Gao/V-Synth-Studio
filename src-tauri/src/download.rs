@@ -282,7 +282,7 @@ pub fn write_url_marker(part: &Path, url: &str) -> std::io::Result<()> {
 ///
 /// 为什么要记：`.part` 只有字节，没有出处。用户换了下载服务器（或者我们在安装版
 /// 里换了个地址）之后，拿旧的半个包去接新链接的 `Range`，拼出来的是「旧包的前半段
-/// + 新包的后半段」—— 一个要到解压才炸的坏 zip，而且看着像我们的解析器有问题。
+/// ＋ 新包的后半段」—— 一个要到解压才炸的坏 zip，而且看着像我们的解析器有问题。
 /// 链接对不上就当没有，从头下。
 ///
 /// ⚠️ **记号缺失**（`.part` 没有配套记号、或者写记号那一下失败了）算「可以续」，
@@ -674,7 +674,7 @@ async fn download_range(
         if (ctl.check)() {
             return Err(STOPPED.to_string());
         }
-        match download_range_once(fetch, req, hdrs, start, end, tracker, ctl, &mut counted).await {
+        match download_range_once(fetch, req, hdrs, start..=end, tracker, ctl, &mut counted).await {
             Ok(()) => return Ok(()),
             Err(e) => {
                 /* 服务端不肯按 Range 给：再试四次也是同样结果，直接放出去
@@ -698,12 +698,12 @@ async fn download_range_once(
     fetch: &str,
     req: &Request<'_>,
     hdrs: &HeaderMap,
-    start: u64,
-    end: u64,
+    window: std::ops::RangeInclusive<u64>,
     tracker: &Tracker<'_>,
     ctl: &Control<'_>,
     counted: &mut u64,
 ) -> Result<(), String> {
+    let (start, end) = (*window.start(), *window.end());
     let mut h = hdrs.clone();
     h.insert(
         reqwest::header::RANGE,
@@ -732,12 +732,11 @@ async fn download_range_once(
         .headers()
         .get(reqwest::header::CONTENT_RANGE)
         .and_then(|v| v.to_str().ok())
+        && !content_range_matches(cr, start, end)
     {
-        if !content_range_matches(cr, start, end) {
-            return Err(format!(
-                "分块下载：服务端回的区间不是 {start}-{end}（{cr}，{fetch}）"
-            ));
-        }
+        return Err(format!(
+            "分块下载：服务端回的区间不是 {start}-{end}（{cr}，{fetch}）"
+        ));
     }
 
     /* ⚠️ **必须是可写的句柄。** 用 `File::open`（`O_RDONLY`）时 Windows 的
@@ -1552,7 +1551,10 @@ Connection: close
     #[test]
     fn content_range_only_passes_when_it_matches_the_requested_window() {
         assert!(content_range_matches("bytes 0-99/1000", 0, 99));
-        assert!(!content_range_matches("bytes 100-199/1000", 0, 99), "区间不同");
+        assert!(
+            !content_range_matches("bytes 100-199/1000", 0, 99),
+            "区间不同"
+        );
         assert!(!content_range_matches("bytes */1000", 0, 99), "没给区间");
         assert!(!content_range_matches("bytes 0-99", 0, 99), "没给总长");
         assert!(!content_range_matches("0-99/1000", 0, 99), "缺 bytes 前缀");

@@ -427,8 +427,9 @@ pub fn transcribe(
         // 音符抽取，照 `inference/callbacks.py:47-88`：时值累加成起止时间，
         // 跳过没有 presence 的、以及零长度（去重叠后会出现）的。
         let mut cursor = *offset;
-        for i in 0..max_n {
-            let d = durations[i] as f64 * algo::TIMESTEP as f64;
+        // `durations` 的长度就是 `max_n`（见 `regions_to_durations`），`take` 只是兜底
+        for (i, &raw) in durations.iter().enumerate().take(max_n) {
+            let d = raw as f64 * algo::TIMESTEP as f64;
             let onset = cursor;
             let end = onset + d;
             cursor = end;

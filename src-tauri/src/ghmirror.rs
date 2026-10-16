@@ -90,17 +90,19 @@ const FALLBACK: &[(&str, &str)] = &[
 
 /* ── 候选名单（进程内缓存） ─────────────────────────────────────────── */
 
-static LIST: OnceLock<Mutex<Option<(Instant, Vec<Mirror>)>>> = OnceLock::new();
+/// 缓存的实测结果：什么时候测的、测出来哪几面能用。
+type MirrorCache = Option<(Instant, Vec<Mirror>)>;
+
+static LIST: OnceLock<Mutex<MirrorCache>> = OnceLock::new();
 
 /// 这次能试哪几面（按 hiwiki 测出来的速度从快到慢，只是**候选顺序**）。
 async fn mirror_list() -> Vec<Mirror> {
     let slot = LIST.get_or_init(|| Mutex::new(None));
-    if let Ok(g) = slot.lock() {
-        if let Some((at, list)) = g.as_ref() {
-            if at.elapsed() < LIST_TTL {
-                return list.clone();
-            }
-        }
+    if let Ok(g) = slot.lock()
+        && let Some((at, list)) = g.as_ref()
+        && at.elapsed() < LIST_TTL
+    {
+        return list.clone();
     }
     let fetched = fetch_list().await.unwrap_or_default();
     if fetched.is_empty() {
@@ -231,10 +233,10 @@ pub async fn pick(canonical: &str) -> String {
 
 /// 刚用的那一面失败了：下一轮换一面。没有记录就什么都不做。
 pub fn discard(canonical: &str) {
-    if let Ok(mut g) = picks().lock() {
-        if let Some(r) = g.get_mut(canonical) {
-            r.advance();
-        }
+    if let Ok(mut g) = picks().lock()
+        && let Some(r) = g.get_mut(canonical)
+    {
+        r.advance();
     }
 }
 

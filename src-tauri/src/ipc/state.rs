@@ -180,14 +180,12 @@ impl AppState {
     /// `force = true` 绕过缓存现算一遍：界面上的「重新检测」必须能反映真实情况，
     /// 否则用户补回 `tools/` 目录后会被缓存骗一分钟。
     pub fn probe_cached(&self, force: bool) -> (Vec<Value>, Value) {
-        if !force {
-            if let Ok(guard) = self.probe_cache.lock() {
-                if let Some((editors, tools, at)) = guard.as_ref() {
-                    if at.elapsed() < PROBE_TTL {
-                        return (editors.clone(), tools.clone());
-                    }
-                }
-            }
+        if !force
+            && let Ok(guard) = self.probe_cache.lock()
+            && let Some((editors, tools, at)) = guard.as_ref()
+            && at.elapsed() < PROBE_TTL
+        {
+            return (editors.clone(), tools.clone());
         }
         // 注意：**不持锁**跑探测 —— 它要几秒，持锁会把并发调用全串在身后。
         // 代价是冷启动时可能有两三个线程同时探一遍，可以接受（结果一样，最后写的赢）。

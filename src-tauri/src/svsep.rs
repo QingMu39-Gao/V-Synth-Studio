@@ -436,12 +436,13 @@ fn set_roformer_dml(ext: &Path, on: bool) -> Result<bool, String> {
         } else {
             "        use_dml = False"
         };
-        if line.trim_start().starts_with("use_dml = ") && line.starts_with("        ") {
-            if line != target {
-                changed = true;
-                out.push(target.to_string());
-                continue;
-            }
+        if line.trim_start().starts_with("use_dml = ")
+            && line.starts_with("        ")
+            && line != target
+        {
+            changed = true;
+            out.push(target.to_string());
+            continue;
         }
         out.push(line.to_string());
     }
@@ -1030,12 +1031,11 @@ impl Svsep {
 
     /// 健康探测（带 2 秒缓存）
     pub async fn probe(&self) -> bool {
-        if let Ok(h) = self.health.lock() {
-            if let Some((at, ok)) = *h {
-                if at.elapsed() < Duration::from_secs(2) {
-                    return ok;
-                }
-            }
+        if let Ok(h) = self.health.lock()
+            && let Some((at, ok)) = *h
+            && at.elapsed() < Duration::from_secs(2)
+        {
+            return ok;
         }
         let Some(base) = self.base_url() else {
             return false;
@@ -1222,7 +1222,7 @@ mod job {
         let Some(job) = job_handle() else {
             return false;
         };
-        let proc = child.as_raw_handle() as *mut core::ffi::c_void;
+        let proc = child.as_raw_handle();
         unsafe { AssignProcessToJobObject(job, proc) != 0 }
     }
 }
@@ -1725,15 +1725,16 @@ async fn fetch_bundle(
         }
         false
     });
-    if manual.is_none() && !whole {
-        if let Some(n) = bad_multi {
-            return Err(format!(
-                "{}目录里那 {n} 个文件拼起来不是个有效的 zip（像是 WinZip / Bandizip 那种\
+    if manual.is_none()
+        && !whole
+        && let Some(n) = bad_multi
+    {
+        return Err(format!(
+            "{}目录里那 {n} 个文件拼起来不是个有效的 zip（像是 WinZip / Bandizip 那种\
                  「跨卷 zip」—— 各卷不能首尾相接）。删掉它们再用「下载」，或者去 123 云盘\
                  换成按字节切的那几个文件。",
-                b.label
-            ));
-        }
+            b.label
+        ));
     }
     let src = match &manual {
         Some(s) => {
@@ -1964,6 +1965,8 @@ pub async fn download_runtime(
 ///     「半个包其实是一整包」那条短路 —— 为一个包付这些复杂度不划算。
 ///     ⚠️ 要加续传就得把上面那三样一起加齐，只加一半会拼出坏 zip。
 ///   * **失败会把半截文件删掉**：留下它没有任何东西会去认领（没有记号、没有
+///     续传入口），下一次还是从头下。
+///
 /// 下载一个文件到 `out`（**最终文件名**，不是 `.part`），返回字节数。
 ///
 /// ## 与 `fetch_bundle` 的区别
@@ -2131,7 +2134,7 @@ pub fn delete_dependencies(
                         removed_files += 1;
                         removed_bytes += size;
                         // 界面每 200 个文件刷一次就够（它 2 秒才轮询一次状态）
-                        if removed_files % 200 == 0 {
+                        if removed_files.is_multiple_of(200) {
                             on_progress(removed_files, removed_bytes);
                         }
                     }
@@ -2338,6 +2341,7 @@ impl std::io::Seek for Volumes {
 ///   * `runtime.z01…` 那一套里是 `runtime/…`，解到 `<可写>/svsep/` 要**留着**
 ///     （那边正好需要 `runtime/python.exe` 这一层）；
 ///   * `GAME-1.0.3-large-onnx.zip` 里套着同名的一层，剥掉它（见 `midi_transcribe`）。
+///
 /// 解到哪一层写错不会报错，只会在用户点「开始分离」时才现形。
 ///
 /// ## 为什么用 `zip` crate 而不是自己写
@@ -2683,7 +2687,7 @@ mod tests {
         );
         // strip 只对以它开头的条目生效，没命中的原样保留
         assert!(dest.join("outside.txt").is_file());
-        assert_eq!(dest.join("models").join("a.onnx").exists(), false);
+        assert!(!dest.join("models").join("a.onnx").exists());
         assert_eq!(ticks.len(), 4, "每**条目**报一次进度（含被跳过的目录）");
         let (done, total) = *ticks.last().unwrap();
         assert_eq!(done, total, "最终进度必须刚好 100%");
@@ -2966,10 +2970,7 @@ mod tests {
 
         /* ── 第二轮：授权续传，接着下 ────────────────── */
         let ctl2 = DownloadCtl::new(&PAUSE, &STOP, true);
-        assert!(
-            ctl2.paused() == false && ctl2.cancelled() == false,
-            "构造时该清旗标"
-        );
+        assert!(!ctl2.paused() && !ctl2.cancelled(), "构造时该清旗标");
         let resumed_from = url.clone();
         let seen = std::sync::Arc::new(Mutex::new(Vec::<(u64, u64)>::new()));
         let seen2 = seen.clone();
@@ -2995,7 +2996,7 @@ mod tests {
         /* ⚠️ 总长是 `Content-Length: 484976642`（= 整个 `models.zip` 的字节数），
         不是 `models_status` 里那个 `expectedBytes`。 */
         assert_eq!(first.1, 484_976_642, "续传报的总长不对：{first:?}");
-        assert!(flag(&out2, "paused") == false && flag(&out2, "cancelled") == false);
+        assert!(!flag(&out2, "paused") && !flag(&out2, "cancelled"));
         assert!(
             matches!(out2, FetchOutcome::Done(_)),
             "续传没有下完：{out2:?}"
@@ -3594,7 +3595,10 @@ mod tests {
             matches!(out, FetchOutcome::Done(_)),
             "收场不是 Done：{out:?}"
         );
-        assert_eq!(total, RUNTIME_ZIP_BYTES, "进度分母该是六卷之和 {RUNTIME_ZIP_BYTES}，实际 {total}");
+        assert_eq!(
+            total, RUNTIME_ZIP_BYTES,
+            "进度分母该是六卷之和 {RUNTIME_ZIP_BYTES}，实际 {total}"
+        );
         assert!(dl_ticks > 50, "下载回调只有 {dl_ticks} 次，像是没真下");
         assert!(
             ex_ticks > 0,

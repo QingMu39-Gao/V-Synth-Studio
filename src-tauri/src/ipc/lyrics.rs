@@ -91,10 +91,10 @@ fn phone_of(body: &Value) -> Result<String, String> {
         .chars()
         .filter(|c| !matches!(c, ' ' | '-' | '+' | '(' | ')'))
         .collect();
-    if let Some(rest) = digits.strip_prefix("86") {
-        if rest.len() >= 11 {
-            digits = rest.to_string();
-        }
+    if let Some(rest) = digits.strip_prefix("86")
+        && rest.len() >= 11
+    {
+        digits = rest.to_string();
     }
     if !crate::lyrics::phone_ok(&digits) {
         return Err("手机号格式错误：需要 11 位数字且以 1 开头（不用填 +86）".into());

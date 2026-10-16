@@ -163,10 +163,10 @@ where
         if let Ok(mut k) = DL_KIND.lock() {
             *k = None;
         }
-        if let Err(e) = res {
-            if let Ok(mut slot) = DL_ERROR.lock() {
-                *slot = Some(e);
-            }
+        if let Err(e) = res
+            && let Ok(mut slot) = DL_ERROR.lock()
+        {
+            *slot = Some(e);
         }
     });
 
@@ -405,10 +405,10 @@ async fn run_job(
     // 收工时把「正在跑」这一格腾出来，**而且要认 id**：取消之后用户可能已经
     // 提交了下一次任务，这时槽里装的是后来那个 —— 无条件清空会把新任务
     // 从「忙」变成「空闲」，界面就允许再提交一个了。
-    if let Ok(mut slot) = RUNNING.lock() {
-        if slot.as_ref().map(|(id, _)| id.as_str()) == Some(job_id.as_str()) {
-            *slot = None;
-        }
+    if let Ok(mut slot) = RUNNING.lock()
+        && slot.as_ref().map(|(id, _)| id.as_str()) == Some(job_id.as_str())
+    {
+        *slot = None;
     }
     match result {
         Ok(notes) => finish_job(&st, &job_id, &format!("完成：{notes} 个音符")),
@@ -622,13 +622,12 @@ pub async fn midi_cancel(st: super::St<'_>, id: String) -> Cmd {
     // 只读地看一眼槽里是谁 —— 不去改它：**这里不该把槽清空**，清空是
     // `run_job` 收工时的活（它要认 id）。否则任务还在跑，`status.running`
     // 就已经是空的，界面会放开「再提交一个」。
-    if let Ok(slot) = RUNNING.lock() {
-        if let Some((cur, cancel)) = slot.as_ref() {
-            if *cur == id {
-                cancel.stop();
-                hit = true;
-            }
-        }
+    if let Ok(slot) = RUNNING.lock()
+        && let Some((cur, cancel)) = slot.as_ref()
+        && *cur == id
+    {
+        cancel.stop();
+        hit = true;
     }
     // 旗标立了，真正的收场在推理那一侧（它在每个切片边界看一眼）。
     // 这里**不改任务状态** —— 由 `run_job` 统一写，免得两边打架。

@@ -213,12 +213,12 @@ pub fn cuda_info(dll: Option<&Path>) -> CudaInfo {
             detail: "macOS 上没有 CUDA，显卡推理用不了；CPU 推理正常".into(),
         };
     }
-    if let Ok(cache) = CUDA_PROBE.lock() {
-        if let Some((at, info)) = cache.as_ref() {
-            let fresh = info.available || at.elapsed() < FAILED_TTL;
-            if fresh {
-                return info.clone();
-            }
+    if let Ok(cache) = CUDA_PROBE.lock()
+        && let Some((at, info)) = cache.as_ref()
+    {
+        let fresh = info.available || at.elapsed() < FAILED_TTL;
+        if fresh {
+            return info.clone();
         }
     }
     let info = probe_cuda(dll);
@@ -277,10 +277,9 @@ fn probe_cuda(dll: Option<&Path>) -> CudaInfo {
             "cudnn64_9.dll",
         ] {
             if let Some(d) = find_dylibs_dir(dll, &crate::tools::dll(name.trim_end_matches(".dll")))
+                && !out.contains(&d)
             {
-                if !out.contains(&d) {
-                    out.push(d);
-                }
+                out.push(d);
             }
         }
         out
@@ -539,11 +538,11 @@ pub fn data_dir(writable: &Path) -> PathBuf {
 /// 与 `svsep.rs::release_base` 认 `VSS_MODULES_BASE` 同一套规矩 —— 发布版不认。
 pub fn runtime_dll(root: &Path, writable: &Path) -> Option<PathBuf> {
     #[cfg(debug_assertions)]
-    if let Ok(p) = std::env::var("VSS_MIDI_DLL") {
-        if !p.trim().is_empty() {
-            let p = PathBuf::from(p);
-            return p.is_file().then_some(p);
-        }
+    if let Ok(p) = std::env::var("VSS_MIDI_DLL")
+        && !p.trim().is_empty()
+    {
+        let p = PathBuf::from(p);
+        return p.is_file().then_some(p);
     }
     let name = crate::tools::dll("onnxruntime");
     let existing: Vec<PathBuf> = crate::artifact::dirs_of(root, writable, "midi.ort")
@@ -830,11 +829,11 @@ pub fn delete_deps(root: &Path, writable: &Path) -> (u64, u64, String) {
             let p = ent.path();
             if p.is_dir() {
                 rm_tree(&p, &mut files, &mut bytes);
-            } else if let Ok(m) = p.metadata() {
-                if std::fs::remove_file(&p).is_ok() {
-                    files += 1;
-                    bytes += m.len();
-                }
+            } else if let Ok(m) = p.metadata()
+                && std::fs::remove_file(&p).is_ok()
+            {
+                files += 1;
+                bytes += m.len();
             }
         }
     }

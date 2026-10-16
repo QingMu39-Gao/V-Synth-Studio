@@ -7,17 +7,20 @@ use std::path::Path;
 
 use serde_json::{Value, json};
 
-/// 转换前可选的加工算子。
-/// 顺序即界面上的渲染顺序。
-/// 注意：不能用 const —— `json!` 要跑 serde 的序列化，不是 const fn。
-fn ops_table() -> Vec<(
+/// 一行加工算子：`(id, 标签, 控件类型, 单位, 默认值, 说明)`。
+type OpsRow = (
     &'static str,
     &'static str,
     &'static str,
     Option<&'static str>,
     Value,
     &'static str,
-)> {
+);
+
+/// 转换前可选的加工算子。
+/// 顺序即界面上的渲染顺序。
+/// 注意：不能用 const —— `json!` 要跑 serde 的序列化，不是 const fn。
+fn ops_table() -> Vec<OpsRow> {
     vec![
         // (id, 标签, 控件类型, 单位, 默认值, 说明)
         (

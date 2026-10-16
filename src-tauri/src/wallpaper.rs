@@ -134,18 +134,18 @@ fn read_item(dir: &Path, source: &str) -> Option<Value> {
         .is_relative()
         .then(|| dir.join(file))
         .filter(|p| p.is_file())
-        .map(&abs);
+        .map(abs);
     let pkg = SCENE_PKG_CANDIDATES
         .iter()
         .map(|c| dir.join(c))
         .find(|p| p.is_file())
-        .map(&abs);
+        .map(abs);
     let preview = proj
         .get("preview")
         .and_then(Value::as_str)
         .map(|p| dir.join(p))
         .filter(|p| p.is_file())
-        .map(&abs);
+        .map(abs);
     Some(json!({
         "id": id,
         "title": proj.get("title").and_then(Value::as_str).unwrap_or("(无标题)"),
@@ -201,12 +201,12 @@ pub fn scan(configured_we_dir: &str) -> Value {
     let current_dir = current_file
         .as_ref()
         .and_then(|f| f.parent().map(Path::to_path_buf));
-    if let Some(d) = current_dir.as_ref() {
-        if !dirs.iter().any(|(p, _)| p == d) {
-            /* 本地工程（`myprojects` 之外的地方）或者订阅刚被删：条目里没有它，
-            但用户此刻正用着 —— 单独补一条，别让「跟随当前壁纸」无从下手。 */
-            dirs.push((d.clone(), "local"));
-        }
+    if let Some(d) = current_dir.as_ref()
+        && !dirs.iter().any(|(p, _)| p == d)
+    {
+        /* 本地工程（`myprojects` 之外的地方）或者订阅刚被删：条目里没有它，
+        但用户此刻正用着 —— 单独补一条，别让「跟随当前壁纸」无从下手。 */
+        dirs.push((d.clone(), "local"));
     }
 
     let mut items: Vec<Value> = Vec::new();

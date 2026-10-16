@@ -472,10 +472,9 @@ pub async fn download(
     }
 
     /* 上面那个循环是被 stdout 的 EOF 打断的 —— 正常情况下进程这时已经退了，`wait`
-       立刻返回。卡住只可能是异常（关了输出却不退），而 `wait()` 没有超时的话这条
-       任务会永远停在 running，界面上既没有进度也没有失败。 */
-    let status = match tokio::time::timeout(std::time::Duration::from_secs(120), child.wait())
-        .await
+    立刻返回。卡住只可能是异常（关了输出却不退），而 `wait()` 没有超时的话这条
+    任务会永远停在 running，界面上既没有进度也没有失败。 */
+    let status = match tokio::time::timeout(std::time::Duration::from_secs(120), child.wait()).await
     {
         Ok(r) => r.map_err(|e| e.to_string())?,
         Err(_) => {
@@ -523,10 +522,10 @@ fn handle_line(line: &str, on_progress: &OnDlProgress, files: &mut Vec<String>) 
         return;
     }
     if t.starts_with("{\"file\"") {
-        if let Ok(o) = serde_json::from_str::<Value>(t) {
-            if let Some(f) = o.get("file").and_then(|v| v.as_str()) {
-                files.push(f.to_string());
-            }
+        if let Ok(o) = serde_json::from_str::<Value>(t)
+            && let Some(f) = o.get("file").and_then(|v| v.as_str())
+        {
+            files.push(f.to_string());
         }
         return;
     }

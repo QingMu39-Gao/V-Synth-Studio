@@ -464,11 +464,9 @@ async fn annotate_playable(
             continue;
         };
         obj.insert("playable".to_string(), Value::Bool(playable));
-        if playable {
-            if let Some(x) = found {
-                obj.insert("maxLevel".to_string(), json!(s(x, "/level")));
-                obj.insert("maxBr".to_string(), json!(n(x, "/br")));
-            }
+        if playable && let Some(x) = found {
+            obj.insert("maxLevel".to_string(), json!(s(x, "/level")));
+            obj.insert("maxBr".to_string(), json!(n(x, "/br")));
         }
     }
     hits
@@ -545,16 +543,17 @@ pub fn parse_link(input: &str) -> Result<(String, String), String> {
     }
 
     // 1. `?id=<数字>` / `&id=<数字>`
-    if let Some(id) = param_value(raw, "id") {
-        if !id.is_empty() && id.chars().all(|c| c.is_ascii_digit()) {
-            return Ok(("netease".to_string(), id));
-        }
+    if let Some(id) = param_value(raw, "id")
+        && !id.is_empty()
+        && id.chars().all(|c| c.is_ascii_digit())
+    {
+        return Ok(("netease".to_string(), id));
     }
     // 2. `/song/<数字>` 这种路径
-    if let Some(id) = segment_after(raw, "song/") {
-        if id.chars().all(|c| c.is_ascii_digit()) {
-            return Ok(("netease".to_string(), id));
-        }
+    if let Some(id) = segment_after(raw, "song/")
+        && id.chars().all(|c| c.is_ascii_digit())
+    {
+        return Ok(("netease".to_string(), id));
     }
     // 3. 纯数字 → 歌曲 id
     if raw.chars().all(|c| c.is_ascii_digit()) {
@@ -1050,10 +1049,10 @@ fn cookie_expiry_from_set_cookie(headers: &reqwest::header::HeaderMap) -> i64 {
         }
         for attr in parts {
             let (key, val) = attr.split_once('=').unwrap_or(("", ""));
-            if key.trim().eq_ignore_ascii_case("max-age") {
-                if let Ok(secs) = val.trim().parse::<i64>() {
-                    return now_secs() + secs;
-                }
+            if key.trim().eq_ignore_ascii_case("max-age")
+                && let Ok(secs) = val.trim().parse::<i64>()
+            {
+                return now_secs() + secs;
             }
         }
     }
@@ -1912,7 +1911,7 @@ fn dual_track_bilingual(text: &str) -> Option<(String, String)> {
         })
         .collect();
 
-    if timed.len() < 4 || timed.len() % 2 != 0 {
+    if timed.len() < 4 || !timed.len().is_multiple_of(2) {
         return None;
     }
     let (first, second) = timed.split_at(timed.len() / 2);

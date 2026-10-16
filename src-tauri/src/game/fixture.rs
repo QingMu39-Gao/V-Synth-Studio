@@ -99,14 +99,16 @@ impl Golden {
                 "u8" => Tensor::U8(ArrayD::from_shape_vec(dim, raw).map_err(to_io)?),
                 "f32" => {
                     let v: Vec<f32> = raw
-                        .chunks_exact(4)
+                        .as_chunks::<4>()
+                        .0
+                        .iter()
                         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                         .collect();
                     Tensor::F32(ArrayD::from_shape_vec(dim, v).map_err(to_io)?)
                 }
                 "i64" => {
                     let mut v = Vec::with_capacity(raw.len() / 8);
-                    for c in raw.chunks_exact(8) {
+                    for c in raw.as_chunks::<8>().0 {
                         v.push(i64::from_le_bytes([
                             c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7],
                         ]));
@@ -162,7 +164,9 @@ pub fn read_f32_bin(path: impl AsRef<Path>) -> io::Result<Vec<f32>> {
         ));
     }
     Ok(raw
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect())
 }
@@ -235,7 +239,7 @@ pub fn read_wav_mono_f32(path: &Path) -> io::Result<Vec<f32>> {
 
 /// Flatten a `[steps, 1, T]` (or `[1, steps*T]`) float buffer into per-step rows.
 pub fn split_draws(raw: &[f32], n_steps: usize) -> Option<Vec<Vec<f32>>> {
-    if n_steps == 0 || raw.len() % n_steps != 0 {
+    if n_steps == 0 || !raw.len().is_multiple_of(n_steps) {
         return None;
     }
     let per = raw.len() / n_steps;
@@ -297,7 +301,9 @@ pub fn read_npy_f32(path: impl AsRef<Path>) -> io::Result<ArrayD<f32>> {
         .collect();
     let data = &raw[hstart + hlen..];
     let v: Vec<f32> = data
-        .chunks_exact(4)
+        .as_chunks::<4>()
+        .0
+        .iter()
         .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
         .collect();
     let want: usize = dims.iter().product();

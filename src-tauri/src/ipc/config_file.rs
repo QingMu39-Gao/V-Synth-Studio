@@ -5,6 +5,7 @@
 //!   * **绿色版**：`<根>/data/config.json`（整个目录可以拷着走）
 //!   * **安装版**：`%APPDATA%\com.qingmu.vocalworkstation\config.json`
 //!     （Program Files 只读，写那儿要管理员权限）
+//!
 //! 判据是「能不能写」，见 `lib.rs::resolve_paths`。
 
 use std::path::{Path, PathBuf};

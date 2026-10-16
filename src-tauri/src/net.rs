@@ -218,7 +218,7 @@ pub async fn download_to_file(
     };
 
     let part = PathBuf::from(format!("{}.part", dest.to_string_lossy()));
-    let ctl = crate::download::Control::cancel_only(|| cancel());
+    let ctl = crate::download::Control::cancel_only(cancel);
     let req = crate::download::Request {
         url,
         label: "", // bili 的媒体下载在界面上有别的说法，错误照旧不点名

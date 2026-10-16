@@ -53,11 +53,9 @@ pub fn set_job(st: &Arc<super::AppState>, id: &str, patch: Value) {
             // Terminal states are immutable. Otherwise a worker can finish after Cancel
             // and overwrite the canceled state with done or error.
             let terminal = is_terminal(job);
-            if !terminal {
-                if let (Some(dst), Some(src)) = (job.as_object_mut(), patch.as_object()) {
-                    for (k, v) in src {
-                        dst.insert(k.clone(), v.clone());
-                    }
+            if !terminal && let (Some(dst), Some(src)) = (job.as_object_mut(), patch.as_object()) {
+                for (k, v) in src {
+                    dst.insert(k.clone(), v.clone());
                 }
             }
             job.clone()
@@ -193,11 +191,11 @@ pub async fn cancel_job(st: super::St<'_>, id: String) -> Cmd {
             .get_mut(&id)
             .ok_or_else(|| "任务不存在".to_string())?;
         let status = job.get("status").and_then(|v| v.as_str()).unwrap_or("");
-        if !matches!(status, "done" | "error" | "canceled") {
-            if let Some(m) = job.as_object_mut() {
-                m.insert("status".into(), json!("canceled"));
-                m.insert("message".into(), json!("已取消"));
-            }
+        if !matches!(status, "done" | "error" | "canceled")
+            && let Some(m) = job.as_object_mut()
+        {
+            m.insert("status".into(), json!("canceled"));
+            m.insert("message".into(), json!("已取消"));
         }
         (job.clone(), guard.tx.clone())
     };

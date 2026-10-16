@@ -258,12 +258,11 @@ impl Bili {
     }
 
     async fn get_wbi_keys(&self) -> Result<(String, String), String> {
-        if let Ok(cache) = self.wbi.lock() {
-            if let Some(k) = cache.as_ref() {
-                if now_secs().saturating_sub(k.at) < 3600 {
-                    return Ok((k.img_key.clone(), k.sub_key.clone()));
-                }
-            }
+        if let Ok(cache) = self.wbi.lock()
+            && let Some(k) = cache.as_ref()
+            && now_secs().saturating_sub(k.at) < 3600
+        {
+            return Ok((k.img_key.clone(), k.sub_key.clone()));
         }
         let h = self.headers();
         let json = net::fetch_json(
@@ -1337,17 +1336,26 @@ mod tests {
     #[test]
     fn link_parsing_survives_multibyte_chars_before_the_match() {
         assert_eq!(
-            digits_after("https://bilibili.com/İ/bangumi/play/ep7788", "/bangumi/play/ep"),
+            digits_after(
+                "https://bilibili.com/İ/bangumi/play/ep7788",
+                "/bangumi/play/ep"
+            ),
             Some(7788)
         );
         assert_eq!(param_number("https://bilibili.com/İ?P=3", "p"), Some(3));
         // 大小写不敏感的语义不能因为换实现而丢掉
         assert_eq!(
-            digits_after("https://www.BILIBILI.com/bangumi/play/EP42", "/bangumi/play/ep"),
+            digits_after(
+                "https://www.BILIBILI.com/bangumi/play/EP42",
+                "/bangumi/play/ep"
+            ),
             Some(42)
         );
         assert_eq!(
-            digits_after("https://bilibili.com/İ/bangumi/play/xyz", "/bangumi/play/ep"),
+            digits_after(
+                "https://bilibili.com/İ/bangumi/play/xyz",
+                "/bangumi/play/ep"
+            ),
             None
         );
     }

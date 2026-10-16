@@ -622,16 +622,16 @@ pub fn locate(ctx: &Ctx<'_>, a: &Artifact) -> Option<Located> {
     }
 
     // 随包的都不齐 → 试系统 PATH
-    if !a.path_names.is_empty() {
-        if let Some((_, dir)) = path_candidate(a) {
-            // ⚠️ 这里**不**对 PATH 命中做 `ready_in` 校验：系统装的 ffmpeg 不在
-            //    `tools/` 那套布局里，校验必然失败，于是「装了 ffmpeg 却报没装」。
-            //    PATH 里找到就算数。
-            return Some(Located {
-                dir,
-                source: "系统 PATH",
-            });
-        }
+    if !a.path_names.is_empty()
+        && let Some((_, dir)) = path_candidate(a)
+    {
+        // ⚠️ 这里**不**对 PATH 命中做 `ready_in` 校验：系统装的 ffmpeg 不在
+        //    `tools/` 那套布局里，校验必然失败，于是「装了 ffmpeg 却报没装」。
+        //    PATH 里找到就算数。
+        return Some(Located {
+            dir,
+            source: "系统 PATH",
+        });
     }
     None
 }
@@ -641,7 +641,7 @@ pub fn locate(ctx: &Ctx<'_>, a: &Artifact) -> Option<Located> {
 /// 为什么需要这个「不齐也返回」的版本：下载之前要先知道往哪儿落、状态里要显示
 /// 「还没装、装到哪个目录」。
 pub fn locate_or_default(ctx: &Ctx<'_>, a: &Artifact) -> PathBuf {
-    match locate(&ctx, a) {
+    match locate(ctx, a) {
         Some(l) => l.dir,
         None => candidates(ctx, a)
             .into_iter()
@@ -668,12 +668,12 @@ pub fn entry_path(dir: &Path, f: &FileNeed) -> PathBuf {
 
 /// 还缺哪些（按 [`locate_or_default`] 那一层判）。
 pub fn missing(ctx: &Ctx<'_>, a: &Artifact) -> Vec<&'static str> {
-    missing_in(&locate_or_default(&ctx, a), a)
+    missing_in(&locate_or_default(ctx, a), a)
 }
 
 /// 齐了吗（按 [`locate_or_default`] 那一层判）。
 pub fn ready(ctx: &Ctx<'_>, a: &Artifact) -> bool {
-    ready_in(&locate_or_default(&ctx, a), a)
+    ready_in(&locate_or_default(ctx, a), a)
 }
 
 /* ══════════════════════════ 便捷入口（按 id 直呼）══════════════════════════
@@ -748,8 +748,8 @@ pub fn report(ctx: &Ctx<'_>, id: &str) -> Value {
     let Some(a) = get(id) else {
         return json!({ "error": format!("没有这个产物：{id}") });
     };
-    let dir = locate_or_default(&ctx, a);
-    let located = locate(&ctx, a);
+    let dir = locate_or_default(ctx, a);
+    let located = locate(ctx, a);
     let items: Vec<Value> = entries(&dir, a)
         .into_iter()
         .map(|(f, st, n)| {

@@ -258,17 +258,17 @@ fn default_from_prompt(prompt: &str) -> Option<String> {
 /// 这一题该答什么：先看用户有没有对得上关键词的选项，否则照抄默认值
 fn answer_for(prompt: &str, options: &Value) -> String {
     for rule in RULES {
-        if prompt.contains(rule.kw) {
-            if let Some(v) = options.get(rule.key) {
-                let s = match v {
-                    Value::Bool(true) => "y".to_string(),
-                    Value::Bool(false) => "n".to_string(),
-                    Value::String(s) => s.clone(),
-                    other => other.to_string(),
-                };
-                if !s.is_empty() {
-                    return s;
-                }
+        if prompt.contains(rule.kw)
+            && let Some(v) = options.get(rule.key)
+        {
+            let s = match v {
+                Value::Bool(true) => "y".to_string(),
+                Value::Bool(false) => "n".to_string(),
+                Value::String(s) => s.clone(),
+                other => other.to_string(),
+            };
+            if !s.is_empty() {
+                return s;
             }
         }
     }
@@ -820,10 +820,11 @@ pub fn summarize(project: &Value) -> Value {
                 min_key = min_key.min(k);
                 max_key = max_key.max(k);
             }
-            if let Some(l) = n.get("lyric").and_then(|v| v.as_str()) {
-                if !l.is_empty() && lyrics.len() < 400 {
-                    lyrics.push(l.to_string());
-                }
+            if let Some(l) = n.get("lyric").and_then(|v| v.as_str())
+                && !l.is_empty()
+                && lyrics.len() < 400
+            {
+                lyrics.push(l.to_string());
             }
         }
 
