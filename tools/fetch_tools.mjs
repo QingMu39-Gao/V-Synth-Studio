@@ -368,6 +368,8 @@ const PART_TREES = {ffmpeg: 'ffmpeg', ytdlp: null, libresvip: 'libresvip', onnxr
 /** 没钉摘要的件，以及**为什么**不钉 —— 补件时逐条打出来。 */
 export const PIN_EXEMPT = {
   ffmpeg: '上游是滚动发布（BtbN 的 latest），按日期钉标签又会被上游清理，所以这件钉不住',
+  onnxruntime:
+    '归档里那份与上游 v1.23.2 不是同一份字节（15551032 / 14186016 字节，文件版本号却相同），先弄清该用哪份再钉',
 }
 
 /** 这一件补上了没有（摘要只能对已经补上的件算）。 */
