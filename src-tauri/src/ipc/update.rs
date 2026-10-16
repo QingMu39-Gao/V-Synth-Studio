@@ -56,29 +56,41 @@ fn safe_file_name(name: &str) -> Result<String, String> {
 
 /// 下载新版本安装包。立刻回 `{jobId}`，进度走 `job_watch`。
 ///
-/// `args` 就是 `update_check` 回包里的 `installer`（`{name, size, url, sumsUrl}`）原样
+/// `args` 就是检查更新回包里的 `installer`（`{name, size, url, sha256, sumsUrl}`）原样
 /// 传回来，另加可选的 `version`（只用于任务标题）。
 ///
 /// ## 地址顺序
 ///
-/// **自建源 → 规范链接**（`crate::update::installer_candidates`）。第二档交给下载引擎，
+/// **自建源前缀 → 规范链接**（`crate::update::installer_candidates`）。第二档交给下载引擎，
 /// 它内部会经 `ghmirror` 挑一面镜像（非 GitHub 链接原样返回）—— 与扩展包下载同一条路，
-/// 不再在命令层另写一套「挑镜像」。
+/// 不再在命令层另写一套「挑镜像」。对象存储的地址不是 GitHub 链接，所以原样直取。
 ///
-/// ## 校验
+/// ## 校验（两条来源，优先用接口给的那条）
 ///
-/// `sumsUrl` 是这次发布的 `SHA256SUMS-*.txt`（CI 生成，见 `build-installers.yml`）。
-/// ⚠️ **清单与安装包走不同的路**：清单只从自建源/规范链接取（不过镜像），而安装包可能
-/// 从镜像下 —— 于是「镜像把安装包换成别的」会被摘要当场抓住，这正是要校验的理由。
+/// 1. `sha256`：自建接口在 `downloads.<平台>.sha256` 里直接给 —— 规格要求**必须**校验，
+///    不匹配就删掉文件并报错；
+/// 2. `sumsUrl`：GitHub 那条路没有内联摘要，改用发布里的 `SHA256SUMS-*.txt`
+///    （CI 生成，见 `build-installers.yml`）。⚠️ **清单与安装包走不同的路**：清单只从
+///    自建源/规范链接取（不过镜像），而安装包可能从镜像下 —— 于是「镜像把安装包换成
+///    别的」会被摘要当场抓住，这正是要校验的理由。
 ///
-/// 有清单就**必须核对通过**（对不上就删掉下好的文件并报错）；**没有清单不算失败**
-/// （老发布没有这个文件），但任务日志与回包都会写明「这次没能核对完整性」。
+/// 两条都没有时**不算失败**（老发布），但任务日志与回包都会写明「这次没能核对完整性」。
 #[tauri::command]
 pub async fn update_download(st: super::St<'_>, args: Value) -> Cmd {
     let url = args["url"].as_str().unwrap_or("").trim().to_string();
     let name = safe_file_name(args["name"].as_str().unwrap_or(""))?;
     let size = args["size"].as_u64().unwrap_or(0);
     let sums_url = args["sumsUrl"].as_str().unwrap_or("").trim().to_string();
+    /* 接口给的那条摘要：长度与字符集都校验一遍 —— 一个写坏的摘要会让每一次下载都
+    「校验不通过」，那种红比不校验更糟（用户会去装那个被删掉的文件）。
+    写坏就当没给（退回清单那条路，或按「没核对完整性」处理）。 */
+    let sha256 = args["sha256"]
+        .as_str()
+        .unwrap_or("")
+        .trim()
+        .to_ascii_lowercase();
+    let sha256 =
+        (sha256.len() == 64 && sha256.chars().all(|c| c.is_ascii_hexdigit())).then_some(sha256);
     if !allowed_url(&url) {
         return Err(format!("下载地址不可用（只收 https）：{url}"));
     }
@@ -110,7 +122,7 @@ pub async fn update_download(st: super::St<'_>, args: Value) -> Cmd {
     let st2 = Arc::clone(&st_arc);
     let job2 = job_id.clone();
     tokio::spawn(async move {
-        match run_download(&st2, &job2, &url, &dest, size, &sums_url).await {
+        match run_download(&st2, &job2, &url, &dest, size, &sums_url, sha256.as_deref()).await {
             Ok((bytes, verified, sums_from)) => super::jobs::finish_with_result(
                 &st2,
                 &job2,
@@ -141,7 +153,7 @@ pub async fn update_download(st: super::St<'_>, args: Value) -> Cmd {
 
 const CANCELED: &str = "已取消";
 
-/// 真正的下载。回 `(字节数, 核对过没有, 清单是从哪取到的)`。
+/// 真正的下载。回 `(字节数, 核对过没有, 摘要/清单是从哪来的)`。
 async fn run_download(
     st: &Arc<super::AppState>,
     job: &str,
@@ -149,26 +161,27 @@ async fn run_download(
     dest: &Path,
     size: u64,
     sums_url: &str,
+    want: Option<&str>,
 ) -> Result<(u64, bool, String), String> {
-    // 清单先取（几百字节）：取不到就早点说「这次核对不了」，而不是等下完 150 MB。
-    let sums = fetch_sums(st, job, sums_url).await;
+    /* 摘要/清单先备好（几百字节）：取不到就早点说「这次核对不了」，而不是等下完 150 MB。
+    ⚠️ 接口直接给了摘要时**不去取清单** —— 那条路的摘要就是权威，不必再信任另一条链路。 */
+    let sums = if want.is_some() {
+        None
+    } else {
+        fetch_sums(st, job, sums_url).await
+    };
 
     /* 盘上已经有一份同样大小的安装包就不重下（150 MB 重来一遍纯属浪费）。
     ⚠️ 只按字节数认出「像是同一份」，所以**必须再核对一次**；核不过就把这份删掉、
     正常往下走去重下 —— 那说明旧的那份不是这次的包（或已经坏了）。 */
     if size > 0 && std::fs::metadata(dest).map(|m| m.len()).unwrap_or(0) == size {
         super::jobs::log_job(st, job, "盘上已经有一份同样大小的安装包，直接用");
-        match verify(st, job, dest, sums.as_ref()) {
+        match verify(st, job, dest, sums.as_ref(), want) {
             Ok((verified, from)) => return Ok((size, verified, from)),
             Err(e) => super::jobs::log_job(st, job, &format!("{e}；重下一份")),
         }
     }
 
-    let file_name = dest
-        .file_name()
-        .and_then(|s| s.to_str())
-        .unwrap_or("")
-        .to_string();
     let candidates = crate::update::installer_candidates(url);
     let mut tried: Vec<String> = Vec::new();
     let mut bytes = 0u64;
@@ -189,8 +202,7 @@ async fn run_download(
         return Err(format!("下载失败（试过 {} 个地址）", tried.len()));
     }
 
-    let (verified, from) = verify(st, job, dest, sums.as_ref())?;
-    let _ = file_name;
+    let (verified, from) = verify(st, job, dest, sums.as_ref(), want)?;
     Ok((bytes, verified, from))
 }
 
@@ -285,12 +297,31 @@ fn verify(
     job: &str,
     dest: &Path,
     sums: Option<&(String, String)>,
+    want: Option<&str>,
 ) -> Result<(bool, String), String> {
+    /* ① **接口直接给的摘要是权威**（自建接口的形状）：不必去取清单，也就不必再信任
+    另一条链路。规格要求它必须校验，不匹配就删掉并报错。 */
+    if let Some(hex) = want {
+        let got = sha256_file(dest)?;
+        if got != hex {
+            let _ = std::fs::remove_file(dest);
+            return Err(format!(
+                "校验不通过：安装包的 SHA-256 是 {got}，而接口里写的是 {hex}。已删除下好的文件，别装它。"
+            ));
+        }
+        super::jobs::log_job(
+            st,
+            job,
+            &format!("SHA-256 核对通过（{}…）", hex.get(..16).unwrap_or(hex)),
+        );
+        return Ok((true, "接口里的 sha256".to_string()));
+    }
+
     let Some((text, from)) = sums else {
         super::jobs::log_job(
             st,
             job,
-            "这次没有校验清单（SHA256SUMS），下到的文件没能核对完整性",
+            "这次既没有接口给的 sha256，也没有校验清单（SHA256SUMS），下到的文件没能核对完整性",
         );
         return Ok((false, String::new()));
     };

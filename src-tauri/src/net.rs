@@ -66,6 +66,74 @@ struct FetchError {
     status: u16,
 }
 
+/// 给 URL 加一个「绕缓存」的时间戳参数（已有查询串时用 `&`）。
+///
+/// 服务端本来就发 `Cache-Control: no-store`，这一步是防中间层（CDN / 企业代理 /
+/// 本机缓存）留一份陈旧副本 —— 版本号与公告只要旧一版，表现就是「明明发了新公告却看不到」。
+pub fn cache_busted(url: &str, secs: u64) -> String {
+    let sep = if url.contains('?') { '&' } else { '?' };
+    format!("{url}{sep}t={secs}")
+}
+
+/// 现在这一刻的纪元秒（取不到回 0）。
+pub fn now_epoch() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// 取一份**公开的只读 JSON**（自建更新 / 公告接口用）：**只请求一次、不重试**。
+///
+/// 判据按顺序三条，缺一条都当失败：HTTP 2xx → `Content-Type` 含 `json` → 能解析出 JSON。
+///
+/// ⚠️ 中间那条不是形式主义：Cloudflare 的人机验证回的是 **200 + 一页 HTML**，只看状态码
+/// 就会把 HTML 当 JSON 解析，于是「取到了公告」变成一条乱码公告。宁可当失败（调用方静默）。
+///
+/// ⚠️ 这两条自建接口的 UA 由调用方给死（`V-Synth-Studio/<版本>`）：留空或用一个库的默认
+/// UA 容易被 WAF 拦。共享客户端的浏览器 UA 只给别的请求用。
+pub async fn fetch_public_json(url: &str, ua: &str, timeout: Duration) -> Result<Value, String> {
+    let target = cache_busted(url, now_epoch());
+    let res = client()
+        .get(&target)
+        .header(reqwest::header::USER_AGENT, ua)
+        .header(reqwest::header::ACCEPT, "application/json")
+        .timeout(timeout)
+        .send()
+        .await
+        .map_err(|e| {
+            if e.is_timeout() {
+                format!("超时（{} 秒）", timeout.as_secs())
+            } else {
+                let mut msg = e.to_string();
+                let mut cur = std::error::Error::source(&e);
+                while let Some(s) = cur {
+                    msg.push_str(" ← ");
+                    msg.push_str(&s.to_string());
+                    cur = s.source();
+                }
+                msg
+            }
+        })?;
+
+    let status = res.status().as_u16();
+    if !(200..300).contains(&status) {
+        return Err(format!("HTTP {status}"));
+    }
+    let ctype = res
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let text = res.text().await.unwrap_or_default();
+    if !ctype.contains("json") {
+        let head: String = text.chars().take(120).collect();
+        return Err(format!("回的不是 JSON（Content-Type: {ctype}）：{head}"));
+    }
+    serde_json::from_str(&text).map_err(|e| format!("解析失败：{e}"))
+}
+
 async fn try_fetch_json(
     url: &str,
     hdrs: HeaderMap,

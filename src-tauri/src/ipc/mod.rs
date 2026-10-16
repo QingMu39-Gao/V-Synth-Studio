@@ -17,6 +17,7 @@
 //! `{ok:true}` 信封**。
 
 pub mod announce;
+pub mod app;
 pub mod bili;
 pub mod config;
 pub mod config_file;

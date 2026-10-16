@@ -289,6 +289,8 @@ pub fn run() {
             ipc::update::update_download,
             /* ── 公告 ── */
             ipc::announce::announce_list,
+            /* ── 进程级 ── */
+            ipc::app::app_quit,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri 应用构建失败")

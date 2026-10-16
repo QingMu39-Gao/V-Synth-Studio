@@ -36,6 +36,26 @@ use serde_json::{Value, json};
 /// 上游仓库的规范接口地址。
 const LATEST_API: &str = "https://api.github.com/repos/QingMu39-Gao/V-Synth-Studio/releases/latest";
 
+/// **自建更新接口**（第一优先）。
+///
+/// ⚠️ 只写域名、不写 IP：源站只允许 Cloudflare 回源，直连 IP 会被网络层丢弃
+/// （表现为超时，不是拒绝）。证书是公共可信证书，普通客户端直接信任，不需要关校验。
+/// 换地址只改这一行；本地 mock 用环境变量 `VSS_UPDATE_URL` 覆盖。
+const UPDATE_URL: &str = "https://admin1.qingmu39.top/api/version.json";
+
+/// 自建接口的等待上限。它离用户最近、又只有一份几百字节的 JSON —— 失败就该早点往下走
+/// （后面还有 GitHub 直连 6 秒、两面镜像各 8 秒）。规格要求 5~10 秒，取 6。
+const UPDATE_TIMEOUT: Duration = Duration::from_secs(6);
+
+/// 自建接口不提供「发布页」，而**强制更新时不能没有退路**（对象存储挂了、下载失败了，
+/// 用户至少得有个地方自己拿安装包）。指向本项目的 release 页。
+const RELEASES_PAGE: &str = "https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest";
+
+/// 自建接口的 UA：给一个明确的值（留空或库里那个默认 UA 容易被 WAF 拦）。
+fn self_host_ua() -> String {
+    format!("V-Synth-Studio/{}", current_version())
+}
+
 /// 直连那一次的等待上限。连接被墙时表现为「连上了但不给数据」，所以要一个**短的**
 /// 总超时：镜像是在它失败之后才试的，这里多等一秒就是用户多等一秒。
 const DIRECT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -332,7 +352,24 @@ fn failure(status: u16, body: &str) -> Value {
 pub async fn check() -> Result<Value, String> {
     let mut tried: Vec<String> = Vec::new();
 
-    /* ① 自建源。部署它就是为了让用户少走一趟 GitHub，所以它排在最前面。
+    /* ① 自建更新接口（第一优先）。它是**我们自己的 schema**（见 `native_reply`），
+    与 GitHub 那条回包不同；取不到、不是 JSON、字段缺失都只当「这一档没答上来」
+    继续往下 —— 规格要求网络失败静默降级，不能因为一个字段把人锁在外面。 */
+    if let Some(url) = native_url() {
+        match crate::net::fetch_public_json(&url, &self_host_ua(), UPDATE_TIMEOUT).await {
+            Ok(v) => match native_reply(&v, &url) {
+                Some(reply) => {
+                    crate::log_line(&format!("检查更新：自建接口答了（{url}）"));
+                    return Ok(reply);
+                }
+                None => crate::log_line("检查更新：自建接口的回包里没有可用的 version，忽略这一档"),
+            },
+            Err(e) => crate::log_line(&format!("检查更新：自建接口没答上来（{e}），继续往下")),
+        }
+        tried.push("自建更新接口".to_string());
+    }
+
+    /* ② 自建镜像前缀（`SELF_HOST_BASES`，一般留空）。部署它就是为了让用户少走一趟 GitHub。
     ⚠️ 这一档**任何**非 200 都当「没答上来」继续往下：服务器可能正在搬家（nginx 回
     502）、路径可能配错（回 404）—— 那些都不是 GitHub 的答案，拿它当结论会把
     「上游还没发过 Release」这种话错报给用户。 */
@@ -351,7 +388,7 @@ pub async fn check() -> Result<Value, String> {
         }
     }
 
-    // ② 直连。
+    // ③ 直连。
     tried.push("GitHub 直连".to_string());
     match fetch(LATEST_API, DIRECT_TIMEOUT).await {
         Ok(v) => return Ok(reply(&v, "GitHub 直连", "direct")),
@@ -363,7 +400,7 @@ pub async fn check() -> Result<Value, String> {
         }
     }
 
-    // ③ 镜像。
+    // ④ 镜像。
     for base in API_MIRRORS {
         let url = mirror_url(base, LATEST_API);
         let label = base.trim_end_matches('/').to_string();
@@ -383,15 +420,101 @@ pub async fn check() -> Result<Value, String> {
         }
     }
 
+    let tiers = tried.len() + API_MIRRORS.len();
     Err(format!(
-        "检查更新失败：{} 都答不上来（{}）。网络恢复后再试，或直接打开发布页",
-        if self_host_bases().is_empty() {
-            format!("GitHub 直连与 {} 面镜像", API_MIRRORS.len())
-        } else {
-            format!("自建源、GitHub 直连与 {} 面镜像", API_MIRRORS.len())
-        },
+        "检查更新失败：{tiers} 档来源都答不上来（{}）。网络恢复后再试，或直接打开发布页",
         tried.join("、")
     ))
+}
+
+/// 自建接口里 `downloads` 的键名。规格说「键名用你软件实际需要的平台名」，
+/// 我们按 `windows` / `macos` / `linux`（与 `update_download` 的挑包规则同一套）。
+fn platform_key() -> &'static str {
+    match crate::platform::node_platform_name() {
+        "win32" => "windows",
+        "darwin" => "macos",
+        _ => "linux",
+    }
+}
+
+/// 自建 `version.json` 里本机该下的那一个包 → 界面要的形状。
+///
+/// 规格里没有文件名，所以从 URL 末段取（对象存储上的名字就是文件名）；取不到就按版本
+/// 与平台拼一个 —— 落盘需要一个名字，而且**后缀必须留着**（`.exe` / `.msi` / `.dmg`），
+/// 否则用户拿到的东西点不开。
+fn native_installer(v: &Value, version: &str) -> Option<Value> {
+    let d = &v["downloads"][platform_key()];
+    let url = d["url"].as_str().unwrap_or("").trim();
+    if url.is_empty() {
+        return None;
+    }
+    let tail = url
+        .split(['?', '#'])
+        .next()
+        .unwrap_or(url)
+        .trim_end_matches('/');
+    let seg = tail.rsplit('/').next().unwrap_or("").trim();
+    let name = if seg.is_empty() {
+        format!("v-synth-studio_{version}_{}", platform_key())
+    } else {
+        seg.to_string()
+    };
+    Some(json!({
+        "name": name,
+        "size": d["size"].as_u64().unwrap_or(0),
+        "url": url,
+        // 规格：下载完成后**必须**校验这个值，不匹配就丢弃并报错
+        "sha256": d["sha256"].as_str().unwrap_or("").trim().to_ascii_lowercase(),
+    }))
+}
+
+/// 自建 `version.json` → 界面回包（与 GitHub 那条路**同一个形状**，多出 `force` / `minVersion`）。
+///
+/// 规格要求：解析失败 / 字段缺失一律当「无更新」，不崩。所以除了 `version`（没有它没法比）
+/// 之外，每个字段都取保守默认值。回 `None` = 这条回包不能用，调用方继续往下试。
+fn native_reply(v: &Value, via: &str) -> Option<Value> {
+    let latest = v["version"].as_str().unwrap_or("").trim();
+    if latest.is_empty() || parse_version(latest).is_empty() {
+        return None;
+    }
+    let current = current_version();
+    let min = v["min_version"].as_str().unwrap_or("").trim();
+    let has_update = is_newer(latest, current);
+    /* 强制更新的两个来源（规格）：`force: true`，或**当前版本低于 `min_version`**。
+    ⚠️ 只在「确实有更新」时才可能强制：`version` 不比本机新时（服务端写错、自己编的包）
+    既不更新也不阻断 —— 宁可晚一天更新，也不能因为一个字段把所有人锁在外面。 */
+    let below_min = !min.is_empty() && is_newer(min, current);
+    let force = has_update && (v["force"].as_bool().unwrap_or(false) || below_min);
+
+    Some(json!({
+        "ok": true,
+        "current": current,
+        "latest": latest,
+        "hasUpdate": has_update,
+        // 自建接口没有发布标题；`changelog` 是纯文本换行（界面按纯文本显示，不渲染 HTML）
+        "name": "",
+        "notes": clamp_notes(v["changelog"].as_str().unwrap_or("")),
+        "url": RELEASES_PAGE,
+        "publishedAt": v["published_at"].as_str().unwrap_or(""),
+        "prerelease": false,
+        "via": via,
+        "source": "native",
+        "force": force,
+        "minVersion": min,
+        // 自建接口不发资产清单（它只给本平台那一个包）
+        "assets": json!([]),
+        "installer": native_installer(v, latest),
+    }))
+}
+
+/// 这个自建接口地址（环境变量优先，给本地 mock 用）。
+fn native_url() -> Option<String> {
+    let raw = std::env::var("VSS_UPDATE_URL")
+        .ok()
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| UPDATE_URL.to_string());
+    allowed_base(&raw).then_some(raw)
 }
 
 /// 一次请求的失败原因。
