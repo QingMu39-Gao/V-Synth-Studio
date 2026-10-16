@@ -1,0 +1,89 @@
+name: 问题反馈
+description: 有东西坏了 / 行为与预期不符
+title: '[Bug] '
+labels: ['bug']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        两件事先看一眼，能省一轮来回：
+
+        - 是不是**最新的安装包**？「设置 → 关于」里有版本号，也能直接检查更新。
+        - 出事的是**音轨分离 / 人声转 MIDI** 吗？这两个功能的引擎与模型不随包分发，
+          要单独「安装扩展包」；没装完的话先确认一下「设置 → 扩展包目录」里那份是齐的。
+
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      description: 「设置 → 关于」里那一行，形如 `1.4.1beta`
+      placeholder: 1.4.1beta
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: 怎么装的
+      options:
+        - Windows（MSI）
+        - Windows（exe 安装程序）
+        - macOS（dmg）
+        - 绿色版（解压即用）
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 系统
+      placeholder: Windows 11 24H2 / macOS 15.2（M 系列）
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 怎么复现
+      description: 一步一步写。能稳定重现的那几步最关键 —— 只出现一次的更要写清当时在做什么。
+      placeholder: |
+        1. 打开「音频工具」
+        2. 把 a.wav 拖进去
+        3. 点「响度归一化」
+        4. 弹出「……」
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望什么、实际是什么
+    validations:
+      required: true
+
+  - type: textarea
+    id: log
+    attributes:
+      label: 出错时的 app.log
+      description: |
+        最后几十行就够，也可以直接把文件拖进来。位置：
+
+        - **安装版**：`%APPDATA%\com.qingmu.vocalworkstation\app.log`
+          （macOS 是 `~/Library/Application Support/com.qingmu.vocalworkstation/app.log`）
+        - **绿色版**：`<程序目录>\data\app.log`
+
+        日志超过 5 MB 会自动滚一份 `app.log.1`，两份都可以看。
+        ⚠️ 里面有你的本地路径（工程目录、输出目录），不想公开的话先把那几行删掉。
+      render: text
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前
+      options:
+        - label: 我是在最新版本上试的（设置 → 关于 → 检查更新）
+          required: true
+        - label: 我已经在 issue 列表里搜过同样的现象
+          required: true

@@ -1,0 +1,53 @@
+name: 功能建议
+description: 想要一个新功能 / 想改现有行为
+title: '[Feature] '
+labels: ['enhancement']
+body:
+  - type: markdown
+    attributes:
+      value: |
+        先说清**你手上的活是卡在哪一步**，比直接说「加一个 XX 按钮」有用得多 ——
+        同一个麻烦往往有更省事的解法。
+
+  - type: dropdown
+    id: page
+    attributes:
+      label: 和哪个页面有关
+      options:
+        - 总览
+        - 工程转换
+        - 视频解析
+        - 音轨分离
+        - 人声转 MIDI
+        - 音频工具
+        - 网易云专栏
+        - 文字 PV
+        - 资源库
+        - 设置
+        - 新页面 / 说不准
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: 现在卡在哪
+      description: 你本来想做什么、现在得怎么绕过去、绕的时候哪一步最烦
+    validations:
+      required: true
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: 你希望它怎么工作
+      description: 界面长什么样、点哪个按钮、出来什么结果
+    validations:
+      required: true
+
+  - type: textarea
+    id: reference
+    attributes:
+      label: 别的软件是怎么做的（可选）
+      description: 有链接或截图最好；没有也行
+    validations:
+      required: false
