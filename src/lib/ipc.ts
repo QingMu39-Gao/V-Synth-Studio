@@ -2,7 +2,7 @@
  * **前端访问后端的唯一出口** —— Tauri IPC。
  *
  * 窗口加载的是 Tauri 的资源协议（Windows 上是 `http://tauri.localhost`），前端调后端
- * 只走 `invoke('命令名', args)`。77 条命令的唯一登记处是 `src-tauri/src/lib.rs` 的
+ * 只走 `invoke('命令名', args)`。全部命令的唯一登记处是 `src-tauri/src/lib.rs` 的
  * `generate_handler!`。
  *
  * ## 三条与 `fetch` 不同的约定

@@ -45,6 +45,8 @@ pub async fn wallpaper_pkg(path: String) -> Result<tauri::ipc::Response, String>
             MAX_PKG_BYTES as f64 / 1048576.0
         ));
     }
-    let bytes = std::fs::read(&p).map_err(|e| format!("读场景包失败：{e}"))?;
+    // 异步读：192 MB 从慢盘（移动硬盘 / 网络盘）同步读会把 Tokio 运行时整个按住几秒，
+    // 期间所有 IPC 命令一起卡住
+    let bytes = tokio::fs::read(&p).await.map_err(|e| format!("读场景包失败：{e}"))?;
     Ok(tauri::ipc::Response::new(bytes))
 }

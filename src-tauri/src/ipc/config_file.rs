@@ -139,12 +139,22 @@ pub fn load_config(writable: &Path) -> Value {
 }
 
 /// 落盘。父目录不存在会先建出来（首次运行安装版就是这样）。
+///
+/// 先写 `config.json.tmp` 再改名：`std::fs::write` 是「先截断再写」，中途断电或被杀会
+/// 留下半个 JSON，而 `load_config` 对解析失败是**整份回落默认值** —— 设置和 Cookie 会
+/// 静默全丢。改名会替换已存在的目标（Unix rename / Windows MoveFileExW），tmp 与目标
+/// 同目录，不跨文件系统。
 pub fn save_config(writable: &Path, cfg: &Value) -> std::io::Result<()> {
     let p = config_path(writable);
     if let Some(dir) = p.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    std::fs::write(p, serde_json::to_string_pretty(cfg).unwrap_or_default())
+    // 序列化失败不能落个空文件出去：那正好是「整份回落默认值」的那种损坏
+    let text = serde_json::to_string_pretty(cfg)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let tmp = p.with_file_name("config.json.tmp");
+    std::fs::write(&tmp, text)?;
+    std::fs::rename(&tmp, &p)
 }
 
 /// Cookie 类配置回显时的占位串。前端认它：看到「已设置」就只当有值，不会把它提交回来。

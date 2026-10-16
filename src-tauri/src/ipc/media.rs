@@ -1187,9 +1187,6 @@ pub async fn preview_fetch(app: tauri::AppHandle, url: String, src: Option<Strin
                 "cached": true,
             }));
         }
-        /* 0 字节的残骸（旧版直接写 `dest` 留下的）：命中判据放它过去，但它占着
-        目标名，下面的改名在部分平台上会被拒，在这里就清掉。 */
-        let _ = tokio::fs::remove_file(&dest).await;
     }
 
     /* 字节写进 `part`，整份下完才改名成 `dest`。命中判据只有「`dest` 非空」且在**下载
@@ -1242,27 +1239,20 @@ pub async fn preview_fetch(app: tauri::AppHandle, url: String, src: Option<Strin
         `give_up` 不会替我们删。改名只对非空文件做，所以这个 `part` 永远进不了
         命中判据，但留着白占 LRU 额度。 */
         let _ = tokio::fs::remove_file(&part).await;
-        /* 引擎给每个 part 配了一个 `.part.url` 续传记号，part 走不到改名就得连它一起清 */
+        /* `.part.url` 记号只有可续传的形状才写（`Plain` 本来不该有），part 走不到改名
+        就连它一起清 —— 同 `give_up` 对 `Plain` 的处理 */
         let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
         return Err("上游回了个空文件".into());
     }
 
-    /* 改名才是「下好了」的那一刻：`dest` 只在整份下完之后出现，命中判据（非空）
-    才因此可信。目标已存在时改名可能被拒 —— 那只可能是另一次并发预览先落了盘，
-    它的那份同样完整，删掉自己手上这份、按命中返回。 */
+    /* 改名才是「下好了」的那一刻：命中判据是「`dest` 非空」且在**下载之前**就返回，
+    所以 `dest` 只能在这一步之后出现。改名会替换掉已存在的目标（Unix rename /
+    Windows MoveFileExW），所以同一 URL 的两次并发各自落盘、后到的那份整份覆盖前一份，
+    留在盘上的永远是完整文件。 */
     if let Err(e) = tokio::fs::rename(&part, &dest).await {
-        let cached = tokio::fs::metadata(&dest).await.map(|m| m.len()).unwrap_or(0);
         let _ = tokio::fs::remove_file(&part).await;
         let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
-        if cached == 0 {
-            return Err(format!("缓存改名失败：{e}"));
-        }
-        let _ = touch(&dest).await;
-        return Ok(json!({
-            "path": crate::platform::clean_path(&dest),
-            "bytes": cached,
-            "cached": true,
-        }));
+        return Err(format!("缓存改名失败：{e}"));
     }
     let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
 

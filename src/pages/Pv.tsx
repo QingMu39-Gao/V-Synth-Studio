@@ -232,10 +232,15 @@ async function saveChunks(
 ): Promise<PvSaveRes | null> {
     const total = Math.ceil(blob.size / CHUNK) || 1
     let last: PvSaveRes | null = null
+    /* 落点跟着后端的回答走。目标名已存在时 0 号块会把它改成 `xxx (1).mp4`，
+    而 part>0 是按调用方传来的名字去找文件的 —— 一路传原名，后面的块会追加进
+    用户早就存在的那个同名文件里，而新导出的那份只剩 0 号块。 */
+    let target = name
     for (let part = 0; part < total; part++) {
         const slice = blob.slice(part * CHUNK, Math.min((part + 1) * CHUNK, blob.size))
         const bytes = new Uint8Array(await slice.arrayBuffer())
-        last = await api.pvSaveChunk(dir, name, part, total, bytes)
+        last = await api.pvSaveChunk(dir, target, part, total, bytes)
+        target = last.name ?? target
         if (total > 1) onProgress(Math.round(((part + 1) / total) * 100))
     }
     return last
