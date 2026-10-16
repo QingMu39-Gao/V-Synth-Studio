@@ -1,0 +1,38 @@
+# 依赖自动更新：前端（npm）+ Rust（cargo）+ workflow 里的 action。
+#
+# 三个生态各开一条，节奏都是每周一早上 —— 我们只有一个人看这些 PR，日更只会淹掉它。
+#
+# ⚠️ **`ort` 是 `2.0.0-rc.*`（RC：API 随小版本变）**，它的更新**要人工看编译与推理**，
+#    别开自动合并。其余依赖（尤其 patch 那档）本来就是低风险的。
+# ⚠️ 分组只分 minor + patch：major 单独出 PR —— 那是一定要读 changelog 的改动。
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  - package-ecosystem: cargo
+    directory: /src-tauri
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
+
+  # action 都钉在大版本上（`checkout@v7`），跟着主流走就行
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions-minor-patch:
+        patterns: ['*']
+        update-types: ['minor', 'patch']
