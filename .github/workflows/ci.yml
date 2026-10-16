@@ -1,0 +1,115 @@
+# push / PR 的轻量门禁。
+#
+# `build-installers.yml` 只管出货：它由 tag 与手动触发，跑的是三个平台的完整打包。
+# 于是 180+ 个 Rust 单测、前端单测与静态检查在那边**从不执行** —— 也就是「本机自觉」。
+# 这个 workflow 补的就是这一段：不打包、不下载随包大件（ffmpeg / jizura 字体那几百 MB），
+# 只做「能编、能测、能过静态检查」。
+#
+# ⚠️ Rust 那一路需要 `dist/` 存在：`tauri-build` 要读 `frontendDist`。前端的内容由
+#    `web` 那一路真的构建一次来管，这里只补一个空目录，让 cargo 能往下走。
+#
+# 只有一个 Linux 档是**有意的**：随包的二进制与平台分支已经由三平台打包覆盖，
+# 这条路要的是「几分钟内能给出红/绿」，加第二个平台只会让反馈变慢。
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: 前端（静态检查 / 类型 / 单测）
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # ⚠️ 顺序不能反：`setup-node` 的 `cache: pnpm` 要求 pnpm 已经装好
+      - name: 装 pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 12
+
+      - name: 装 Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: pnpm
+
+      # 仓库自己的几张表、以及仓库与 workflow 的漂移 —— 这些在本地跑不到（YAML 读不到
+      # JS 常量），只会在 CI 里炸。它们不依赖 node_modules，放在最前面，早失败。
+      #
+      # ⚠️ 显式用 bash：Windows 的默认 shell 是 pwsh，而 pwsh 只透传**最后一条**命令的
+      #    退出码 —— 前几条红了这步照样是绿的。bash 默认带 `-e`，任一条失败就停。
+      - name: 核对仓库与 workflow 一致
+        shell: bash
+        run: |
+          node tools/check-artifact-paths.mjs
+          node tools/check_assets_agree.mjs
+          node tools/check_version_agree.mjs
+          node tools/check_wallpaper_handshake.mjs
+
+      - name: 装前端依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 类型检查
+        run: pnpm exec tsc -b
+
+      - name: 前端单测
+        run: pnpm test
+
+      # 类型检查过了也未必构建得过（lightningcss 那类只在产物里现形的问题），
+      # 所以这里真的构建一次：`dist/` 也是 Rust 那一路要读的东西。
+      - name: 构建前端
+        run: pnpm exec vite build
+
+  rust:
+    name: Rust（格式 / clippy / 单测）
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+
+    steps:
+      - uses: actions/checkout@v7
+
+      # Tauri 的 Linux 链接依赖（webkit2gtk 那一串）。镜像里不预装，缺一个就链接失败。
+      - name: 装 Linux 系统依赖
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libwebkit2gtk-4.1-dev build-essential curl wget file \
+            libxdo-dev libssl-dev libayatana-appindicator3-dev librsvg2-dev
+
+      - name: 装 Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: 缓存 cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            src-tauri/target
+          key: ci-cargo-${{ runner.os }}-${{ hashFiles('src-tauri/Cargo.lock') }}
+
+      - name: 占位 dist（tauri-build 要读 frontendDist）
+        run: mkdir -p dist
+
+      - name: 格式
+        working-directory: src-tauri
+        run: cargo fmt --check
+
+      - name: clippy
+        working-directory: src-tauri
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: 单测
+        working-directory: src-tauri
+        run: cargo test --lib
