@@ -65,6 +65,11 @@ export interface AppState {
     platform: string
     /** 给人看的一行，如 `Windows (x86_64)` */
     platformDesc?: string
+    /**
+     * 整台机器用不了时的一句话（Intel Mac 上随包的 ffmpeg 是 arm64 的）。
+     * 缺失 / `null` = 没有这句话，正常用。
+     */
+    platformNote?: string | null
     version: string
     /** 作者署名 */
     author?: string

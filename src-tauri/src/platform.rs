@@ -290,6 +290,30 @@ pub fn caps() -> serde_json::Value {
     })
 }
 
+/* ══════════════════════════════ 整机可用性 ══════════════════════════════ */
+
+/// macOS + Intel 这一个组合**装得上、但随包的工具跑不起来**。
+///
+/// 构建机是 Apple Silicon，`fetch_tools.mjs` 按**构建机**架构取件，所以 dmg 里那份
+/// ffmpeg 是 arm64 的；Intel 上 `Command::new` 直接 `Bad CPU type in executable`，
+/// 而音频转换 / MV 合并 / 扒谱解码全都要它。
+///
+/// 返回一句给界面显示的话（其余平台是 `None`）。`caps()` 管的是**单个功能**的置灰，
+/// 这里管的是整台机器 —— 受影响的功能太多，逐项置灰只会让界面到处是灰的。
+pub fn unsupported_note() -> Option<String> {
+    unsupported_note_for(std::env::consts::OS, std::env::consts::ARCH)
+}
+
+/// 判据单拎出来是为了能测：`std::env::consts` 读的是**运行**的机器，测不了别的平台。
+fn unsupported_note_for(os: &str, arch: &str) -> Option<String> {
+    (os == "macos" && arch == "x86_64").then(|| {
+        "这个安装包里的随包工具是 Apple Silicon（arm64）版，Intel Mac 上用不了：\
+         ffmpeg 起不来，音频转换、MV 合并、扒谱解码都会失败。\
+         要在 Intel 上用得在本机自行编译（补齐脚本按构建机架构取件）。"
+            .to_string()
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -330,5 +354,16 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// 只有 Intel Mac 要报「装得上但工具跑不了」。判据写反（或写成 `!= aarch64`）会把
+    /// 正常出货的 Apple Silicon 也标红，而那是主力平台。
+    #[test]
+    fn only_intel_macos_carries_the_note() {
+        assert!(unsupported_note_for("macos", "x86_64").is_some());
+        assert!(unsupported_note_for("macos", "aarch64").is_none());
+        assert!(unsupported_note_for("windows", "x86_64").is_none());
+        assert!(unsupported_note_for("linux", "x86_64").is_none());
+        assert!(unsupported_note_for("linux", "aarch64").is_none());
     }
 }

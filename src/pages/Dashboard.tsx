@@ -54,6 +54,17 @@ function computeChecks(state: AppState | null): Check[] {
     const out: Check[] = []
     const tools = state.tools ?? {}
 
+    /* 「整台机器用不了」排在缺工具前面：这一条解释的正是后面那些「找不到 ffmpeg」 ——
+       先说清是平台不支持，用户才不会去反复重装。 */
+    if (state.platformNote) {
+        out.push({
+            id: 'platform',
+            level: 'warn',
+            title: '这个平台上跑不完整',
+            detail: state.platformNote,
+        })
+    }
+
     if (!tools.ffmpeg?.available) {
         out.push({
             id: 'ffmpeg',
