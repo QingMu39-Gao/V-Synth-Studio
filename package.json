@@ -1,7 +1,6 @@
 {
   "name": "v-synth-studio",
   "private": true,
-  "version": "1.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

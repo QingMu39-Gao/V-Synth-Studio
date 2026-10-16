@@ -116,6 +116,7 @@ jobs:
         run: |
           node tools/check-artifact-paths.mjs
           node tools/check_assets_agree.mjs
+          node tools/check_version_agree.mjs
           node tools/check_wallpaper_handshake.mjs
 
       - name: 装前端依赖
@@ -160,7 +161,7 @@ jobs:
         run: pnpm exec tauri build ${{ matrix.bundleArgs }}
 
       # 安装包文件名里的 `beta` 只能在这里补：Windows Installer 的 `ProductVersion` 只吃
-      # 纯数字 `x.y.z`，所以 `Cargo.toml` 是 `1.4.0`、产物天生叫 `…_1.4.0_x64_zh-CN.msi`，
+      # 纯数字 `x.y.z`，所以 `Cargo.toml` 是纯数字、产物天生叫 `…_x.y.z_x64_zh-CN.msi`，
       # 而用户要的名字与界面显示的版本（`config_file.rs::APP_VERSION`）都带 `beta`。
       # ⚠️ 必须在下面几步**之前**：冒烟要求「恰好一个 MSI」，传 artifact 与传 Release 都按
       #    `*.msi` / `*.dmg` 取件，改完名这几处都跟着走。

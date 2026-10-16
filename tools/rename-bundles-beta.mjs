@@ -5,7 +5,7 @@
  *     node tools/rename-bundles-beta.mjs
  *
  * 安装包名字里的版本段天生是纯数字：Windows Installer 的 `ProductVersion` 只吃 `x.y.z`
- * （所以 `Cargo.toml` 是 `1.4.0`，MSI 叫 `…_1.4.0_x64_zh-CN.msi`），DMG 同理。
+ * （所以 `Cargo.toml` 是纯数字，MSI 叫 `…_x.y.z_x64_zh-CN.msi`），DMG 同理。
  * 而用户看到的版本（`config_file.rs::APP_VERSION` = 版本 + `beta`）带后缀 —— 文件名
  * 要跟它一致，这一步就是唯一的补救点。
  *

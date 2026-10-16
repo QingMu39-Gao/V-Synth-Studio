@@ -23,7 +23,9 @@ use serde_json::{Value, json};
 /// 而漏掉任何一处的后果都不一样（界面显示的版本、Cargo.lock 与 Cargo.toml 的
 /// 一致性、MSI 文件名与安装记录）。真源只有一处：`Cargo.toml`。另外两处也让它自己去取：
 ///   · `tauri.conf.json` **不写 `version`** —— 不写时 Tauri 用 `Cargo.toml` 的值
-///   · `package.json` 的 `version` 与程序版本无关（Tauri 不读它），只跟 npm 惯例
+///   · `package.json` **也不写 `version`** —— 那是 npm 惯例字段（Tauri 不读它）
+///
+/// 这三条由 `tools/check_version_agree.mjs` 在 CI 里逐条核对。
 pub const APP_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "beta");
 
 /// 作者标识。出现在「关于」里，也散落在源码注释中作为出处水印。
