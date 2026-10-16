@@ -2,7 +2,7 @@ import {useCallback, useEffect, useRef, useState} from 'react'
 import {api, type AnnounceReply, type ExtDirInfo, type UpdateCheck} from '@/lib/api'
 import {getConfig, onConfigChange, saveConfig} from '@/lib/config'
 import {markSeen, unseen} from '@/lib/announce'
-import {installerOf, installerSizeText} from '@/lib/update'
+import {installerOf, installerSizeText, isForcedUpdate} from '@/lib/update'
 import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import type {AppState} from '@/lib/types'
 import type {PageProps, ToastFn} from './types'
@@ -736,6 +736,8 @@ function About({
     const dl = useUpdateDownload(onToast)
     const installer = installerOf(update)
     const installerSize = installerSizeText(installer)
+    /** 服务端要求强制更新（那时不给「忽略」—— 忽略也拦不住启动时那个关不掉的框） */
+    const forced = isForcedUpdate(update)
     const checkUpdate = async () => {
         setUpdateBusy(true)
         setUpdateErr('')
@@ -864,7 +866,7 @@ function About({
                             {t('打开发布页')}
                         </Button>
                     )}
-                    {update?.ok && update.hasUpdate && (
+                    {update?.ok && update.hasUpdate && !forced && (
                         <Button
                             variant="ghost"
                             onClick={() => {
@@ -878,6 +880,13 @@ function About({
                 </div>
                 {updateErr && <p className="hint">{updateErr}</p>}
                 {update?.ok === false && <p className="hint">{update.error}</p>}
+                {forced && (
+                    <p className="hint">
+                        {update?.minVersion
+                            ? `${t('服务端要求至少')} ${update.minVersion}`
+                            : t('服务端要求必须更新到这个版本')}
+                    </p>
+                )}
                 {dl.job?.status === 'running' && (
                     <p className="hint">
                         {dl.job.message || t('正在下载…')}
@@ -888,16 +897,18 @@ function About({
                     <p className="hint">
                         {dl.verified
                             ? t('已核对 SHA-256，可以打开安装包了')
-                            : t('这次发布没有校验清单，没能核对完整性；打开前请自己确认来源')}
+                            : t('这次没有可用的校验值，没能核对完整性；打开前请自己确认来源')}
                     </p>
                 )}
-                {/* 直连不通时后端会自动改走自建源或镜像：这件事要说出来，
-                    用户有权知道版本信息是第三方代答的（值由后端给，见 `update.rs`） */}
+                {/* 版本信息是谁答的：直连 / 自建接口 / 自建镜像 / 第三方镜像 ——
+                    用户有权知道（值由后端给，见 `update.rs` 的 `via` / `source`） */}
                 {update?.ok && update.via && update.source !== 'direct' && (
                     <p className="hint">
-                        {update.source === 'self'
-                            ? t('这次由自建源代查')
-                            : t('GitHub 直连不通，这次是经镜像代查的')}
+                        {update.source === 'native'
+                            ? t('版本信息来自官方更新接口')
+                            : update.source === 'self'
+                              ? t('这次由自建源代查')
+                              : t('GitHub 直连不通，这次是经镜像代查的')}
                         ：{update.via}
                     </p>
                 )}
@@ -1095,8 +1106,8 @@ function Announce({onToast}: { onToast: ToastFn }) {
                     return (
                         <Finding
                             key={a.id}
-                            level={isUnread && a.level === 'warn' ? 'warn' : 'info'}
-                            title={`${isUnread ? `[${t('未读')}] ` : ''}${a.title || t('公告')}`}
+                            level={isUnread && a.level !== 'info' ? 'warn' : 'info'}
+                            title={`${isUnread ? `[${t('未读')}] ` : ''}${a.level === 'critical' ? `[${t('严重')}] ` : ''}${a.title || t('公告')}`}
                         >
                             <span className="hint">
                                 {a.date ? `${a.date.slice(0, 10)} · ` : ''}

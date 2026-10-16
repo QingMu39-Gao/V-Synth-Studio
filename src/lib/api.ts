@@ -55,6 +55,16 @@ export const api = {
      */
     announceList: () => call<AnnounceReply>('announce_list'),
 
+    /* ── 进程级 ──────────────────────────────────────────── */
+    /**
+     * 退出程序。
+     *
+     * 只有**强制更新**那一条路会用到它：那个框不给「稍后」，用户得能干脆走开
+     * （而不是去任务管理器里结束进程）。后端的实现走 Tauri 的退出流程，
+     * 会把分离引擎的子进程一起收掉。
+     */
+    appQuit: () => call<{ ok: boolean }>('app_quit'),
+
     /* ── 音轨分离（内嵌离线引擎）──────────────────────────── */
     /**
      * 状态。页面每 2 秒轮询一次它 —— 服务的生死、模型的多少、下载的进度
@@ -1058,7 +1068,12 @@ export interface UpdateInstaller {
     name?: string
     size?: number
     url?: string
-    /** 校验清单（`SHA256SUMS-*.txt`）。空串 = 这次发布没带，下完核对不了完整性 */
+    /**
+     * 期望的 SHA-256（自建接口在 `downloads.<平台>.sha256` 里直接给）。
+     * 后端**必须**校验：不匹配就删掉文件并报错。
+     */
+    sha256?: string
+    /** 校验清单（`SHA256SUMS-*.txt`，GitHub 那条路用）。空串 = 没有 */
     sumsUrl?: string
 }
 
@@ -1071,7 +1086,10 @@ export interface Announcement {
     body?: string
     /** ISO 8601；可能为空串（服务器没写） */
     date?: string
-    level?: 'info' | 'warn'
+    /** 只影响样式（服务端语义：info / warn / critical） */
+    level?: 'info' | 'warn' | 'critical'
+    /** 过期时间（ISO 8601）；后端已经把过期的丢掉了，这里留着只为显示 */
+    expiresAt?: string
     /** 详情链接；可能为空串 */
     url?: string
 }
@@ -1102,6 +1120,15 @@ export interface UpdateCheck {
     latest?: string
     /** 上游比本机新。**本机比上游新时也是 false** */
     hasUpdate?: boolean
+    /**
+     * 强制更新：服务端说 `force: true`，或本机版本低于 `min_version`。
+     *
+     * ⚠️ **只在确实有更新时为真**（后端算的）：接口取不到、字段缺失、版本比本机低时
+     * 一律 false —— 宁可晚一天更新，也不能因为一个字段把用户锁在外面。
+     */
+    force?: boolean
+    /** 服务端要求的最低版本（自建接口才有）。空串 = 没要求 */
+    minVersion?: string
     /** 发布的标题（可能为空串） */
     name?: string
     /** 发布说明（markdown 原文，后端截到 4000 字） */
@@ -1122,8 +1149,8 @@ export interface UpdateCheck {
      * 用户有权知道版本信息是第三方代答的。
      */
     via?: string
-    /** `via` 属于哪一档：自建源 / 直连 / 镜像（界面据此选措辞） */
-    source?: 'self' | 'direct' | 'mirror'
+    /** `via` 属于哪一档：自建接口 / 自建镜像 / 直连 / 镜像（界面据此选措辞） */
+    source?: 'native' | 'self' | 'direct' | 'mirror'
 }
 
 /**

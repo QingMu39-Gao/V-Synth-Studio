@@ -1,6 +1,6 @@
 import {describe, expect, it} from 'vitest'
 import type {UpdateCheck} from './api'
-import {canDownloadInstaller, installerOf, installerSizeText, shouldNotifyUpdate} from './update'
+import {canDownloadInstaller, installerOf, installerSizeText, isForcedUpdate, shouldNotifyUpdate} from './update'
 
 /*
  * 「检查更新」里那几处判断。它们错了都不报错、只是行为不对：
@@ -53,5 +53,26 @@ describe('installer 挑选结果的读法', () => {
     expect(installerSizeText({size: 153326600})).toBe('146.2 MB')
     expect(installerSizeText({size: 0})).toBe('')
     expect(installerSizeText(null)).toBe('')
+  })
+})
+
+describe('isForcedUpdate', () => {
+  it('只有「确实有新版 + 后端说强制」才拦人', () => {
+    expect(isForcedUpdate(reply({force: true}))).toBe(true)
+    // 服务端说 force，但版本并不比本机新（写错了 / 自己编的包）：不拦
+    expect(isForcedUpdate(reply({force: true, hasUpdate: false}))).toBe(false)
+    // 取不到 / 上游没发过 Release：不拦（否则接口一抖所有人进不去）
+    expect(isForcedUpdate(reply({ok: false, force: true}))).toBe(false)
+    expect(isForcedUpdate(reply({force: false}))).toBe(false)
+    // 字段缺失（老后端、回包被裁）一律不当强制
+    expect(isForcedUpdate(reply({}))).toBe(false)
+    expect(isForcedUpdate(null)).toBe(false)
+  })
+
+  it('min_version 的判定在后端，界面只认 force', () => {
+    // 低于最低版本时后端会把 force 置真；界面不再自己比版本（避免两套判断漂开）
+    const r = reply({force: true, minVersion: '2.0.0'})
+    expect(isForcedUpdate(r)).toBe(true)
+    expect(r.minVersion).toBe('2.0.0')
   })
 })

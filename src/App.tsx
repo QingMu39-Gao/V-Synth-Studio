@@ -3,7 +3,7 @@ import {lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState
 import {api, type Announcement, type UpdateCheck} from '@/lib/api'
 import {type AppConfig, getConfig, onConfigError, saveConfig, syncConfig} from '@/lib/config'
 import {markSeen, unseen} from '@/lib/announce'
-import {installerOf, installerSizeText, shouldNotifyUpdate} from '@/lib/update'
+import {installerOf, installerSizeText, isForcedUpdate, shouldNotifyUpdate} from '@/lib/update'
 import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import {setUiLanguage, type UiLanguage, useI18n} from '@/lib/i18n'
 import type {AppState} from '@/lib/types'
@@ -162,6 +162,8 @@ export default function App() {
     const dl = useUpdateDownload(toast)
     const installer = installerOf(update)
     const installerSize = installerSizeText(installer)
+    /** 服务端要求强制更新（关不掉的框，只有下载 / 发布页 / 退出三条路） */
+    const forced = isForcedUpdate(update)
     /** 启动时要弹的公告（**还没读过的**，新的在前；`[0]` 就是当前这条） */
     const [announce, setAnnounce] = useState<Announcement[]>([])
     const [announceOpen, setAnnounceOpen] = useState(false)
@@ -404,7 +406,11 @@ export default function App() {
                         title={currentAnnounce?.title || t('公告')}
                         description={[
                             currentAnnounce?.date ? currentAnnounce.date.slice(0, 10) : '',
-                            currentAnnounce?.level === 'warn' ? t('重要') : '',
+                            currentAnnounce?.level === 'critical'
+                                ? t('严重')
+                                : currentAnnounce?.level === 'warn'
+                                  ? t('重要')
+                                  : '',
                         ]
                             .filter(Boolean)
                             .join(' · ')}
@@ -441,13 +447,28 @@ export default function App() {
                     </GlassDialog>
 
                     {/* 启动那次静默检查**只在真有新版时**把这个框打开（见上面那个 effect）。
-                        「设置 → 关于」里还有一份手动的，两处共用同一个后端命令。 */}
+                        「设置 → 关于」里还有一份手动的，两处共用同一个后端命令。
+
+                        ⚠️ 强制更新（服务端 `force` / 本机低于 `min_version`）时这个框**关不掉**：
+                        `onOpenChange` 直接把关闭请求吃掉，也不给「稍后 / 忽略」。但**必须留退路**：
+                        「打开发布页」与「退出程序」始终在，对象存储挂了、下载失败了也不至于
+                        把人锁在一个只能看的框里。 */}
                     <GlassDialog
                         open={updateOpen}
-                        onOpenChange={setUpdateOpen}
-                        title={`${t('有新版本')}：${update?.latest ?? ''}`}
+                        onOpenChange={(open) => {
+                            if (!open && forced) return
+                            setUpdateOpen(open)
+                        }}
+                        title={`${forced ? t('必须更新') : t('有新版本')}：${update?.latest ?? ''}`}
                         description={`${update?.current ?? ''} → ${update?.latest ?? ''}`}
                     >
+                        {forced && (
+                            <p className="hint">
+                                {update?.minVersion
+                                    ? `${t('服务端要求至少')} ${update.minVersion}`
+                                    : t('服务端要求必须更新到这个版本')}
+                            </p>
+                        )}
                         {(update?.name || update?.publishedAt || update?.prerelease) && (
                             <p className="hint">
                                 {update?.name ? `${update.name} · ` : ''}
@@ -469,7 +490,7 @@ export default function App() {
                             <p className="hint">
                                 {dl.verified
                                     ? t('已核对 SHA-256，可以打开安装包了')
-                                    : t('这次发布没有校验清单，没能核对完整性；打开前请自己确认来源')}
+                                    : t('这次没有可用的校验值，没能核对完整性；打开前请自己确认来源')}
                             </p>
                         )}
                         {update && !installer && (
@@ -507,7 +528,7 @@ export default function App() {
                                 )
                             )}
                             <Button
-                                variant="primary"
+                                variant={forced ? 'ghost' : 'primary'}
                                 icon="external"
                                 onClick={() => {
                                     /* 打不开不能只进控制台：用户按了按钮却什么都没发生，
@@ -516,28 +537,43 @@ export default function App() {
                                         const msg = e instanceof Error ? e.message : String(e)
                                         toast(`${t('打开发布页失败')}：${msg}`, 'err')
                                     })
-                                    setUpdateOpen(false)
+                                    // 强制更新时不关框：发布页只是去看一眼，回来还得继续更新
+                                    if (!forced) setUpdateOpen(false)
                                 }}
                             >
                                 {t('打开发布页')}
                             </Button>
-                            {/* 忽略只作用于**启动时那次静默检查**：手动查仍然照实报（见 `lib/update.ts`） */}
-                            <Button
-                                variant="ghost"
-                                onClick={() => {
-                                    saveConfig({ignoredUpdate: update?.latest ?? ''})
-                                    setUpdateOpen(false)
-                                    toast(
-                                        `${t('不再提醒这个版本')}${update?.latest ? `：${update.latest}` : ''}`,
-                                        'ok',
-                                    )
-                                }}
-                            >
-                                {t('忽略这个版本')}
-                            </Button>
-                            <Button variant="ghost" onClick={() => setUpdateOpen(false)}>
-                                {t('稍后再说')}
-                            </Button>
+                            {forced ? (
+                                <Button
+                                    variant="ghost"
+                                    onClick={() => {
+                                        api.appQuit().catch(() => undefined)
+                                    }}
+                                >
+                                    {t('退出程序')}
+                                </Button>
+                            ) : (
+                                <>
+                                    {/* 忽略只作用于**启动时那次静默检查**：手动查仍然照实报
+                                        （见 `lib/update.ts`） */}
+                                    <Button
+                                        variant="ghost"
+                                        onClick={() => {
+                                            saveConfig({ignoredUpdate: update?.latest ?? ''})
+                                            setUpdateOpen(false)
+                                            toast(
+                                                `${t('不再提醒这个版本')}${update?.latest ? `：${update.latest}` : ''}`,
+                                                'ok',
+                                            )
+                                        }}
+                                    >
+                                        {t('忽略这个版本')}
+                                    </Button>
+                                    <Button variant="ghost" onClick={() => setUpdateOpen(false)}>
+                                        {t('稍后再说')}
+                                    </Button>
+                                </>
+                            )}
                         </div>
                     </GlassDialog>
 

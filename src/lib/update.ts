@@ -43,6 +43,20 @@ export function installerOf(r: UpdateCheck | null | undefined): UpdateInstaller 
     return ins
 }
 
+/**
+ * 这次更新能不能「稍后再说」。
+ *
+ * `force` 由后端算好（服务端 `force: true`，或本机低于 `min_version`），而它**只在确实
+ * 有新版时为真** —— 接口取不到、字段缺失、版本比本机低时都是 false。所以这里不必再防
+ * 一层：后端一旦说强制，那就是服务端明确要求的。
+ *
+ * ⚠️ **强制不等于把人锁死**：界面上仍然要留「打开发布页」与「退出程序」两条路 ——
+ * 对象存储挂了、下载失败了，用户至少得能自己拿到安装包，或者干脆先不用。
+ */
+export function isForcedUpdate(r: UpdateCheck | null | undefined): boolean {
+    return !!r?.ok && !!r.hasUpdate && r.force === true
+}
+
 /** 人看的体积，例如 `153.3 MB`。`size` 缺失时回空串（界面不显示那一行）。 */
 export function installerSizeText(ins: UpdateInstaller | null): string {
     const n = Number(ins?.size ?? 0)

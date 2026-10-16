@@ -814,6 +814,41 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
         "en-US": "Fetched from the self-hosted source; unread ones pop up on the next start",
         "ja-JP": "自前のソースから取得します。未読のものは次回起動時に表示されます"
     },
+    "必须更新": {
+        "zh-CN": "必须更新",
+        "en-US": "Update required",
+        "ja-JP": "アップデートが必要です"
+    },
+    "服务端要求至少": {
+        "zh-CN": "服务端要求至少",
+        "en-US": "The server requires at least",
+        "ja-JP": "サーバーが要求する最低バージョン:"
+    },
+    "服务端要求必须更新到这个版本": {
+        "zh-CN": "服务端要求必须更新到这个版本",
+        "en-US": "The server requires this version",
+        "ja-JP": "サーバーがこのバージョンを要求しています"
+    },
+    "退出程序": {
+        "zh-CN": "退出程序",
+        "en-US": "Quit",
+        "ja-JP": "終了"
+    },
+    "版本信息来自官方更新接口": {
+        "zh-CN": "版本信息来自官方更新接口",
+        "en-US": "Version information came from the official update endpoint",
+        "ja-JP": "バージョン情報は公式の更新エンドポイントから取得しました"
+    },
+    "这次没有可用的校验值，没能核对完整性；打开前请自己确认来源": {
+        "zh-CN": "这次没有可用的校验值，没能核对完整性；打开前请自己确认来源",
+        "en-US": "No checksum was available this time, so the download could not be verified. Check where it came from before opening.",
+        "ja-JP": "今回はチェックサムが無く、整合性を確認できませんでした。開く前に入手元をご確認ください。"
+    },
+    "严重": {
+        "zh-CN": "严重",
+        "en-US": "Critical",
+        "ja-JP": "重大"
+    },
 }
 
 export function getUiLanguage(): UiLanguage {
