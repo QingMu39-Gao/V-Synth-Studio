@@ -25,6 +25,9 @@ tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "fs", "
 reqwest = { version = "0.13", default-features = false, features = ["rustls", "query", "json", "stream"] }
 futures-util = "0.3"
 flate2 = "1"
+# 下载的安装包与 `SHA256SUMS` 清单核对用。**不能用 CRC32**（flate2 / zip 里那个）：
+# 那种校验值能被人顺手改成一致的，挡不住「半路被换成别的安装包」。
+sha2 = "0.10"
 # `cuda` 只为了拿到 `ort::ep::CUDA` 这个类型（在 ort 里被 `#[cfg(feature = "cuda")]` 门住），
 # 不构成构建期 CUDA 依赖：ort 的 cuda feature 只打开 API，真正 LoadLibrary 的在运行时，
 # 而 `load-dynamic` 已让 ort-sys 带上 `disable-linking`，链接期不碰任何 CUDA 库。

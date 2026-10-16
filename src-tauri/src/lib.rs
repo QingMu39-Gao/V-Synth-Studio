@@ -285,6 +285,7 @@ pub fn run() {
             ipc::midi::midi_open_output,
             /* ── 检查更新 ── */
             ipc::update::update_check,
+            ipc::update::update_download,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri 应用构建失败")
