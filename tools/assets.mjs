@@ -58,6 +58,34 @@ export const exeName = (base) => (PLATFORM === 'windows' ? `${base}.exe` : base)
 export const dylibName = (base) =>
   ({windows: `${base}.dll`, macos: `lib${base}.dylib`})[PLATFORM] || `lib${base}.so`
 
+// ── 随包产物的内容摘要 ──────────────────────────────────────────────
+/**
+ * 每件产物**装好之后**那棵树的内容摘要，键是 `<平台>-<架构>`（如 `windows-x64`）。
+ *
+ * `fetch_tools.mjs::verify()` 每次补件都逐件比对：对不上就让这一步失败，而不是把来源
+ * 不明的二进制打进安装包。它挡的是**来源被换掉**的那几条路 —— 自建归档、别人拷来的
+ * `--local` 目录、镜像 —— 那几条都拿不到上游的签名，只有内容摘要判得了。
+ *
+ * 摘要算的是**整件**（相对路径 + 字节数 + 每个文件的 SHA-256，按路径排序后一起哈希）：
+ * `libresvip/` 有上千个文件，逐条钉不现实；而少一个插件、多一个 dll 恰好就是「装出来
+ * 缺功能」的形状。
+ *
+ * ⚠️ 只钉**上游按版本发布**的件（URL 里带版本号）。`ffmpeg` 那条指向 BtbN 的
+ * `releases/download/latest/`，是**滚动发布**：上游一重新构建摘要就对不上，而两边都没错；
+ * 改钉某个 `autobuild-<日期>` 标签也不行 —— 那些标签会被上游清掉（见「如何编译打包.md」4.2）。
+ * 没钉的件在补件时打一行说明，**不算失败**（否则那个平台直接构建不了）。
+ *
+ * 补一个新平台 / 架构：在那台机器上跑 `node tools/fetch_tools.mjs --force`，再跑
+ * `node tools/pin_tool_digests.mjs`，把它打印的那一行贴进来。
+ */
+export const TOOL_DIGESTS = {
+  'windows-x64': {
+    ytdlp: '0A48FD7693AB539CCEF334781F84627918A518889DB275A31239439A7ED0EF53',
+    libresvip: 'B3FA901769404C9F8BF7FCD1DA1D4B5D3D404D92814404EB6C6A779BA187A5FD',
+    onnxruntime: '7B2A8F2E4966F73D43F108DCBD247B0E31D1C2A3A8F588A909B12256A24D8507',
+  },
+}
+
 // ── 上游：JIZURA（文字 PV 的前端）────────────────────────────────────
 // 钉 commit SHA 而非分支名：`index.html` 要按字节打补丁，上游一动补丁就对不上。
 // 查上游新版本：`git ls-remote https://github.com/852wa/JIZURA main`

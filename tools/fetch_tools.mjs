@@ -39,10 +39,11 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import process from 'node:process'
+import {createHash} from 'node:crypto'
 import {spawnSync} from 'node:child_process'
 
 import * as assets from './assets.mjs'
-import {HERE, copyFile, download, isDir, isFile, mkdirp, rmrf, say, walkFiles, isMain} from './lib.mjs'
+import {HERE, copyFile, download, isDir, isFile, mkdirp, rmrf, say, sha256File, walkFiles, isMain} from './lib.mjs'
 import {archiveSuffix, extractAny, findOne, obtainArchive} from './archive.mjs'
 
 // ── 平台 ─────────────────────────────────────────────────────────────
@@ -153,7 +154,8 @@ function destOf(asset, root) {
 }
 
 // ── 从上游补齐 ──────────────────────────────────────────────────────
-const PARTS = {
+/** 随包的四件产物（`--only` 的取值）。 */
+export const PARTS = {
   ffmpeg: {what: 'ffmpeg（音频转换 / 合并 / 扒谱解码）'},
   ytdlp: {what: 'yt-dlp（MV 解析下载）'},
   libresvip: {what: 'LibreSVIP CLI（工程格式互转）'},
@@ -164,7 +166,7 @@ const PARTS = {
    包管理器自动带上；运行期认不到随包副本就退回系统 PATH。其余三件仍随包 ——
    yt-dlp 要跟着站点改版走（发行版版本普遍落后），LibreSVIP 与 onnxruntime
    不在任何发行版的仓库里。 */
-const PARTS_THIS_PLATFORM =
+export const PARTS_THIS_PLATFORM =
   Object.keys(PARTS).filter((n) => n !== 'ffmpeg' || PLATFORM !== 'linux')
 
 /** 某件产物在本平台下的相对落点（Windows 加 `.exe`；`onnxruntime` 换动态库名）。 */
@@ -353,7 +355,55 @@ function runVersion(binary, args) {
 // 想报版本的二进制：件名 → 跑它的参数。
 const VERSION_ARGS = {ffmpeg: ['-version'], ytdlp: ['--version']}
 
-/** 按表核一遍，缺什么现在就说。返回问题列表（空 = 齐了）。 */
+// ── 内容摘要：来源被换掉时唯一判得了的东西 ───────────────────────────
+/**
+ * 一件产物在 `tools/` 下占的**那棵树** —— 摘要算的就是它。
+ *
+ * 与 `needRel` 的分工：那个回答「打包前必须存在哪个文件」，这个回答「哪一片属于这件」。
+ * 目录名与三个 `install*` 的落点一致（`libresvip/` 整个搬、`onnxruntime/` 只放 dll）；
+ * `ytdlp` 是裸二进制，没有目录，只有那一个文件。
+ */
+const PART_TREES = {ffmpeg: 'ffmpeg', ytdlp: null, libresvip: 'libresvip', onnxruntime: 'onnxruntime'}
+
+/** 没钉摘要的件，以及**为什么**不钉 —— 补件时逐条打出来。 */
+export const PIN_EXEMPT = {
+  ffmpeg: '上游是滚动发布（BtbN 的 latest），按日期钉标签又会被上游清理，所以这件钉不住',
+}
+
+/** 这一件补上了没有（摘要只能对已经补上的件算）。 */
+export function partPresent(root, name) {
+  const base = destOf(assets.byId('tools'), root)
+  const dir = PART_TREES[name]
+  return dir ? walkFiles(path.join(base, dir)).length > 0 : isFile(path.join(base, needRel(name)))
+}
+
+/**
+ * 一件产物的内容摘要：整棵子树的「相对路径 + 字节数 + 文件 SHA-256」按路径排序后
+ * 再哈希一次。
+ *
+ * ⚠️ 只用**内容与路径**，不带时间戳 / 权限位 / 符号链接：`chmodX` 会改权限位，macOS 的
+ * 包里 `_internal/Python` 是符号链接（`walkFiles` 本来就不跟）—— 带上它们摘要会随机器变。
+ * ⚠️ 排序用码位比较，**别用 `localeCompare`**：那个随 locale 变，换台机器摘要就不一样。
+ */
+export function toolDigest(root, name) {
+  const base = destOf(assets.byId('tools'), root)
+  const dir = PART_TREES[name]
+  const files = dir ? walkFiles(path.join(base, dir)) : [path.join(base, needRel(name))]
+  const rows = files.map((f) => {
+    const rel = path.relative(base, f).split(path.sep).join('/')
+    return {rel, line: `${rel}\n${fs.statSync(f).size}\n${sha256File(f)}\n`}
+  })
+  rows.sort((a, b) => (a.rel < b.rel ? -1 : a.rel > b.rel ? 1 : 0))
+  return createHash('sha256').update(rows.map((r) => r.line).join('')).digest('hex').toUpperCase()
+}
+
+/**
+ * 按表核一遍，缺什么现在就说。返回问题列表（空 = 齐了）。
+ *
+ * 除了「在不在」，这里还核**钉住的内容摘要**（`assets.mjs::TOOL_DIGESTS`）——
+ * 它是自建归档 / `--local` 目录 / 镜像这几条路唯一判得了的东西。摘要对不上算**失败**，
+ * 因为下一步就是把这份二进制打进安装包。
+ */
 export function verify(selected, root) {
   const bad = []
   for (const asset of selected) {
@@ -376,6 +426,29 @@ export function verify(selected, root) {
       }
     }
     if (descs.length) say(`  ${asset.id.padEnd(10)}: ${descs.join('，')}`)
+  }
+
+  if (selected.some((a) => a.id === 'tools')) {
+    const base = destOf(assets.byId('tools'), root)
+    const pins = assets.TOOL_DIGESTS[`${PLATFORM}-${ARCH}`] ?? {}
+    const unpinned = []
+    for (const name of PARTS_THIS_PLATFORM) {
+      // 缺件的件不核摘要：上面已经报过「缺」，再报一条只会把真正的错埋掉
+      if (!isFile(path.join(base, needRel(name)))) continue
+      const want = pins[name]
+      if (!want) {
+        unpinned.push(PIN_EXEMPT[name] ? `${name}（${PIN_EXEMPT[name]}）` : name)
+        continue
+      }
+      const got = toolDigest(root, name)
+      if (got !== want) {
+        bad.push(
+          `tools/ 里 ${name} 的内容摘要与钉住的对不上（盘上 ${got.slice(0, 16)}…，钉的是 ${want.slice(0, 16)}…）` +
+          `—— 来源被换过，或者上游换了发布物。确认来源无误后重新钉：node tools/pin_tool_digests.mjs`,
+        )
+      }
+    }
+    if (unpinned.length) say(`  没钉内容摘要：${unpinned.join('、')}`)
   }
   return bad
 }
