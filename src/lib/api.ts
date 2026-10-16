@@ -46,6 +46,15 @@ export const api = {
     updateDownload: (args: UpdateInstaller & { version?: string }) =>
         call<{ jobId: string }>('update_download', {args}),
 
+    /* ── 公告（自建源，见 `announce.rs`）──────────────────── */
+    /**
+     * 取一次公告。
+     *
+     * ⚠️ 取不到是 `ok:false` 的**成功回包**（服务器在重启、用户断网都算常态）：
+     * 启动那一下不弹任何东西，设置里那一栏照实说。
+     */
+    announceList: () => call<AnnounceReply>('announce_list'),
+
     /* ── 音轨分离（内嵌离线引擎）──────────────────────────── */
     /**
      * 状态。页面每 2 秒轮询一次它 —— 服务的生死、模型的多少、下载的进度
@@ -1051,6 +1060,29 @@ export interface UpdateInstaller {
     url?: string
     /** 校验清单（`SHA256SUMS-*.txt`）。空串 = 这次发布没带，下完核对不了完整性 */
     sumsUrl?: string
+}
+
+/** 一条公告（后端规整后的形状，见 `announce.rs::normalize`）。 */
+export interface Announcement {
+    /** 已读就是按它记的；后端在缺 `id` 时用标题兜底 */
+    id: string
+    title?: string
+    /** 正文（markdown 原文，后端截到 4000 字） */
+    body?: string
+    /** ISO 8601；可能为空串（服务器没写） */
+    date?: string
+    level?: 'info' | 'warn'
+    /** 详情链接；可能为空串 */
+    url?: string
+}
+
+/** `announce_list` 的回包。取不到时只有 `ok:false` + `error`。 */
+export interface AnnounceReply {
+    ok: boolean
+    items?: Announcement[]
+    /** 这次是从哪个地址取的（配了多个时用得上） */
+    via?: string
+    error?: string
 }
 
 /**

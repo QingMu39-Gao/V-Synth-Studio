@@ -48,6 +48,12 @@ export interface AppConfig {
      * 否则用户会以为功能坏了。清空（`""`）就是取消忽略。
      */
     ignoredUpdate?: string
+    /**
+     * 已经读过的公告 id（最近若干条，见 `lib/announce.ts::markSeen`）。
+     *
+     * 存 id 而不是「看过公告栏没有」：公告是一条条发的，用户可能只想看其中一条。
+     */
+    seenAnnouncements?: string[]
     /* 背景壁纸：`""` 静态图 / `"we:current"` 跟随 WE 当前壁纸 / `"we:<id>"` 固定一张。
        `wallpaperPaused` 暂停动画；`weDir` 手动指定的 WE 目录（自动找不到时才用）。 */
     wallpaper?: string

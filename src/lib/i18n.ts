@@ -739,6 +739,81 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
         "en-US": "Answered by the self-hosted source",
         "ja-JP": "自前のソースが応答しました"
     },
+    "公告": {
+        "zh-CN": "公告",
+        "en-US": "Announcements",
+        "ja-JP": "お知らせ"
+    },
+    "重要": {
+        "zh-CN": "重要",
+        "en-US": "Important",
+        "ja-JP": "重要"
+    },
+    "知道了": {
+        "zh-CN": "知道了",
+        "en-US": "Got it",
+        "ja-JP": "了解しました"
+    },
+    "查看详情": {
+        "zh-CN": "查看详情",
+        "en-US": "See details",
+        "ja-JP": "詳細を見る"
+    },
+    "打开链接失败": {
+        "zh-CN": "打开链接失败",
+        "en-US": "Could not open the link",
+        "ja-JP": "リンクを開けませんでした"
+    },
+    "还有": {
+        "zh-CN": "还有",
+        "en-US": "Plus",
+        "ja-JP": "他に"
+    },
+    "条未读公告": {
+        "zh-CN": "条未读公告",
+        "en-US": "unread announcements",
+        "ja-JP": "件の未読のお知らせ"
+    },
+    "这条公告没有正文。": {
+        "zh-CN": "这条公告没有正文。",
+        "en-US": "This announcement has no body.",
+        "ja-JP": "このお知らせには本文がありません。"
+    },
+    "刷新": {
+        "zh-CN": "刷新",
+        "en-US": "Refresh",
+        "ja-JP": "更新"
+    },
+    "全部标为已读": {
+        "zh-CN": "全部标为已读",
+        "en-US": "Mark all as read",
+        "ja-JP": "すべて既読にする"
+    },
+    "标为已读": {
+        "zh-CN": "标为已读",
+        "en-US": "Mark as read",
+        "ja-JP": "既読にする"
+    },
+    "未读": {
+        "zh-CN": "未读",
+        "en-US": "Unread",
+        "ja-JP": "未読"
+    },
+    "取不到公告": {
+        "zh-CN": "取不到公告",
+        "en-US": "Could not fetch announcements",
+        "ja-JP": "お知らせを取得できません"
+    },
+    "还没有公告": {
+        "zh-CN": "还没有公告",
+        "en-US": "No announcements yet",
+        "ja-JP": "お知らせはまだありません"
+    },
+    "从自建源取；有没读过的，下次启动会弹一次": {
+        "zh-CN": "从自建源取；有没读过的，下次启动会弹一次",
+        "en-US": "Fetched from the self-hosted source; unread ones pop up on the next start",
+        "ja-JP": "自前のソースから取得します。未読のものは次回起動時に表示されます"
+    },
 }
 
 export function getUiLanguage(): UiLanguage {

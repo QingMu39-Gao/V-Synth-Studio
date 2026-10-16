@@ -1,7 +1,8 @@
 import * as React from 'react'
 import {lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState} from 'react'
-import {api, type UpdateCheck} from '@/lib/api'
+import {api, type Announcement, type UpdateCheck} from '@/lib/api'
 import {type AppConfig, getConfig, onConfigError, saveConfig, syncConfig} from '@/lib/config'
+import {markSeen, unseen} from '@/lib/announce'
 import {installerOf, installerSizeText, shouldNotifyUpdate} from '@/lib/update'
 import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import {setUiLanguage, type UiLanguage, useI18n} from '@/lib/i18n'
@@ -155,10 +156,16 @@ export default function App() {
      */
     const [update, setUpdate] = useState<UpdateCheck | null>(null)
     const [updateOpen, setUpdateOpen] = useState(false)
+    /** 查到了更新、但**还没弹**（等公告那个框先关掉，两个弹窗不叠在一起） */
+    const [updateReady, setUpdateReady] = useState(false)
     /* 下载新版本那条路（进度、下完的那份文件、核对结果）与「设置 → 关于」共用一份实现 */
     const dl = useUpdateDownload(toast)
     const installer = installerOf(update)
     const installerSize = installerSizeText(installer)
+    /** 启动时要弹的公告（**还没读过的**，新的在前；`[0]` 就是当前这条） */
+    const [announce, setAnnounce] = useState<Announcement[]>([])
+    const [announceOpen, setAnnounceOpen] = useState(false)
+    const currentAnnounce = announce[0] ?? null
     /** 安装时选的语言只应用一次（见 `refreshState`） */
     const langApplied = useRef(false)
     useEffect(() => {
@@ -171,13 +178,56 @@ export default function App() {
                    有测试钉着（忽略的是「这一个版本」，上游再发新版本仍然要提醒）。 */
                 if (!shouldNotifyUpdate(r, getConfig().ignoredUpdate)) return
                 setUpdate(r)
-                setUpdateOpen(true)
+                setUpdateReady(true)
             })
             .catch((e: unknown) => console.warn('[update] 启动检查更新失败（静默）：', e))
         return () => {
             alive = false
         }
     }, [])
+
+    /*
+     * 启动时**静默**取一次公告：只有「有没读过的」才弹，其余一概不打扰 ——
+     * 取不到（服务器在重启、断网）什么都不做，设置里那一栏才照实说（见 `announce.rs`）。
+     *
+     * ⚠️ 谁先弹：公告 → 更新。公告是「刚发生的事」，而更新那个框要等网络（慢）；
+     * 两个一起弹会叠在一起，所以更新那个框在公告关掉之后才开（见下面那个 effect）。
+     */
+    useEffect(() => {
+        let alive = true
+        void api
+            .announceList()
+            .then((r) => {
+                if (!alive || !r.ok) return
+                const list = unseen(r.items, getConfig().seenAnnouncements)
+                if (!list.length) return
+                setAnnounce(list)
+                setAnnounceOpen(true)
+            })
+            .catch((e: unknown) => console.warn('[announce] 取公告失败（静默）：', e))
+        return () => {
+            alive = false
+        }
+    }, [])
+
+    /* 公告关掉之后，把等着的更新弹窗放出来。⚠️ 消费掉 `updateReady`：不然用户关掉
+       更新弹窗的那一刻，这个 effect 会立刻把它再弹一次。 */
+    useEffect(() => {
+        if (!updateReady || announceOpen) return
+        setUpdateReady(false)
+        setUpdateOpen(true)
+    }, [updateReady, announceOpen])
+
+    /** 「知道了」：记下这一条读过，然后弹下一条（没有就关框）。 */
+    const dismissAnnounce = useCallback(() => {
+        const cur = announce[0]
+        if (cur) {
+            saveConfig({seenAnnouncements: markSeen(getConfig().seenAnnouncements, cur.id)})
+        }
+        const rest = announce.slice(1)
+        setAnnounce(rest)
+        if (!rest.length) setAnnounceOpen(false)
+    }, [announce])
 
     /* 配置写失败（后端拒绝、盘满…）要说出来，否则用户只会看到「改了没反应」 */
     useEffect(() => {
@@ -342,6 +392,53 @@ export default function App() {
                             </div>
                         </main>
                     </div>
+
+                    {/* 公告：启动时只有「没读过的」才弹（见上面那个 effect）。
+                        一条条过，「知道了」记下这条再弹下一条。关框（右上角/背景）与
+                        「知道了」等价 —— 否则关掉之后下次启动还会弹同一条。 */}
+                    <GlassDialog
+                        open={announceOpen}
+                        onOpenChange={(open) => {
+                            if (!open) dismissAnnounce()
+                        }}
+                        title={currentAnnounce?.title || t('公告')}
+                        description={[
+                            currentAnnounce?.date ? currentAnnounce.date.slice(0, 10) : '',
+                            currentAnnounce?.level === 'warn' ? t('重要') : '',
+                        ]
+                            .filter(Boolean)
+                            .join(' · ')}
+                    >
+                        <pre className="job-log">
+                            {currentAnnounce?.body || t('这条公告没有正文。')}
+                        </pre>
+                        {announce.length > 1 && (
+                            <p className="hint">
+                                {`${t('还有')} ${announce.length - 1} ${t('条未读公告')}`}
+                            </p>
+                        )}
+                        <div className="btn-row">
+                            {currentAnnounce?.url && (
+                                <Button
+                                    icon="external"
+                                    onClick={() => {
+                                        api.fsOpen({url: currentAnnounce.url ?? ''}).catch(
+                                            (e: unknown) => {
+                                                const msg =
+                                                    e instanceof Error ? e.message : String(e)
+                                                toast(`${t('打开链接失败')}：${msg}`, 'err')
+                                            },
+                                        )
+                                    }}
+                                >
+                                    {t('查看详情')}
+                                </Button>
+                            )}
+                            <Button variant="primary" onClick={dismissAnnounce}>
+                                {t('知道了')}
+                            </Button>
+                        </div>
+                    </GlassDialog>
 
                     {/* 启动那次静默检查**只在真有新版时**把这个框打开（见上面那个 effect）。
                         「设置 → 关于」里还有一份手动的，两处共用同一个后端命令。 */}

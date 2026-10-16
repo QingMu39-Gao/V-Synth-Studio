@@ -1,6 +1,7 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
-import {api, type ExtDirInfo, type UpdateCheck} from '@/lib/api'
+import {api, type AnnounceReply, type ExtDirInfo, type UpdateCheck} from '@/lib/api'
 import {getConfig, onConfigChange, saveConfig} from '@/lib/config'
+import {markSeen, unseen} from '@/lib/announce'
 import {installerOf, installerSizeText} from '@/lib/update'
 import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import type {AppState} from '@/lib/types'
@@ -32,6 +33,9 @@ const SECTIONS = [
     {id: 'wallpaper', label: '壁纸'},
     {id: 'paths', label: '路径'},
     {id: 'tools', label: '外部工具'},
+    /* 「公告」在「赞助 / 关于」之前：它是**要看的消息**，与设置项不是一类；放最后
+       就等于没人看得到 */
+    {id: 'announce', label: '公告'},
     /* 「赞助」在「关于」之前：它要的是被看见（关于那一栏是署名与致谢，看到最后才轮到） */
     {id: 'sponsor', label: '赞助'},
     {id: 'about', label: '关于'},
@@ -132,6 +136,7 @@ export function Settings({
                 {section === 'tools' && (
                     <Tools state={state} onRefreshState={onRefreshState} onToast={onToast}/>
                 )}
+                {section === 'announce' && <Announce onToast={onToast}/>}
                 {section === 'sponsor' && <Sponsor/>}
                 {section === 'about' && (
                     <About state={state} onRefresh={reload} onNavigate={onNavigate} onToast={onToast}/>
@@ -1016,5 +1021,124 @@ function About({
                 </p>
             </Panel>
         </>
+    )
+}
+
+/* ══════════════════════════════════════════════════════════ 公告 ══ */
+
+/**
+ * 公告栏 —— 自己那一栏，内容来自自建源（见 `announce.rs`）。
+ *
+ * 与启动弹窗共用同一份「已读」记录（`config.seenAnnouncements`）：弹窗里点过「知道了」
+ * 的，这里就是已读；这里标了已读的，启动时也不再弹。
+ *
+ * ⚠️ 取不到**不是错误**（服务器在重启、断网）：这里只把后端那句话显示出来，不弹 toast ——
+ * 用户没点「刷新」时，一次失败不该打断他。
+ */
+function Announce({onToast}: { onToast: ToastFn }) {
+    const {t} = useI18n()
+    const [reply, setReply] = useState<AnnounceReply | null>(null)
+    const [busy, setBusy] = useState(false)
+    const [seen, setSeen] = useState<string[]>(() => getConfig().seenAnnouncements ?? [])
+
+    /* 弹窗那边也会写这个键：订阅一下，两边始终是同一份「已读」 */
+    useEffect(() => onConfigChange(() => setSeen(getConfig().seenAnnouncements ?? [])), [])
+
+    const load = useCallback(async () => {
+        setBusy(true)
+        try {
+            setReply(await api.announceList())
+        } catch (e) {
+            onToast(e instanceof Error ? e.message : String(e), 'err')
+        } finally {
+            setBusy(false)
+        }
+    }, [onToast])
+
+    useEffect(() => {
+        void load()
+    }, [load])
+
+    const items = reply?.items ?? []
+    const unread = unseen(items, seen)
+    const markAll = () => {
+        let next = getConfig().seenAnnouncements
+        for (const a of unread) next = markSeen(next, a.id)
+        saveConfig({seenAnnouncements: next ?? []})
+        onToast(t('全部标为已读'), 'ok')
+    }
+
+    return (
+        <Panel>
+            <PanelHead
+                title={t('公告')}
+                desc={t('从自建源取；有没读过的，下次启动会弹一次')}
+            />
+            <div className="btn-row">
+                <Button loading={busy} icon="refresh" onClick={() => void load()}>
+                    {t('刷新')}
+                </Button>
+                {unread.length > 0 && (
+                    <Button onClick={markAll}>
+                        {`${t('全部标为已读')}（${unread.length}）`}
+                    </Button>
+                )}
+                {reply?.ok && reply.via && <span className="hint">{reply.via}</span>}
+            </div>
+            {reply?.ok === false && (
+                <p className="hint">{`${t('取不到公告')}：${reply.error ?? ''}`}</p>
+            )}
+            {reply?.ok && items.length === 0 && <p className="hint">{t('还没有公告')}</p>}
+            <div className="stack">
+                {items.map((a) => {
+                    const isUnread = unread.some((u) => u.id === a.id)
+                    return (
+                        <Finding
+                            key={a.id}
+                            level={isUnread && a.level === 'warn' ? 'warn' : 'info'}
+                            title={`${isUnread ? `[${t('未读')}] ` : ''}${a.title || t('公告')}`}
+                        >
+                            <span className="hint">
+                                {a.date ? `${a.date.slice(0, 10)} · ` : ''}
+                            </span>
+                            {a.body || ''}
+                            <span className="btn-row">
+                                {a.url && (
+                                    <Button
+                                        size="sm"
+                                        icon="external"
+                                        onClick={() => {
+                                            api.fsOpen({url: a.url ?? ''}).catch((e: unknown) => {
+                                                onToast(
+                                                    `${t('打开链接失败')}：${e instanceof Error ? e.message : String(e)}`,
+                                                    'err',
+                                                )
+                                            })
+                                        }}
+                                    >
+                                        {t('查看详情')}
+                                    </Button>
+                                )}
+                                {isUnread && (
+                                    <Button
+                                        size="sm"
+                                        onClick={() =>
+                                            saveConfig({
+                                                seenAnnouncements: markSeen(
+                                                    getConfig().seenAnnouncements,
+                                                    a.id,
+                                                ),
+                                            })
+                                        }
+                                    >
+                                        {t('标为已读')}
+                                    </Button>
+                                )}
+                            </span>
+                        </Finding>
+                    )
+                })}
+            </div>
+        </Panel>
     )
 }
