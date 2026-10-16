@@ -3,7 +3,9 @@ import {getConfig, onConfigChange, saveConfig} from './config'
 
 export type UiLanguage = 'zh-CN' | 'en-US' | 'ja-JP'
 
-const DICT: Record<string, Record<UiLanguage, string>> = {
+/* 导出是为了让测试能核「每个词条三语齐全」—— 漏一列不会报错，只会在那个语言的界面里
+   静默显示中文。 */
+export const DICT: Record<string, Record<UiLanguage, string>> = {
     '总览': {'zh-CN': '总览', 'en-US': 'Dashboard', 'ja-JP': '概要'},
     '环境检测与常用入口': {
         'zh-CN': '环境检测与常用入口',
