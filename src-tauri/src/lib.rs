@@ -7,6 +7,7 @@
 //   前后端交互**只走 `tauri::command`**（见 `src/ipc/`，命令登记在下面的
 //   `generate_handler!`）。
 
+mod announce;
 mod artifact;
 mod audio;
 mod bili;
@@ -286,6 +287,8 @@ pub fn run() {
             /* ── 检查更新 ── */
             ipc::update::update_check,
             ipc::update::update_download,
+            /* ── 公告 ── */
+            ipc::announce::announce_list,
         ])
         .build(tauri::generate_context!())
         .expect("Tauri 应用构建失败")

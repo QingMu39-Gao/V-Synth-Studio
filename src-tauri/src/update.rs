@@ -91,7 +91,9 @@ fn mirror_url(base: &str, canonical: &str) -> String {
 ///
 /// 明文 http 只在**本机**放行（127.0.0.1 / localhost / ::1）：那两个地址出去的包出不了
 /// 这台机器，而其余任何 http 都可能是中间人。
-fn allowed_base(base: &str) -> bool {
+///
+/// `pub(crate)`：公告那栏（`announce.rs`）用的是同一条规矩，别各写一份。
+pub(crate) fn allowed_base(base: &str) -> bool {
     let b = base.trim();
     if b.starts_with("https://") {
         return true;

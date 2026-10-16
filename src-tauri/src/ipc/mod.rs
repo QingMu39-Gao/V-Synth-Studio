@@ -16,6 +16,7 @@
 //! 出错回 `Err(String)`，前端 `invoke` 抛成 `Error`；成功回业务对象本身，**没有
 //! `{ok:true}` 信封**。
 
+pub mod announce;
 pub mod bili;
 pub mod config;
 pub mod config_file;
