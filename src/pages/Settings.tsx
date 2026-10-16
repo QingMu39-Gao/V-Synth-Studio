@@ -1,5 +1,8 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
 import {api, type ExtDirInfo, type UpdateCheck} from '@/lib/api'
+import {getConfig, onConfigChange, saveConfig} from '@/lib/config'
+import {installerOf, installerSizeText} from '@/lib/update'
+import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import type {AppState} from '@/lib/types'
 import type {PageProps, ToastFn} from './types'
 import {Button} from '@/components/Button'
@@ -720,6 +723,14 @@ function About({
     const [update, setUpdate] = useState<UpdateCheck | null>(null)
     const [updateBusy, setUpdateBusy] = useState(false)
     const [updateErr, setUpdateErr] = useState('')
+    /* 「忽略这个版本」存的是配置里那一个键：**手动查这里仍然照实报**（那是用户自己问的），
+       它只影响启动时那次静默检查弹不弹（见 `lib/update.ts`）。 */
+    const [ignored, setIgnored] = useState(() => getConfig().ignoredUpdate ?? '')
+    useEffect(() => onConfigChange(() => setIgnored(getConfig().ignoredUpdate ?? '')), [])
+    /* 下载那条路与启动弹窗共用一份实现（见 `lib/useUpdateDownload`） */
+    const dl = useUpdateDownload(onToast)
+    const installer = installerOf(update)
+    const installerSize = installerSizeText(installer)
     const checkUpdate = async () => {
         setUpdateBusy(true)
         setUpdateErr('')
@@ -811,6 +822,35 @@ function About({
                     <Button loading={updateBusy} onClick={checkUpdate}>
                         {t('检查更新')}
                     </Button>
+                    {dl.file ? (
+                        <Button
+                            variant="primary"
+                            icon="play"
+                            onClick={() => {
+                                api.fsOpen({path: dl.file}).catch((e: unknown) => {
+                                    onToast(
+                                        `${t('打开安装包失败')}：${e instanceof Error ? e.message : String(e)}`,
+                                        'err',
+                                    )
+                                })
+                            }}
+                        >
+                            {t('打开安装包')}
+                        </Button>
+                    ) : (
+                        update?.ok &&
+                        update.hasUpdate &&
+                        installer && (
+                            <Button
+                                variant="primary"
+                                icon="download"
+                                loading={dl.job?.status === 'running'}
+                                onClick={() => void dl.download(installer, update.latest)}
+                            >
+                                {`${t('下载新版本')}${installerSize ? `（${installerSize}）` : ''}`}
+                            </Button>
+                        )
+                    )}
                     {update?.ok && update.hasUpdate && (
                         <Button
                             variant="primary"
@@ -819,14 +859,55 @@ function About({
                             {t('打开发布页')}
                         </Button>
                     )}
+                    {update?.ok && update.hasUpdate && (
+                        <Button
+                            variant="ghost"
+                            onClick={() => {
+                                saveConfig({ignoredUpdate: update.latest ?? ''})
+                                onToast(`${t('不再提醒这个版本')}：${update.latest ?? ''}`, 'ok')
+                            }}
+                        >
+                            {t('忽略这个版本')}
+                        </Button>
+                    )}
                 </div>
                 {updateErr && <p className="hint">{updateErr}</p>}
                 {update?.ok === false && <p className="hint">{update.error}</p>}
-                {/* 直连不通时后端会自动改走镜像：这件事要说出来，用户有权知道
-                    版本信息是第三方代答的（值由后端给，见 `update.rs` 的 `via`） */}
-                {update?.ok && update.via && update.via !== 'GitHub 直连' && (
+                {dl.job?.status === 'running' && (
                     <p className="hint">
-                        {t('GitHub 直连不通，这次是经镜像代查的')}：{update.via}
+                        {dl.job.message || t('正在下载…')}
+                        {typeof dl.job.percent === 'number' ? `（${dl.job.percent.toFixed(0)}%）` : ''}
+                    </p>
+                )}
+                {dl.file && (
+                    <p className="hint">
+                        {dl.verified
+                            ? t('已核对 SHA-256，可以打开安装包了')
+                            : t('这次发布没有校验清单，没能核对完整性；打开前请自己确认来源')}
+                    </p>
+                )}
+                {/* 直连不通时后端会自动改走自建源或镜像：这件事要说出来，
+                    用户有权知道版本信息是第三方代答的（值由后端给，见 `update.rs`） */}
+                {update?.ok && update.via && update.source !== 'direct' && (
+                    <p className="hint">
+                        {update.source === 'self'
+                            ? t('这次由自建源代查')
+                            : t('GitHub 直连不通，这次是经镜像代查的')}
+                        ：{update.via}
+                    </p>
+                )}
+                {ignored && (
+                    <p className="hint">
+                        {`${t('已忽略这个版本')}：${ignored}`}
+                        <Button
+                            size="sm"
+                            onClick={() => {
+                                saveConfig({ignoredUpdate: ''})
+                                onToast(t('已恢复提醒'), 'ok')
+                            }}
+                        >
+                            {t('恢复提醒')}
+                        </Button>
                     </p>
                 )}
                 {update?.ok && update.hasUpdate && (

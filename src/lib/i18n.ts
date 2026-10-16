@@ -679,6 +679,66 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
         "en-US": "This directory already holds a stem-separation runtime.",
         "ja-JP": "このフォルダーには既にステム分離のランタイムがあります。"
     },
+    "下载新版本": {
+        "zh-CN": "下载新版本",
+        "en-US": "Download the new version",
+        "ja-JP": "新しいバージョンをダウンロード"
+    },
+    "正在下载…": {
+        "zh-CN": "正在下载…",
+        "en-US": "Downloading…",
+        "ja-JP": "ダウンロード中…"
+    },
+    "打开安装包": {
+        "zh-CN": "打开安装包",
+        "en-US": "Open the installer",
+        "ja-JP": "インストーラーを開く"
+    },
+    "打开安装包失败": {
+        "zh-CN": "打开安装包失败",
+        "en-US": "Could not open the installer",
+        "ja-JP": "インストーラーを開けませんでした"
+    },
+    "忽略这个版本": {
+        "zh-CN": "忽略这个版本",
+        "en-US": "Skip this version",
+        "ja-JP": "このバージョンをスキップ"
+    },
+    "不再提醒这个版本": {
+        "zh-CN": "不再提醒这个版本",
+        "en-US": "This version will not be announced again",
+        "ja-JP": "このバージョンは今後通知しません"
+    },
+    "已忽略这个版本": {
+        "zh-CN": "已忽略这个版本",
+        "en-US": "Skipped version",
+        "ja-JP": "スキップしたバージョン"
+    },
+    "恢复提醒": {
+        "zh-CN": "恢复提醒",
+        "en-US": "Notify me again",
+        "ja-JP": "通知を再開"
+    },
+    "已核对 SHA-256，可以打开安装包了": {
+        "zh-CN": "已核对 SHA-256，可以打开安装包了",
+        "en-US": "SHA-256 verified; the installer is ready to open",
+        "ja-JP": "SHA-256 を確認しました。インストーラーを開けます"
+    },
+    "这次发布没有校验清单，没能核对完整性；打开前请自己确认来源": {
+        "zh-CN": "这次发布没有校验清单，没能核对完整性；打开前请自己确认来源",
+        "en-US": "This release has no checksum list, so the download could not be verified. Check where it came from before opening.",
+        "ja-JP": "このリリースにはチェックサム一覧が無く、整合性を確認できませんでした。開く前に入手元をご確認ください。"
+    },
+    "这次发布没有本平台的安装包，去发布页看看": {
+        "zh-CN": "这次发布没有本平台的安装包，去发布页看看",
+        "en-US": "This release has no package for your platform — see the release page",
+        "ja-JP": "このリリースにはお使いのプラットフォーム向けのパッケージがありません。リリースページをご覧ください"
+    },
+    "这次由自建源代查": {
+        "zh-CN": "这次由自建源代查",
+        "en-US": "Answered by the self-hosted source",
+        "ja-JP": "自前のソースが応答しました"
+    },
 }
 
 export function getUiLanguage(): UiLanguage {

@@ -2,6 +2,8 @@ import * as React from 'react'
 import {lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState} from 'react'
 import {api, type UpdateCheck} from '@/lib/api'
 import {type AppConfig, getConfig, onConfigError, saveConfig, syncConfig} from '@/lib/config'
+import {installerOf, installerSizeText, shouldNotifyUpdate} from '@/lib/update'
+import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import {setUiLanguage, type UiLanguage, useI18n} from '@/lib/i18n'
 import type {AppState} from '@/lib/types'
 import {Icon, type IconName} from '@/components/Icon'
@@ -153,6 +155,10 @@ export default function App() {
      */
     const [update, setUpdate] = useState<UpdateCheck | null>(null)
     const [updateOpen, setUpdateOpen] = useState(false)
+    /* 下载新版本那条路（进度、下完的那份文件、核对结果）与「设置 → 关于」共用一份实现 */
+    const dl = useUpdateDownload(toast)
+    const installer = installerOf(update)
+    const installerSize = installerSizeText(installer)
     /** 安装时选的语言只应用一次（见 `refreshState`） */
     const langApplied = useRef(false)
     useEffect(() => {
@@ -160,7 +166,10 @@ export default function App() {
         void api
             .updateCheck()
             .then((r) => {
-                if (!alive || !r.ok || !r.hasUpdate) return
+                if (!alive) return
+                /* ⚠️ 用户忽略过的那个版本不再弹：这个判断在 `lib/update.ts` 里，
+                   有测试钉着（忽略的是「这一个版本」，上游再发新版本仍然要提醒）。 */
+                if (!shouldNotifyUpdate(r, getConfig().ignoredUpdate)) return
                 setUpdate(r)
                 setUpdateOpen(true)
             })
@@ -352,7 +361,54 @@ export default function App() {
                             </p>
                         )}
                         <pre className="job-log">{update?.notes || t('这条发布没有写说明。')}</pre>
+                        {/* 下载进度：任务表那条通道（见 `lib/useUpdateDownload`）。 */}
+                        {dl.job?.status === 'running' && (
+                            <p className="hint">
+                                {dl.job.message || t('正在下载…')}
+                                {typeof dl.job.percent === 'number' ? `（${dl.job.percent.toFixed(0)}%）` : ''}
+                            </p>
+                        )}
+                        {dl.file && (
+                            <p className="hint">
+                                {dl.verified
+                                    ? t('已核对 SHA-256，可以打开安装包了')
+                                    : t('这次发布没有校验清单，没能核对完整性；打开前请自己确认来源')}
+                            </p>
+                        )}
+                        {update && !installer && (
+                            <p className="hint">{t('这次发布没有本平台的安装包，去发布页看看')}</p>
+                        )}
                         <div className="btn-row">
+                            {dl.file ? (
+                                <Button
+                                    variant="primary"
+                                    icon="play"
+                                    onClick={() => {
+                                        /* 打开下载好的安装包交给系统（与扩展包那条路一致）：
+                                           安装器要 UAC、要用户点下一步，程序不该替它做。 */
+                                        api.fsOpen({path: dl.file}).catch((e: unknown) => {
+                                            const msg = e instanceof Error ? e.message : String(e)
+                                            toast(`${t('打开安装包失败')}：${msg}`, 'err')
+                                        })
+                                    }}
+                                >
+                                    {t('打开安装包')}
+                                </Button>
+                            ) : (
+                                installer && (
+                                    <Button
+                                        variant="primary"
+                                        icon="download"
+                                        loading={dl.job?.status === 'running'}
+                                        onClick={() => {
+                                            if (!installer) return
+                                            void dl.download(installer, update?.latest)
+                                        }}
+                                    >
+                                        {`${t('下载新版本')}${installerSize ? `（${installerSize}）` : ''}`}
+                                    </Button>
+                                )
+                            )}
                             <Button
                                 variant="primary"
                                 icon="external"
@@ -367,6 +423,20 @@ export default function App() {
                                 }}
                             >
                                 {t('打开发布页')}
+                            </Button>
+                            {/* 忽略只作用于**启动时那次静默检查**：手动查仍然照实报（见 `lib/update.ts`） */}
+                            <Button
+                                variant="ghost"
+                                onClick={() => {
+                                    saveConfig({ignoredUpdate: update?.latest ?? ''})
+                                    setUpdateOpen(false)
+                                    toast(
+                                        `${t('不再提醒这个版本')}${update?.latest ? `：${update.latest}` : ''}`,
+                                        'ok',
+                                    )
+                                }}
+                            >
+                                {t('忽略这个版本')}
                             </Button>
                             <Button variant="ghost" onClick={() => setUpdateOpen(false)}>
                                 {t('稍后再说')}

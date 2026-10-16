@@ -36,6 +36,15 @@ export const api = {
      * **本机比远端新**（自编的包），不一定是「一样新」。
      */
     updateCheck: () => call<UpdateCheck>('update_check'),
+    /**
+     * 下载新版本安装包（立刻回 `{jobId}`，进度走 `job_*`）。
+     *
+     * `args` 就是 {@link UpdateCheck} 的 `installer` 原样传回来，另加一个可选的
+     * `version`（只用于任务标题）。后端的候选顺序是**自建源 → GitHub 直连（引擎内部会
+     * 挑镜像）**，下完还会用 `sumsUrl` 那份清单核对 SHA-256。
+     */
+    updateDownload: (args: UpdateInstaller & { version?: string }) =>
+        call<{ jobId: string }>('update_download', {args}),
 
     /* ── 音轨分离（内嵌离线引擎）──────────────────────────── */
     /**
@@ -1027,6 +1036,23 @@ export interface MidiStatus {
 
 /* ── 检查更新（后端 `update.rs` 拼的回包）─────────────────── */
 
+/** 发布里的一条附件（后端只发这三列，见 `update.rs::assets_of`）。 */
+export interface UpdateAsset {
+    name?: string
+    /** 字节数；下载时后端拿它核对有没有截断 */
+    size?: number
+    url?: string
+}
+
+/** 这次发布里**本机该下的**那一个（后端按平台挑，见 `update.rs::pick_installer`）。 */
+export interface UpdateInstaller {
+    name?: string
+    size?: number
+    url?: string
+    /** 校验清单（`SHA256SUMS-*.txt`）。空串 = 这次发布没带，下完核对不了完整性 */
+    sumsUrl?: string
+}
+
 /**
  * `update_check` 的回包。
  *
@@ -1053,15 +1079,19 @@ export interface UpdateCheck {
     /** ISO 8601，例如 `2026-08-01T12:00:00Z` */
     publishedAt?: string
     prerelease?: boolean
-    /** 那条发布带的附件文件名 */
-    assets?: string[]
+    /** 这条发布带的附件 */
+    assets?: UpdateAsset[]
+    /** 本机该下的那一个；`null` = 这次发布没有本平台的包（界面据此不显示「下载」） */
+    installer?: UpdateInstaller | null
     /**
-     * 这一次是**谁答的**：`GitHub 直连`、或镜像的域名（如 `https://gh-proxy.com`）。
+     * 这一次是**谁答的**：`GitHub 直连`、自建源或镜像的域名（如 `https://gh-proxy.com`）。
      *
-     * ⚠️ 直连不通时后端会自动改走镜像（境内常见），界面要把这件事说出来 ——
+     * ⚠️ 直连不通时后端会自动改走自建源或镜像（境内常见），界面要把这件事说出来 ——
      * 用户有权知道版本信息是第三方代答的。
      */
     via?: string
+    /** `via` 属于哪一档：自建源 / 直连 / 镜像（界面据此选措辞） */
+    source?: 'self' | 'direct' | 'mirror'
 }
 
 /**
