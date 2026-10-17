@@ -103,6 +103,11 @@ pub fn default_config() -> Value {
         "wallpaper": "",
         "wallpaperPaused": false,
         "weDir": "",
+        /* 检查更新与公告的本地状态：`ignoredUpdate` 是被忽略的版本号，
+           `seenAnnouncements` 是读过的公告 id（前端只留最近 100 条）。
+           状态项同样必须在这张表里 —— 漏了的表现为「写盘成功、重启消失、不报错」。 */
+        "ignoredUpdate": "",
+        "seenAnnouncements": [],
         /* 显卡加速（DirectML）**没有开关**：它由推理方式推出来
            （`svsep::apply_infer_mode`），两者本来就是一件事。这里只留一个说明，
            别再加 `svsepDml` / `svsepDmlSix` 那种键 —— 多一个键就多一处要同步的判据。 */
@@ -217,5 +222,42 @@ mod tests {
              现在它是：{:?}",
             v.get("version")
         );
+    }
+
+    /// `default_config()` 就是 `load_config` 的白名单：这里漏一个键，前端写进去的值会
+    /// 「写盘成功、重启消失、不报错」—— 公告每次启动都弹、忽略过的版本重启又弹。
+    ///
+    /// 第一条断言钉**往返**：前端存的两个状态键必须能读回来。
+    /// 第二条钉**过滤本身还在**：不在默认值里的键要被丢掉。它是这张表存在的理由，
+    /// 不能为了让往返通过而改成「盘上有什么就认什么」。
+    #[test]
+    fn frontend_state_keys_survive_a_round_trip() {
+        let dir = std::env::temp_dir().join(format!("vss-config-rt-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("建不了临时目录");
+
+        let mut cfg = super::default_config();
+        cfg["ignoredUpdate"] = serde_json::json!("9.9.9");
+        cfg["seenAnnouncements"] = serde_json::json!(["2026-10-20-probe-01"]);
+        cfg["notInDefaults"] = serde_json::json!(1);
+        super::save_config(&dir, &cfg).expect("写不了配置");
+        let loaded = super::load_config(&dir);
+
+        assert_eq!(
+            loaded["ignoredUpdate"],
+            serde_json::json!("9.9.9"),
+            "ignoredUpdate 必须是 default_config 里的键，否则重启后「忽略这个版本」失效"
+        );
+        assert_eq!(
+            loaded["seenAnnouncements"],
+            serde_json::json!(["2026-10-20-probe-01"]),
+            "seenAnnouncements 必须是 default_config 里的键，否则公告每次启动都弹"
+        );
+        assert!(
+            loaded.get("notInDefaults").is_none(),
+            "不在 default_config 里的键应当被丢掉（这是白名单的意义）：{loaded}"
+        );
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
