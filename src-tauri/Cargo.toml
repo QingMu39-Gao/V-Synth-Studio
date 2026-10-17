@@ -35,7 +35,7 @@ sha2 = "0.10"
 ort = { version = "2.0.0-rc.13", default-features = false, features = ["ndarray", "load-dynamic", "cuda"] }
 ndarray = "0.17"
 tauri-plugin-dialog = "2"
-zip = { version = "8", default-features = false, features = ["deflate-flate2"] }
+zip = { version = "9", default-features = false, features = ["deflate-flate2"] }
 
 [target.'cfg(unix)'.dependencies]
 libc = "0.2"
