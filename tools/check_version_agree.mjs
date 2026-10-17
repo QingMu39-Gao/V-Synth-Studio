@@ -38,7 +38,10 @@ function cargoTomlVersion() {
 function cargoLockVersion() {
   const file = path.join(HERE, 'src-tauri', 'Cargo.lock')
   if (!fs.existsSync(file)) return {error: `找不到 ${file}`}
-  const text = fs.readFileSync(file, 'utf8')
+  /* ⚠️ 先把 CRLF 归一：`core.autocrlf=true` 的机器上（含 Windows CI 的干净检出）
+     `Cargo.lock` 是 CRLF，而 `cargo` 在本机目录里写的是 LF —— 同一份内容两种行尾，
+     只认 `\n` 的匹配在那种机器上会报「没有这个条目」，把版本号检查变成环境依赖。 */
+  const text = fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n')
   const re = new RegExp(`\\[\\[package\\]\\]\\nname = "${PKG}"\\nversion = "([^"]+)"\\n`)
   const m = re.exec(text)
   return m ? {version: m[1]} : {error: `Cargo.lock 里没有 ${PKG} 自己的条目`}
