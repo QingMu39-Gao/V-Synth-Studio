@@ -51,11 +51,6 @@ const UPDATE_TIMEOUT: Duration = Duration::from_secs(6);
 /// 用户至少得有个地方自己拿安装包）。指向本项目的 release 页。
 const RELEASES_PAGE: &str = "https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest";
 
-/// 自建接口的 UA：给一个明确的值（留空或库里那个默认 UA 容易被 WAF 拦）。
-fn self_host_ua() -> String {
-    format!("V-Synth-Studio/{}", current_version())
-}
-
 /// 直连那一次的等待上限。连接被墙时表现为「连上了但不给数据」，所以要一个**短的**
 /// 总超时：镜像是在它失败之后才试的，这里多等一秒就是用户多等一秒。
 const DIRECT_TIMEOUT: Duration = Duration::from_secs(6);
@@ -356,7 +351,9 @@ pub async fn check() -> Result<Value, String> {
     与 GitHub 那条回包不同；取不到、不是 JSON、字段缺失都只当「这一档没答上来」
     继续往下 —— 规格要求网络失败静默降级，不能因为一个字段把人锁在外面。 */
     if let Some(url) = native_url() {
-        match crate::net::fetch_public_json(&url, &self_host_ua(), UPDATE_TIMEOUT).await {
+        match crate::net::fetch_public_json(&url, &crate::announce::self_host_ua(), UPDATE_TIMEOUT)
+            .await
+        {
             Ok(v) => match native_reply(&v, &url) {
                 Some(reply) => {
                     crate::log_line(&format!("检查更新：自建接口答了（{url}）"));

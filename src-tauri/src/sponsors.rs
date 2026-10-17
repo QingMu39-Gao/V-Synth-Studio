@@ -161,6 +161,11 @@ pub fn save_cached(writable: &Path, names: &[String]) {
     }
 }
 
+/// 删掉缓存。远端明确说「名单空了」时用，避免下次断网又拿旧名单出来。
+fn clear_cached(writable: &Path) {
+    let _ = std::fs::remove_file(cache_path(writable));
+}
+
 fn builtin() -> Vec<String> {
     BUILTIN.iter().map(|s| s.to_string()).collect()
 }
@@ -177,16 +182,19 @@ pub async fn fetch(writable: &Path) -> Value {
     for url in urls {
         match crate::net::fetch_public_json(&url, &ua, TIMEOUT).await {
             Ok(v) => match names_from(&v) {
-                Ok(names) if !names.is_empty() => {
-                    save_cached(writable, &names);
-                    crate::log_line(&format!("感谢名单：{url} 取到 {} 个", names.len()));
+                Ok(names) => {
+                    // 空数组是**远端明确说的「没有赞助者」**，不是取不到：
+                    // 生成器只在文件存在且里面没有有效行时才写 `[]`，
+                    // 而「文件不在」它保持上一份产物不动。所以这里要照办并清缓存，
+                    // 否则用户清空名单后所有人会永远看到旧的那一份。
+                    if names.is_empty() {
+                        crate::log_line(&format!("感谢名单：{url} 说名单是空的"));
+                        clear_cached(writable);
+                    } else {
+                        save_cached(writable, &names);
+                        crate::log_line(&format!("感谢名单：{url} 取到 {} 个", names.len()));
+                    }
                     return json!({ "ok": true, "names": names, "via": "remote" });
-                }
-                Ok(_) => {
-                    // 空名单当失败处理：正常维护不会把所有赞助者一次删光，
-                    // 更可能是文件被清空了还在同步。此时用缓存比显示空名单好。
-                    crate::log_line(&format!("感谢名单：{url} 是空的，当取不到处理"));
-                    tried.push(format!("{url}（空名单）"));
                 }
                 Err(e) => {
                     crate::log_line(&format!("感谢名单：{url} 读不了（{e}）"));
@@ -348,6 +356,45 @@ mod tests {
     #[test]
     fn builtin_is_not_empty() {
         assert!(!builtin().is_empty());
+    }
+
+    /// 上限截断发生在去重**之后**：500 条全是同一个名字时，结果是 1 条。
+    ///
+    /// 这条钉的是顺序 —— 若先截断再去重，界面上会认成「只有 1 个赞助者」这种
+    /// 结果对但理由错的情形；若先去重再截断（现在的做法），结果与理由都对。
+    #[test]
+    fn dedup_happens_before_the_cap() {
+        let many: Vec<String> = (0..MAX_NAMES + 50).map(|_| "同一个".to_string()).collect();
+        assert_eq!(names_from(&json!(&many)).unwrap(), vec!["同一个"]);
+    }
+
+    /// 长度限制算的是折叠空白**之后**的字符数：
+    /// 200 个空格 + 一个名字折叠完就是那一个名字，不该被当成「超长」。
+    #[test]
+    fn whitespace_does_not_count_toward_length() {
+        let v = json!([format!("{}{}", " ".repeat(200), "坤")]);
+        assert_eq!(names_from(&v).unwrap(), vec!["坤"]);
+    }
+
+    /// 元素形状都不认识时回空列表（而不是报错）：调用方据此决定「远端这份不可用」。
+    ///
+    /// 这正是「远端格式写坏了」那条静默路径 —— 现在它会安静地回落缓存，
+    /// 所以至少要有一条用例把这个结论钉住。
+    #[test]
+    fn elements_without_name_or_id_are_dropped() {
+        let v = json!([{"note": "没有 name"}, 42, null]);
+        assert_eq!(names_from(&v).unwrap(), Vec::<String>::new());
+    }
+
+    /// 清缓存要真的把文件删掉，否则下次断网又会拿出用户已经删掉的那份。
+    #[test]
+    fn clear_cached_removes_the_file() {
+        let d = tmpdir("clear");
+        save_cached(&d, &["坤".to_string()]);
+        assert!(load_cached(&d).is_some());
+        clear_cached(&d);
+        assert!(load_cached(&d).is_none());
+        let _ = std::fs::remove_dir_all(&d);
     }
 
     /// URL 过滤：只留 https，去重，空串丢掉。

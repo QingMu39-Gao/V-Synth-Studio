@@ -213,10 +213,52 @@ if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
   "$PY2" -c "import json,sys; d=json.load(open(sys.argv[1],encoding='utf-8')); sys.exit(0 if isinstance(d,list) and len(d)==6 else 1)" "$S" 2>/dev/null \
     && ok "是合法数组且条数正确（6）" || bad "不是合法数组或条数不对"
 fi
-# 名单文件不存在写成空数组并正常退出（不是失败）：这份文件可能长期不存在
+# 名单文件不存在时不写产物：文件不在不是指令，保留上一份才是对的。
+# （写成 `[]` 会让客户端当成「名单空了」，把用户已有的名单抹掉。）
+printf '[\n  "旧名单"\n]\n' >"$S"
 VSS_SPONSOR_FILE="$WORK/sp/nope.txt" VSS_API_DIR="$WORK/api" bash "$HERE/gen-sponsors-json.sh" >/dev/null 2>&1 \
   && ok "没有名单文件时正常退出" || bad "没有名单文件时失败了"
-check "没有名单文件时写空数组" "$(tr -d ' \n' <"$S")" "[]"
+check "没有名单文件时保留上一份产物" "$(count_of '旧名单')" "1"
+
+# 文件存在但没有任何有效行：这是**明确的清空**，要真的写空数组
+: >"$WORK/sp/empty.txt"
+VSS_SPONSOR_FILE="$WORK/sp/empty.txt" VSS_API_DIR="$WORK/api" bash "$HERE/gen-sponsors-json.sh" >/dev/null 2>&1 \
+  && ok "空名单文件时正常退出" || bad "空名单文件时失败了"
+check "空名单文件写成空数组" "$(tr -d ' \n' <"$S")" "[]"
+
+# ⚠️ 超长日文名：`${#line}` 在 C locale 下按字节数，会把字符切在中间，
+# 产出一个孤立的 UTF-8 起始字节。JSON 解析器按字节透传，**照样解析成功**，
+# 所以只查 json.load 的闸拦不住 —— 必须用严格解码。脚本开头已固定 locale。
+printf 'A%.0s' {1..59} >"$WORK/sp/long.txt"
+printf 'あいうえお\n' >>"$WORK/sp/long.txt"
+VSS_SPONSOR_FILE="$WORK/sp/long.txt" VSS_API_DIR="$WORK/api" \
+  LC_ALL=C LANG=C bash "$HERE/gen-sponsors-json.sh" >/dev/null 2>&1 \
+  && ok "超长日文名（外层 C locale）生成成功" || bad "超长日文名生成失败"
+# 严格 UTF-8 检查：优先 python3（服务器上一定有），本地没有就用 node。
+# ⚠️ 这两个都不在时**必须报 FAIL**，不能静默跳过 —— 跳过会让这条最关键的
+# 断言在本地永远显示「通过」，而它偏偏是唯一能抓住半个字符的那条。
+utf8_strict_ok() {
+  if command -v python3 >/dev/null 2>&1; then
+    python3 - "$1" <<'PYEOF'
+import sys
+try:
+    open(sys.argv[1], 'rb').read().decode('utf-8')
+    sys.exit(0)
+except UnicodeDecodeError:
+    sys.exit(1)
+PYEOF
+  elif command -v node >/dev/null 2>&1; then
+    node -e 'const fs=require("fs");try{new TextDecoder("utf-8",{fatal:true}).decode(fs.readFileSync(process.argv[1]));process.exit(0)}catch(e){process.exit(1)}' "$1"
+  else
+    return 2
+  fi
+}
+utf8_strict_ok "$S"
+case $? in
+  0) ok "产物是严格合法的 UTF-8" ;;
+  2) bad "没有 python3 / node，无法检查严格 UTF-8（不能跳过）" ;;
+  *) bad "产物里有半个字符（被按字节截断了）" ;;
+esac
 
 echo
 if [ "$FAILED" -eq 0 ]; then echo "全部通过"; else echo "有失败项"; fi

@@ -9,6 +9,14 @@
 
 set -euo pipefail
 
+# ⚠️ locale 必须显式设成 UTF-8。下面用 `${#line}` 与 `${line:0:N}` 做字符级截断，
+# 而这两者在 C locale 下按**字节**数：日文/emoji 名字会被切在字符中间，产出一个
+# 孤立的 UTF-8 起始字节。那种字节序列 JSON 解析器照样接受（它们是按字节透传的），
+# 所以下面的 JSON 校验闸**拦不住**，只有客户端的 serde 才会报错 ——
+# 表现为「名单里一有长日文名，客户端就一直取不到」。
+export LC_ALL=C.UTF-8
+export LANG=C.UTF-8
+
 HERE=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 # shellcheck source=lib.sh
 . "$HERE/lib.sh"
@@ -25,18 +33,15 @@ LIMIT=500
 
 mkdir -p "$API"
 
-# 名单文件不存在：写空数组并正常退出。
+# 名单文件不存在：什么都不写，正常退出。
 #
 # 与 `gen-version-json.sh` 处理空 `dl/` 的理由相同：这份文件可能长期不存在
 # （还没开始维护），每分钟失败一次会让计划任务永远挂着红记录。
+#
+# ⚠️ 不写 `[]`：空数组在客户端等价于「取不到」，会回落缓存，于是「文件被删」
+# 反而让用户看到旧名单。**保留上一份产物**才是对的 —— 文件不在不是指令。
 if [ ! -f "$SRC" ]; then
-  tmp=$(mktemp "$API/.sponsors.json.XXXXXX")
-  trap 'rm -f "$tmp"' EXIT
-  printf '[]\n' >"$tmp"
-  mv -f "$tmp" "$OUT"
-  trap - EXIT
-  chmod 644 "$OUT"
-  echo "没有名单文件（$SRC），写入空名单"
+  echo "没有名单文件（$SRC），保持上一份产物不动"
   exit 0
 fi
 
@@ -66,8 +71,8 @@ sed '1s/^\xEF\xBB\xBF//' "$SRC" >"$tmp.lines"
 {
   printf '[\n'
   while IFS= read -r line; do
-    # ⚠️ 截断必须按**字符**，不能按字节：`cut -c` 在这些环境里是按字节走的，
-    # 日文与 emoji 会被切成半个 UTF-8 序列，产物变成非法 JSON。
+    # ⚠️ 截断必须按**字符**，不能按字节：日文与 emoji 会被切成半个 UTF-8 序列。
+    # 这个脚本开头已把 locale 设成 UTF-8，所以 `${#line}` 与切片都是按字符的。
     if [ ${#line} -gt "$NAME_LIMIT" ]; then
       line=${line:0:$NAME_LIMIT}
     fi
@@ -80,10 +85,25 @@ sed '1s/^\xEF\xBB\xBF//' "$SRC" >"$tmp.lines"
 } >"$tmp"
 rm -f "$tmp.lines" "$tmp.lines2"
 
-# 上线前的最后一道闸：产物必须能解析成 JSON。
+# 一条都没有：这是**明确的清空指令**（文件在，但里面没有有效行）。
+#
+# ⚠️ 不能和「文件不存在」混为一谈：那个分支保留上一份产物，这个分支要真的清空。
+# 客户端见到空数组会怎么处理见 `sponsors.rs` —— 它把「远端明确给了空」当成
+# 正当结果并清掉缓存，而不是当成取不到回落旧数据。
+[ "$count" -gt 0 ] || echo "名单文件是空的，按「清空」处理"
+
+# 上线前的最后一道闸。
+#
+# ⚠️ 只查 `json.load` 不够：JSON 解析器按字节透传字符串，**非法 UTF-8 也能解析成功**
+# （实测一个孤立的 UTF-8 起始字节能让 `JSON.parse` 与 `json.load` 都通过）。
+# 必须再用严格模式解一次码，否则坏字节会一路发到客户端才在 serde 那里炸。
 if command -v python3 >/dev/null 2>&1; then
-  python3 -c 'import json,sys; json.load(open(sys.argv[1],encoding="utf-8"))' "$tmp" 2>/dev/null ||
-    { echo "生成的 JSON 不合法，拒绝上线：$tmp" >&2; exit 1; }
+  python3 - "$tmp" <<'PYEOF' || { echo "生成的 JSON 不合法，拒绝上线：$tmp" >&2; exit 1; }
+import json, sys
+raw = open(sys.argv[1], 'rb').read()
+raw.decode('utf-8')            # 严格解码，坏字节在这里抛
+json.loads(raw.decode('utf-8'))
+PYEOF
 fi
 
 mv -f "$tmp" "$OUT"

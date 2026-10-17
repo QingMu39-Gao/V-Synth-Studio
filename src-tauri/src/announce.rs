@@ -42,6 +42,9 @@ const ANNOUNCE_URLS: &[&str] = &["https://admin1.qingmu39.top/api/announcement.j
 const TIMEOUT: Duration = Duration::from_secs(6);
 
 /// 自建接口的 UA：给一个明确的值（留空、或用库的默认 UA 都容易被 WAF 拦）。
+///
+/// 更新、公告、感谢名单三个自建接口共用这一个出口 —— 它们打到同一台服务器、
+/// 同一套 WAF 规则下，UA 分开写只会让某一份漏改。
 pub(crate) fn self_host_ua() -> String {
     format!("V-Synth-Studio/{}", crate::ipc::config_file::APP_VERSION)
 }
