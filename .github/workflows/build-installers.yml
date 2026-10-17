@@ -163,14 +163,6 @@ jobs:
           TAURI_LOG: ${{ inputs.verbose && 'debug' || '' }}
         run: pnpm exec tauri build ${{ matrix.bundleArgs }}
 
-      # 安装包文件名里的 `beta` 只能在这里补：Windows Installer 的 `ProductVersion` 只吃
-      # 纯数字 `x.y.z`，所以 `Cargo.toml` 是纯数字、产物天生叫 `…_x.y.z_x64_zh-CN.msi`，
-      # 而用户要的名字与界面显示的版本（`config_file.rs::APP_VERSION`）都带 `beta`。
-      # ⚠️ 必须在下面几步**之前**：冒烟要求「恰好一个 MSI」，传 artifact 与传 Release 都按
-      #    `*.msi` / `*.dmg` 取件，改完名这几处都跟着走。
-      - name: 安装包文件名加 beta
-        run: node tools/rename-bundles-beta.mjs
-
       # ⚠️ 产物**先**传成 build artifact，再跑冒烟：这样万一冒烟红了，安装包仍然能在
       #    Actions 页面下载到（少一次「白等半小时什么都没拿到」）。传 Release 仍在冒烟之后。
       - name: 传安装包（build artifact）
@@ -196,7 +188,7 @@ jobs:
 
       # 校验清单：App 里「下载新版本」拿它核对下载到的安装包（见 `src-tauri/src/ipc/update.rs`）。
       # ⚠️ 三条约束：
-      #   ① 必须在**改完名之后**生成 —— 清单里记的是最终文件名（带 beta 那个）；
+      #   ① 必须按产物的**真实文件名**生成 —— App 按文件名匹配，名字对不上就静默跳过核对；
       #   ② 名字必须是 `SHA256SUMS-<slug>.txt`，slug 与 matrix 的 slug 一致，App 按平台找它；
       #   ③ 行里只能是**裸文件名**（`sha256sum *.msi`，别写成 `./*.msi` 或带目录）——
       #       App 按文件名匹配，带路径就找不到，于是静默跳过核对。

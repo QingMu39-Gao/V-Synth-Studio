@@ -14,10 +14,9 @@ use serde_json::{Value, json};
 
 /// 对外显示的版本号 —— **`src-tauri/Cargo.toml` 的 `version` 是唯一真源**。
 ///
-/// 显示值 = `Cargo.toml` 的版本 + `beta`。后缀只能加在**这里**：
-/// Windows Installer 的 `ProductVersion` 只吃纯数字 `x.y.z`，所以 `Cargo.toml`
-/// 必须是纯数字，而界面显示与安装包文件名要的是 `1.4.0beta`（文件名那半在
-/// CI 里补，见 `tools/rename-bundles-beta.mjs`）。
+/// 显示值就是 `Cargo.toml` 的版本，**不带后缀**。安装包文件名里的版本段天生是
+/// 纯数字（Windows Installer 的 `ProductVersion` 只吃 `x.y.z`），两者因此天然一致，
+/// 不再需要事后改名。
 ///
 /// ⚠️ **别把整个版本号写成字面量**：那样版本号散成多份、每份都要人记住同步，
 /// 而漏掉任何一处的后果都不一样（界面显示的版本、Cargo.lock 与 Cargo.toml 的
@@ -26,7 +25,7 @@ use serde_json::{Value, json};
 ///   · `package.json` **也不写 `version`** —— 那是 npm 惯例字段（Tauri 不读它）
 ///
 /// 这三条由 `tools/check_version_agree.mjs` 在 CI 里逐条核对。
-pub const APP_VERSION: &str = concat!(env!("CARGO_PKG_VERSION"), "beta");
+pub const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 /// 作者标识。出现在「关于」里，也散落在源码注释中作为出处水印。
 pub const AUTHOR_TAG: &str = "QingMu39";
@@ -181,12 +180,12 @@ mod tests {
     ///
     /// 前两条断言拦的是「版本号写成字面量」与「往 Cargo.toml 里塞 prerelease」——
     /// Windows Installer 的 `ProductVersion` 不吃后缀，塞了要到打包那一刻才炸。
-    /// 第三条拦的是「忘了拼 beta」：界面显示的版本与安装包文件名会各说各话。
+    /// 第三条拦的是「显示的版本与清单各说各话」。
     ///
     /// ⚠️ 别改成「断言等于某个具体版本号」：那样每次发版都要改测试，
     /// 而**改测试比改代码更容易顺手做错**（把测试改成迁就代码）。
     #[test]
-    fn displayed_version_is_the_manifest_version_plus_beta() {
+    fn displayed_version_is_the_manifest_version() {
         let manifest = env!("CARGO_PKG_VERSION");
         let parts: Vec<&str> = manifest.split('.').collect();
         assert_eq!(
@@ -202,8 +201,8 @@ mod tests {
         );
         assert_eq!(
             super::APP_VERSION,
-            format!("{manifest}beta"),
-            "对外显示的版本号必须是 Cargo.toml 的版本加 beta"
+            manifest,
+            "对外显示的版本号必须与 Cargo.toml 的版本一致"
         );
     }
 

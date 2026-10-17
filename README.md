@@ -29,10 +29,10 @@
 
 到 **[Releases](https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest)** 下载：
 
-- `v-synth-studio_x.y.zbeta_x64_zh-CN.msi` —— Windows，双击安装（推荐）
+- `v-synth-studio_x.y.z_x64_zh-CN.msi` —— Windows，双击安装（推荐）
 - `v-synth-studio_x.y.z_x64-setup.exe` —— 同一个程序的 exe 安装程序，按用户安装、不需要管理员
-- `v-synth-studio_x.y.zbeta_aarch64.dmg` —— macOS（Apple Silicon / M 系列），拖进「应用程序」
-- `v-synth-studio_x.y.zbeta_amd64.deb` —— Linux（x86_64，Debian 系），`sudo apt install ./…deb` 或双击由软件中心装
+- `v-synth-studio_x.y.z_aarch64.dmg` —— macOS（Apple Silicon / M 系列），拖进「应用程序」
+- `v-synth-studio_x.y.z_amd64.deb` —— Linux（x86_64，Debian 系），`sudo apt install ./…deb` 或双击由软件中心装
 
 > 安装包**没有代码签名**：Windows 第一次运行会看到一次 SmartScreen 提示，点「更多信息」→「仍要运行」；
 > macOS 是 ad-hoc 签名，第一次要**右键 →「打开」**（或到「系统设置 → 隐私与安全性 →「仍要打开」」）；

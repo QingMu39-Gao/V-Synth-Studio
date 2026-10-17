@@ -1,6 +1,6 @@
 [package]
 name = "v-synth-studio"
-version = "1.4.1"
+version = "1.5.0"
 description = "QingMu39's VOCALOID workstation."
 authors = ["QingMu39", "FuBangkun"]
 license = "GPL-3.0-only"

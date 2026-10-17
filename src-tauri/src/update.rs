@@ -147,7 +147,7 @@ fn bases_from(consts: &[&str], env: Option<&str>) -> Vec<String> {
 
 /// 本机该下哪一个安装包：从 GitHub 回包的 `assets` 里挑，回 `{name, size, url, sumsUrl}`。
 ///
-/// 判据只看**文件名**（真实发布里的形状见 `tools/rename-bundles-beta.mjs`）：
+/// 判据只看**文件名**（真实发布里的形状见 README 的「安装」一节）：
 ///
 /// | 平台 | 优先 | 退路 |
 /// |---|---|---|
