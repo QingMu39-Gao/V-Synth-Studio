@@ -9,7 +9,7 @@
 //! 命令名生成同名包装项，所以**别的模块别按那个名字去调同名逻辑函数** —— 会解析到宏
 //! 生成的那个，报出「expected `State<Arc<AppState>>`, found `&Arc<AppState>`」。
 //!
-//! ⚠️ **注册点只有一个**：`lib.rs` 的 `generate_handler!`（当前 **77 条**）。加命令要
+//! ⚠️ **注册点只有一个**：`lib.rs` 的 `generate_handler!`。加命令要
 //! 两处一起改 —— 这里写函数、`lib.rs` 登记；漏登记的表现是「前端调用报 command not
 //! found」，不报编译错。
 //!

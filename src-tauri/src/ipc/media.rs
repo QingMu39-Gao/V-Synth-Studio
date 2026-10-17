@@ -73,27 +73,28 @@ fn set_progress(
     let snapshot = match guard.items.get_mut(id) {
         Some(job) => {
             if let Some(m) = job.as_object_mut() {
-                if let Some(p) = percent
-                    && p >= 0.0
-                {
-                    m.insert("percent".into(), json!(p.clamp(0.0, 100.0)));
+                if let Some(p) = percent {
+                    if p >= 0.0 {
+                        m.insert("percent".into(), json!(p.clamp(0.0, 100.0)));
+                    }
                 }
-                if let Some(msg) = message
-                    && !msg.is_empty()
-                {
-                    m.insert("message".into(), json!(msg));
+                if let Some(msg) = message {
+                    if !msg.is_empty() {
+                        m.insert("message".into(), json!(msg));
+                    }
                 }
-                if !extra.is_null()
-                    && let Some(prog) = m.get_mut("progress").and_then(|v| v.as_object_mut())
-                    && let Some(src) = extra.as_object()
-                {
-                    // null 值 = 删该字段。下载阶段的回调用 `{}` 表示「无附加字段」，
-                    // 不能在每次更新时顺带清速率 —— 那会抹掉另一路并发回调刚写的值
-                    for (k, v) in src {
-                        if v.is_null() {
-                            prog.remove(k);
-                        } else {
-                            prog.insert(k.clone(), v.clone());
+                if !extra.is_null() {
+                    if let Some(prog) = m.get_mut("progress").and_then(|v| v.as_object_mut()) {
+                        if let Some(src) = extra.as_object() {
+                            // null 值 = 删该字段。下载阶段的回调用 `{}` 表示「无附加字段」，
+                            // 不能在每次更新时顺带清速率 —— 那会抹掉另一路并发回调刚写的值
+                            for (k, v) in src {
+                                if v.is_null() {
+                                    prog.remove(k);
+                                } else {
+                                    prog.insert(k.clone(), v.clone());
+                                }
+                            }
                         }
                     }
                 }
@@ -593,7 +594,7 @@ async fn download_bilibili(
         let mp4_dest = joined(target_dir, &format!("{safe}.mp4"));
         if ffmpeg.is_some() {
             /* 下载阶段最后那个速率/剩余还挂在 progress 上，不清就会一直显示在
-            合并这几分钟里；显式传 null 走上面的删除分支。 */
+               合并这几分钟里；显式传 null 走上面的删除分支。 */
             set_progress(
                 st,
                 job,
@@ -658,18 +659,19 @@ async fn download_bilibili(
         .get("downloadCover")
         .and_then(|v| v.as_bool())
         .unwrap_or(false)
-        && let Some(cover) = cover.filter(|c| !c.is_empty())
     {
-        let dest = joined(target_dir, &format!("{safe}.jpg"));
-        match client
-            .download_asset(&cover, Path::new(&dest), &[], 1, cancel_ref, &|_| {})
-            .await
-        {
-            Ok(_) => {
-                written.push(dest.clone());
-                super::jobs::log_job(st, job, &format!("已保存封面：{}", basename(&dest)));
+        if let Some(cover) = cover.filter(|c| !c.is_empty()) {
+            let dest = joined(target_dir, &format!("{safe}.jpg"));
+            match client
+                .download_asset(&cover, Path::new(&dest), &[], 1, cancel_ref, &|_| {})
+                .await
+            {
+                Ok(_) => {
+                    written.push(dest.clone());
+                    super::jobs::log_job(st, job, &format!("已保存封面：{}", basename(&dest)));
+                }
+                Err(e) => super::jobs::log_job(st, job, &format!("⚠ 封面下载失败：{e}")),
             }
-            Err(e) => super::jobs::log_job(st, job, &format!("⚠ 封面下载失败：{e}")),
         }
     }
 
@@ -963,12 +965,13 @@ pub fn decode_video_pick(streams: &Value, quality: Option<i64>) -> Option<Value>
     if list.is_empty() {
         return None;
     }
-    if let Some(q) = quality
-        && let Some(exact) = list
+    if let Some(q) = quality {
+        if let Some(exact) = list
             .iter()
             .find(|v| v.get("id").and_then(|x| x.as_i64()) == Some(q))
-    {
-        return Some(prefer_avc(list, exact));
+        {
+            return Some(prefer_avc(list, exact));
+        }
     }
     // 默认取最高画质，优先 H.264
     Some(prefer_avc(list, &list[0]))
@@ -1003,12 +1006,13 @@ pub fn decode_audio_pick(streams: &Value, audio_quality: Option<i64>) -> Option<
     if list.is_empty() {
         return None;
     }
-    if let Some(q) = audio_quality
-        && let Some(exact) = list
+    if let Some(q) = audio_quality {
+        if let Some(exact) = list
             .iter()
             .find(|a| a.get("id").and_then(|x| x.as_i64()) == Some(q))
-    {
-        return Some(exact.clone());
+        {
+            return Some(exact.clone());
+        }
     }
     Some(
         list.iter()
@@ -1183,9 +1187,6 @@ pub async fn preview_fetch(app: tauri::AppHandle, url: String, src: Option<Strin
                 "cached": true,
             }));
         }
-        /* 0 字节的残骸（旧版直接写 `dest` 留下的）：命中判据放它过去，但它占着
-        目标名，下面的改名在部分平台上会被拒，在这里就清掉。 */
-        let _ = tokio::fs::remove_file(&dest).await;
     }
 
     /* 字节写进 `part`，整份下完才改名成 `dest`。命中判据只有「`dest` 非空」且在**下载
@@ -1238,30 +1239,20 @@ pub async fn preview_fetch(app: tauri::AppHandle, url: String, src: Option<Strin
         `give_up` 不会替我们删。改名只对非空文件做，所以这个 `part` 永远进不了
         命中判据，但留着白占 LRU 额度。 */
         let _ = tokio::fs::remove_file(&part).await;
-        /* 引擎给每个 part 配了一个 `.part.url` 续传记号，part 走不到改名就得连它一起清 */
+        /* `.part.url` 记号只有可续传的形状才写（`Plain` 本来不该有），part 走不到改名
+        就连它一起清 —— 同 `give_up` 对 `Plain` 的处理 */
         let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
         return Err("上游回了个空文件".into());
     }
 
-    /* 改名才是「下好了」的那一刻：`dest` 只在整份下完之后出现，命中判据（非空）
-    才因此可信。目标已存在时改名可能被拒 —— 那只可能是另一次并发预览先落了盘，
-    它的那份同样完整，删掉自己手上这份、按命中返回。 */
+    /* 改名才是「下好了」的那一刻：命中判据是「`dest` 非空」且在**下载之前**就返回，
+    所以 `dest` 只能在这一步之后出现。改名会替换掉已存在的目标（Unix rename /
+    Windows MoveFileExW），所以同一 URL 的两次并发各自落盘、后到的那份整份覆盖前一份，
+    留在盘上的永远是完整文件。 */
     if let Err(e) = tokio::fs::rename(&part, &dest).await {
-        let cached = tokio::fs::metadata(&dest)
-            .await
-            .map(|m| m.len())
-            .unwrap_or(0);
         let _ = tokio::fs::remove_file(&part).await;
         let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
-        if cached == 0 {
-            return Err(format!("缓存改名失败：{e}"));
-        }
-        let _ = touch(&dest).await;
-        return Ok(json!({
-            "path": crate::platform::clean_path(&dest),
-            "bytes": cached,
-            "cached": true,
-        }));
+        return Err(format!("缓存改名失败：{e}"));
     }
     let _ = tokio::fs::remove_file(crate::download::url_marker(&part)).await;
 
@@ -1345,11 +1336,12 @@ fn is_known_host(host: &str) -> bool {
 fn collect_hosts(v: &Value, out: &mut Vec<String>) {
     match v {
         Value::String(s) => {
-            if let Ok(u) = reqwest::Url::parse(s)
-                && matches!(u.scheme(), "http" | "https")
-                && let Some(h) = u.host_str()
-            {
-                out.push(h.to_lowercase());
+            if let Ok(u) = reqwest::Url::parse(s) {
+                if matches!(u.scheme(), "http" | "https") {
+                    if let Some(h) = u.host_str() {
+                        out.push(h.to_lowercase());
+                    }
+                }
             }
         }
         Value::Array(a) => a.iter().for_each(|x| collect_hosts(x, out)),
