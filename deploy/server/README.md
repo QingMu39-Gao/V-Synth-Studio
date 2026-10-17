@@ -25,7 +25,15 @@ v-synth-studio_1.4.2_amd64.deb         → downloads.linux
 新增音轨分离的进度条
 ```
 
-计划任务每分钟跑一次两个生成器，`version.json` 与 `announcement.json` 自动重写。
+**改感谢名单** —— 编辑 `/var/www/vss/sponsors.txt`，一行一个 ID：
+
+```
+坎伊bbb
+Desire Control
+```
+
+计划任务每分钟跑一次三个生成器，`version.json`、`announcement.json`、`sponsors.json`
+自动重写。
 
 ## 三条必须知道的约束
 
@@ -38,6 +46,11 @@ v-synth-studio_1.4.2_amd64.deb         → downloads.linux
 
 **过期时间不自动加。** 没写 `expires` 的公告永不过期。撤回就把文件删掉。
 自动加「发布后 N 天过期」的后果是：一条忘了删的公告会在某天静默消失，事后无从排查。
+
+**感谢名单有一份随包兜底。** 客户端取不到服务器时依次用「上次成功取到的缓存」和
+「编译时内置的那份」，「关于」页会照实说这份可能不是最新的。所以名单改成服务器同步后，
+**内置那份会逐渐过时**，但不会让页面空白 —— 断网时它仍然有内容可显示。
+内置名单在 `src-tauri/src/sponsors.rs` 的 `BUILTIN`。
 
 ## 公告文件格式
 
@@ -128,10 +141,11 @@ sudo bash deploy/server/install.sh
 |---|---|
 | `gen-version-json.sh` | 扫 `dl/` → `version.json` |
 | `gen-announcement-json.sh` | 扫 `announce/` → `announcement.json` |
-| `lib.sh` | 两者共用的 JSON 转义（`json_escape`） |
+| `gen-sponsors-json.sh` | 读 `sponsors.txt` → `sponsors.json` |
+| `lib.sh` | 三者共用的 JSON 转义（`json_escape`） |
 | `install.sh` | 装到 `/www/release/bin/`、建目录、补权限 |
 | `test.sh` | 回归测试：`bash deploy/server/test.sh` |
 
 改任何一个脚本后跑一次 `test.sh`。它钉的都是**静默失败**：少一个平台键、sha256 带了
-`\` 转义前缀、公告正文被吃掉、BOM 混进标题、changelog 被覆盖 —— 这些都不报错，
-只是客户端那边少了东西或者校验失败。
+`\` 转义前缀、公告正文被吃掉、BOM 混进标题、changelog 被覆盖、日文被按字节截断 ——
+这些都不报错，只是客户端那边少了东西或者校验失败。

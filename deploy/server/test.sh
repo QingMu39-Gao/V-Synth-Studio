@@ -177,5 +177,47 @@ if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
 fi
 
 echo
+echo "sponsors.json"
+S="$WORK/api/sponsors.json"
+mkdir -p "$WORK/sp"
+# 形如真实维护的名单：带 BOM、注释、空行、首尾空格、制表符、日文、emoji
+printf '\xEF\xBB\xBF坎伊bbb\nDesire Control\n\n# 这一行是注释，不该出现\n  浅唱教主  \nゆりかごから墓場まで\n星街彗星🎤\n带\t制表符\n' >"$WORK/sp/sponsors.txt"
+VSS_SPONSOR_FILE="$WORK/sp/sponsors.txt" VSS_API_DIR="$WORK/api" bash "$HERE/gen-sponsors-json.sh" >/dev/null 2>&1 \
+  && ok "生成成功" || bad "生成失败"
+# ⚠️ 数「命中行数」要用 `grep -c` 的**输出**，别写成 `grep -c ... || echo 0`：
+# 它在没命中时会既打印 0 又因为退出码非 0 再走一遍 `echo 0`，结果是两行。
+count_of() { local n; n=$(grep -c "$1" "$S" 2>/dev/null); echo "${n:-0}"; }
+check "注释被跳过" "$(count_of '这一行是注释')" "0"
+check "首尾空格被去掉" "$(count_of '  浅唱教主')" "0"
+check "制表符被压成空格" "$(count_of '"带 制表符"')" "1"
+# BOM 留在第一个 ID 前面就是一个乱码字符，而它不会让 JSON 非法，只能这样钉
+check "BOM 被剥掉" "$(count_of '"坎伊bbb"')" "1"
+# 日文与 emoji 必须原样保住：按字节截断会把它们切成半个 UTF-8 序列。
+# ⚠️ 不用 `grep '星街彗星🎤'` 比对：这个字面量要穿过 shell 与文件编码两层，
+# 弄坏的是测试本身而不是产物（实测文件里 4 字节序列是好的）。
+# 这里直接问 Python：第 5 个元素是不是以那三个汉字开头、末尾是不是那个 emoji。
+check "日文原样保住" "$(count_of 'ゆりかごから墓場まで')" "1"
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  PY3=$(command -v python3 || command -v python)
+  "$PY3" - "$S" <<'PYEOF'
+import json, sys
+names = json.load(open(sys.argv[1], encoding='utf-8'))
+target = [n for n in names if n.startswith('\u661f\u8857\u5f57\u661f')]
+ok = len(target) == 1 and target[0] == '\u661f\u8857\u5f57\u661f\U0001F3A4'
+sys.exit(0 if ok else 1)
+PYEOF
+  [ $? -eq 0 ] && ok "emoji 原样保住" || bad "emoji 被改坏了"
+fi
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  PY2=$(command -v python3 || command -v python)
+  "$PY2" -c "import json,sys; d=json.load(open(sys.argv[1],encoding='utf-8')); sys.exit(0 if isinstance(d,list) and len(d)==6 else 1)" "$S" 2>/dev/null \
+    && ok "是合法数组且条数正确（6）" || bad "不是合法数组或条数不对"
+fi
+# 名单文件不存在写成空数组并正常退出（不是失败）：这份文件可能长期不存在
+VSS_SPONSOR_FILE="$WORK/sp/nope.txt" VSS_API_DIR="$WORK/api" bash "$HERE/gen-sponsors-json.sh" >/dev/null 2>&1 \
+  && ok "没有名单文件时正常退出" || bad "没有名单文件时失败了"
+check "没有名单文件时写空数组" "$(tr -d ' \n' <"$S")" "[]"
+
+echo
 if [ "$FAILED" -eq 0 ]; then echo "全部通过"; else echo "有失败项"; fi
 exit "$FAILED"

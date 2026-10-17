@@ -22,6 +22,7 @@ mod midi_transcribe;
 mod net;
 mod platform;
 mod reg;
+mod sponsors;
 mod svsep;
 mod update;
 mod upgrade;
@@ -289,6 +290,8 @@ pub fn run() {
             ipc::update::update_download,
             /* ── 公告 ── */
             ipc::announce::announce_list,
+            /* ── 感谢名单 ── */
+            ipc::sponsors::sponsor_list,
             /* ── 进程级 ── */
             ipc::app::app_quit,
         ])

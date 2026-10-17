@@ -55,6 +55,15 @@ export const api = {
      */
     announceList: () => call<AnnounceReply>('announce_list'),
 
+    /* ── 感谢名单（自建源，见 `sponsors.rs`）───────────────── */
+    /**
+     * 取一次感谢名单。
+     *
+     * ⚠️ 永远是 `ok:true` 的成功回包：后端按「远端 → 缓存 → 内置」兜底，
+     * 界面一定拿得到东西显示。`via` 说明这份名单从哪儿来。
+     */
+    sponsorList: () => call<SponsorReply>('sponsor_list'),
+
     /* ── 进程级 ──────────────────────────────────────────── */
     /**
      * 退出程序。
@@ -1100,6 +1109,20 @@ export interface AnnounceReply {
     items?: Announcement[]
     /** 这次是从哪个地址取的（配了多个时用得上） */
     via?: string
+    error?: string
+}
+
+/**
+ * 感谢名单的回包。
+ *
+ * `via` 是关键：`remote` 是最新的，`cache` 是上一次成功的快照，
+ * `builtin` 是随包兜底（可能已经过时）。界面据此决定要不要提示。
+ */
+export interface SponsorReply {
+    ok: boolean
+    names: string[]
+    via: 'remote' | 'cache' | 'builtin'
+    /** 只有不是 `remote` 时才有；说明为什么没取到 */
     error?: string
 }
 

@@ -42,7 +42,7 @@ const ANNOUNCE_URLS: &[&str] = &["https://admin1.qingmu39.top/api/announcement.j
 const TIMEOUT: Duration = Duration::from_secs(6);
 
 /// 自建接口的 UA：给一个明确的值（留空、或用库的默认 UA 都容易被 WAF 拦）。
-fn self_host_ua() -> String {
+pub(crate) fn self_host_ua() -> String {
     format!("V-Synth-Studio/{}", crate::ipc::config_file::APP_VERSION)
 }
 

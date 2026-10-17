@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
-import {api, type AnnounceReply, type ExtDirInfo, type UpdateCheck} from '@/lib/api'
+import {api, type AnnounceReply, type ExtDirInfo, type SponsorReply, type UpdateCheck} from '@/lib/api'
 import {getConfig, onConfigChange, saveConfig} from '@/lib/config'
 import {markSeen, unseen} from '@/lib/announce'
 import {installerOf, installerSizeText, isForcedUpdate} from '@/lib/update'
@@ -508,38 +508,13 @@ function Tools({
 const AUTHOR_MAIL = '1813616607@qq.com'
 
 /**
- * 感谢名单。
+ * 感谢名单从自建源取（见 `sponsors.rs`），不再随包写死 —— 加一个赞助者
+ * 不必等下次发版。
  *
- * ⚠️ 顺序**不代表排名** —— 面板上那行「排名无先后顺序」就是为这条写的，改名单时别按
- * 「贡献大小」重排。ID 一律**照抄对方自己写的样子**（大小写、空格、假名、emoji 都别动）。
+ * 面板上那行「排名无先后顺序」是对**服务器上那个文件**的顺序说的：改名单时
+ * 别按「贡献大小」重排。ID 一律**照抄对方自己写的样子**（大小写、空格、假名、
+ * emoji 都别动），生成器也只是逐行读，不做任何规整。
  */
-const SPONSORS = [
-    '坎伊bbb',
-    'Desire Control',
-    '浅唱教主',
-    '老钱',
-    '三无',
-    '入さん',
-    'ゆりかごから墓場まで',
-    '小偷人机在线逃跑',
-    'WuJinGY',
-    'venom',
-    'LYT',
-    '唠蟹公主',
-    '火橘子',
-    '筱箖',
-    'nxy',
-    '让我们一起陷入狂赌之渊吧',
-    '星街彗星',
-    '神野冬花',
-    '落款未名',
-    '酒韵星回',
-    '凌宇',
-    '界兔',
-    '绝望病',
-    '寿司公主',
-    '茶绪P',
-]
 
 /**
  * 第三方组件许可总表（关于页）。
@@ -722,6 +697,29 @@ function About({
 }) {
     const toolsReady = ['ffmpeg', 'ytdlp'].filter((k) => state?.tools?.[k]?.available).length
     const {t} = useI18n()
+
+    /**
+     * 感谢名单：进这一页时取一次。
+     *
+     * ⚠️ 后端永远回 `ok:true`（远端 → 缓存 → 内置兜底），所以这里不需要错误态，
+     * 也不该让「关于」页因为取名单失败而空白。`via` 不是 `remote` 时在面板上
+     * 照实说一句，别让人以为名单停了没更新。
+     */
+    const [sponsors, setSponsors] = useState<SponsorReply | null>(null)
+    useEffect(() => {
+        let alive = true
+        api.sponsorList()
+            .then((r) => {
+                if (alive) setSponsors(r)
+            })
+            .catch((e: unknown) => {
+                // 连兜底都失败说明命令本身出问题了（不该发生），留个痕即可
+                console.warn('[sponsors] 取名单失败（保持上一份）：', e)
+            })
+        return () => {
+            alive = false
+        }
+    }, [])
 
     /* 检查更新。只有真连不上 GitHub 才抛异常；「上游没发过 Release」「匿名调用
        超额」都是 `ok: false` 的回包，落进 `update` 由面板照实说。 */
@@ -998,11 +996,18 @@ function About({
             <Panel>
                 <PanelHead title="感谢名单" desc="赞助者 —— 排名无先后顺序"/>
                 <div className="chips">
-                    {SPONSORS.map((n) => (
+                    {(sponsors?.names ?? []).map((n) => (
                         <Chip key={n}>{n}</Chip>
                     ))}
                 </div>
                 <p className="hint">以及一些无法展示 id 的用户和测试者们，同样谢谢你们。</p>
+                {sponsors && sponsors.via !== 'remote' && (
+                    <p className="hint">
+                        {sponsors.via === 'cache'
+                            ? '这份名单是上次取到的，暂时没连上服务器。'
+                            : '这份名单随程序分发，可能不是最新的。'}
+                    </p>
+                )}
             </Panel>
 
             {/* 全量许可清单：所有用到第三方开源项目的功能在这儿各占一行。

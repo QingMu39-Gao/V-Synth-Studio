@@ -25,6 +25,7 @@ install -d -m 755 "$BIN" "$DL" "$ANNOUNCE" "$API"
 if [ "$(cd "$HERE" && pwd -P)" != "$(cd "$BIN" && pwd -P)" ]; then
   install -m 755 "$HERE/gen-version-json.sh" "$BIN/gen-version-json.sh"
   install -m 755 "$HERE/gen-announcement-json.sh" "$BIN/gen-announcement-json.sh"
+  install -m 755 "$HERE/gen-sponsors-json.sh" "$BIN/gen-sponsors-json.sh"
   install -m 644 "$HERE/lib.sh" "$BIN/lib.sh"
 else
   echo "源目录就是 $BIN，跳过拷贝（只补目录与权限）"
@@ -38,7 +39,8 @@ find "$DL" "$ANNOUNCE" -maxdepth 1 -type f -exec chmod 644 {} +
 echo "已安装："
 echo "  $BIN/gen-version-json.sh"
 echo "  $BIN/gen-announcement-json.sh"
+echo "  $BIN/gen-sponsors-json.sh"
 echo
 echo "接着手动做两件事（见 如何编译打包.md 第六节）："
-echo "  1. 宝塔 → 计划任务 → Shell 脚本，每 1 分钟跑这两个脚本；"
+echo "  1. 宝塔 → 计划任务 → Shell 脚本，每 1 分钟跑这三个脚本；"
 echo "  2. 确认 nginx 的 location /dl/ 是长缓存而不是 no-store。"

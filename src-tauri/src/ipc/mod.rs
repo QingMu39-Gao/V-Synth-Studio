@@ -28,6 +28,7 @@ pub mod lyrics;
 pub mod media;
 pub mod midi;
 pub mod pv;
+pub mod sponsors;
 pub mod state;
 pub mod svsep;
 pub mod tools;
