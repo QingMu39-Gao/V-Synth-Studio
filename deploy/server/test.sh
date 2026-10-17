@@ -100,13 +100,20 @@ fi
 [ "$(cat "$WORK/race/api/version.json")" = "$GOOD" ] \
   && ok "sha256 失败时线上文件也没被改坏" || bad "sha256 失败时线上文件被改坏"
 
-# 没有可用包时必须失败（否则会写出一个没有 downloads 的 JSON，客户端当「无更新」）
+# 没有包时不是错误：写一份「无更新」的 JSON 并正常退出。
+# `exit 1` 会让计划任务每分钟失败一次，宝塔里永远挂着一条红记录 ——
+# 那种长期红点会让人开始忽略告警。`version` 用 `0.0.0`：客户端逐段比数字，
+# 它比任何已发布版本都低，所以不会提示更新（`update.rs::is_newer` 的测试已覆盖这点）。
 mkdir -p "$WORK/empty" && mkdir -p "$WORK/api2"
 if VSS_DL_DIR="$WORK/empty" VSS_API_DIR="$WORK/api2" bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
-  bad "空目录也该失败"
+  ok "空目录正常退出（不是失败）"
 else
-  ok "空目录返回非 0"
+  bad "空目录不该失败"
 fi
+grep -q '"version": "0.0.0"' "$WORK/api2/version.json" 2>/dev/null \
+  && ok "空目录写出 version 0.0.0（客户端当无更新）" || bad "空目录的 version 不对"
+grep -q '"downloads": {' "$WORK/api2/version.json" 2>/dev/null \
+  && ok "空目录的 downloads 为空对象" || bad "空目录的 downloads 不对"
 
 # changelog 从旁路文件读：JSON 每分钟重写，写进 JSON 的说明会被下一次覆盖抹掉
 printf '修复了下载校验\n第二行说明\n' >"$WORK/changelog.txt"

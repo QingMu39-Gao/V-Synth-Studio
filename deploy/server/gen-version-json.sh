@@ -57,14 +57,22 @@ for f in "$DL"/*; do
   fi
 done
 
-[ ${#best_name[@]} -gt 0 ] || { echo "发布目录里没有可识别的安装包：$DL" >&2; exit 1; }
-
-# 顶层 version 取各平台里最高的那个
-version=""
-for plat in "${!best_ver[@]}"; do
-  v=${best_ver[$plat]}
-  if [ -z "$version" ] || ver_gt "$v" "$version"; then version=$v; fi
-done
+# 没有包时**不是错误**：写一份「无更新」的 JSON 并正常退出。
+#
+# `version` 取 `0.0.0`，比任何已发布版本都低，客户端判「不是新版」后不会提示更新
+# （`update.rs::is_newer` 逐段比数字）。写成 `exit 1` 的话，计划任务每分钟失败一次，
+# 宝塔里会永远显示一条失败记录 —— 那种长期红点会让人开始忽略告警，比不告警更糟。
+if [ ${#best_name[@]} -eq 0 ]; then
+  version="0.0.0"
+  echo "发布目录里没有安装包，写入「无更新」（version=$version）：$DL"
+else
+  # 顶层 version 取各平台里最高的那个
+  version=""
+  for plat in "${!best_ver[@]}"; do
+    v=${best_ver[$plat]}
+    if [ -z "$version" ] || ver_gt "$v" "$version"; then version=$v; fi
+  done
+fi
 
 tmp=$(mktemp "$API/.version.json.XXXXXX")
 trap 'rm -f "$tmp"' EXIT
