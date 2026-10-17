@@ -1,0 +1,135 @@
+#!/bin/bash
+# 两个生成器的回归测试：造临时目录 → 跑脚本 → 用客户端同款判据核对产物。
+#
+#     bash deploy/server/test.sh
+#
+# 为什么要它：「丢文件就生效」这条路的失败几乎都是**静默**的 —— 少一个平台键、sha256 带了
+# 转义前缀、公告正文被吃掉，都不报错，只是客户端那边少了东西或校验失败。这些都在下面钉住。
+set -uo pipefail
+
+HERE=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+WORK=$(mktemp -d)
+trap 'rm -rf "$WORK"' EXIT
+FAILED=0
+
+ok()   { echo "  ok   $1"; }
+bad()  { echo "  FAIL $1"; FAILED=1; }
+check() { if [ "$2" = "$3" ]; then ok "$1"; else bad "$1（期望 [$3]，实际 [$2]）"; fi }
+
+mkdir -p "$WORK/dl" "$WORK/announce" "$WORK/api"
+
+# 造包：两个 windows 版本（应选高的）、macos、linux、一个无关文件、一个版本段抠不出来的
+printf 'A%.0s' {1..1000} >"$WORK/dl/v-synth-studio_1.4.2_x64-setup.exe"
+printf 'B%.0s' {1..500}  >"$WORK/dl/v-synth-studio_1.3.0_x64-setup.exe"
+printf 'C%.0s' {1..700}  >"$WORK/dl/v-synth-studio_1.4.2beta_aarch64.dmg"
+printf 'D%.0s' {1..300}  >"$WORK/dl/v-synth-studio_1.4.2_amd64.deb"
+printf 'E%.0s' {1..900}  >"$WORK/dl/v-synth-studio_1.4.10_x64-setup.exe"
+echo 'ignore me'          >"$WORK/dl/random.txt"
+echo 'x'                  >"$WORK/dl/v-synth-studio_bad_name.exe"
+
+echo "version.json"
+
+export VSS_DL_DIR="$WORK/dl" VSS_API_DIR="$WORK/api" VSS_URL_BASE='https://t.example/dl'
+# 公告那一段也要这个：漏了就会去读默认的 /var/www/vss/announce，
+# 表现是「本机跑测试永远失败」而服务器上反而正常（那里目录真的存在）。
+export VSS_ANNOUNCE_DIR="$WORK/announce"
+if bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then ok "生成成功"; else bad "生成失败"; fi
+V="$WORK/api/version.json"
+
+grep -q '"version": "1.4.10"' "$V" && ok "顶层取最高版本（1.4.10 > 1.4.2）" \
+  || bad "顶层版本不对：$(grep '"version"' "$V")"
+grep -q 'v-synth-studio_1.4.10_x64-setup.exe' "$V" && ok "windows 取最高版本" \
+  || bad "windows 没取到最高版本"
+grep -q 'v-synth-studio_1.4.2beta_aarch64.dmg' "$V" && ok "macos 识别 dmg" || bad "macos 缺失"
+grep -q 'v-synth-studio_1.4.2_amd64.deb' "$V" && ok "linux 识别 deb" || bad "linux 缺失"
+grep -q 'random.txt' "$V" && bad "无关文件被写进去了" || ok "无关文件被跳过"
+grep -q 'bad_name' "$V" && bad "版本段抠不出的文件被写进去了" || ok "非法文件名被跳过"
+
+# sha256 必须是裸的 64 位小写十六进制：`sha256sum` 在特殊文件名下会给整行加 `\` 前缀，
+# 客户端（ipc/update.rs）按长度与字符集判，带前缀就整条被当成「没给摘要」。
+if grep -o '"sha256": "[^"]*"' "$V" | sed 's/.*: "//; s/"//' |
+     grep -qvE '^[0-9a-f]{64}$'; then
+  bad "sha256 不是裸的 64 位小写十六进制"
+else
+  ok "sha256 格式合法"
+fi
+
+# size 必须与盘上真实字节数一致（对不上客户端下完就判失败）
+want=$(stat -c%s "$WORK/dl/v-synth-studio_1.4.10_x64-setup.exe" 2>/dev/null ||
+       stat -f%z "$WORK/dl/v-synth-studio_1.4.10_x64-setup.exe")
+grep -q "\"size\": $want" "$V" && ok "size 与文件一致" || bad "size 与文件不一致（应为 $want）"
+grep -q '"min_version": "1.0.0"' "$V" && grep -q '"force": false' "$V" \
+  && ok "min_version / force 是常量" || bad "min_version / force 被改动了"
+
+# 没有可用包时必须失败（否则会写出一个没有 downloads 的 JSON，客户端当「无更新」）
+mkdir -p "$WORK/empty" && mkdir -p "$WORK/api2"
+if VSS_DL_DIR="$WORK/empty" VSS_API_DIR="$WORK/api2" bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
+  bad "空目录也该失败"
+else
+  ok "空目录返回非 0"
+fi
+
+# changelog 从旁路文件读：JSON 每分钟重写，写进 JSON 的说明会被下一次覆盖抹掉
+printf '修复了下载校验\n第二行说明\n' >"$WORK/changelog.txt"
+export VSS_CHANGELOG_FILE="$WORK/changelog.txt"
+bash "$HERE/gen-version-json.sh" >/dev/null 2>&1
+grep -q '"changelog": "修复了下载校验\\n第二行说明"' "$WORK/api/version.json" \
+  && ok "changelog 从旁路文件读入并转义" || bad "changelog 没读到：$(grep changelog "$WORK/api/version.json")"
+# 文件不存在时必须是空串，而不是报错或缺字段
+rm -f "$WORK/changelog.txt"
+if bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
+  grep -q '"changelog": ""' "$WORK/api/version.json" \
+    && ok "changelog 缺失时是空串" || bad "changelog 缺失时不是空串"
+else
+  bad "changelog 文件不存在时生成失败"
+fi
+
+echo "announcement.json"
+
+# A 型：第一行标题，其余正文
+printf '今晚维护\n23:00–24:00 期间无法登录。\n请提前保存工作。\n' \
+  >"$WORK/announce/2026-10-17-maint.txt"
+# B 型：元数据 + 正文，含需要转义的引号与反斜杠
+# 反斜杠用单引号段拼进去：`printf` 会把 `\\` 当转义序列，写错就静默变成退格符。
+BACKSLASH='\'
+printf 'title: 严重故障已修复\nlevel: critical\nexpires: 2026-12-31T00:00:00Z\nurl: https://e.example/s\n---\n下载节点已恢复。\n"带引号" 与 %s%s反斜杠。\n' \
+  "$BACKSLASH" "$BACKSLASH" >"$WORK/announce/2026-10-16-critical.txt"
+# 空文件：该被跳过
+: >"$WORK/announce/2026-10-15-empty.txt"
+# 带 UTF-8 BOM：Windows 上编辑过的 txt 几乎必然带它。BOM 留在标题首字符时，
+# 界面上表现为标题前面多一个乱码方块。
+printf '\xef\xbb\xbfBOM 标题\nBOM 正文\n' >"$WORK/announce/2026-10-14-bom.txt"
+
+if bash "$HERE/gen-announcement-json.sh" >/dev/null 2>&1; then ok "生成成功"; else bad "生成失败"; fi
+A="$WORK/api/announcement.json"
+grep -q '2026-10-17-maint' "$A" && ok "A 型 id 取文件名" || bad "A 型缺失"
+grep -q '23:00–24:00 期间无法登录。\\n请提前保存工作。' "$A" && ok "A 型正文完整（不是空）" \
+  || bad "A 型正文丢了"
+grep -q '"title": "今晚维护"' "$A" && ok "A 型第一行当标题" || bad "A 型标题不对"
+grep -q '2026-10-15-empty' "$A" && bad "空文件被写进去了" || ok "空文件被跳过"
+grep -q '"level": "critical"' "$A" && ok "B 型 level 透传" || bad "B 型 level 不对"
+grep -q '\\"带引号\\"' "$A" && ok "双引号被转义" || bad "双引号没转义"
+grep -q '\\\\反斜杠' "$A" && ok "反斜杠被转义" || bad "反斜杠没转义"
+grep -q '"expires_at": "2026-12-31T00:00:00Z"' "$A" && ok "expires 透传" || bad "expires 缺失"
+# BOM 必须被剥掉：留在标题里就是一个乱码字符，而它不会让 JSON 非法，所以只能这样钉
+grep -q '"title": "BOM 标题"' "$A" && ok "BOM 被剥掉" || bad "BOM 混进了标题"
+
+# 产物必须是合法 JSON，且是数组（客户端 items_from 认数组那条分支）
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  PY=$(command -v python3 || command -v python)
+  # encoding 必须显式给：Windows 上 `open()` 默认按 GBK 解码，UTF-8 的正文字节会直接抛
+  # UnicodeDecodeError —— 那是测试脚本的错，不是产物的错。
+  for f in "$V" "$A"; do
+    if "$PY" -c "import json,sys; json.load(open(sys.argv[1],encoding='utf-8'))" "$f" 2>/dev/null; then
+      ok "$(basename "$f") 是合法 JSON"
+    else
+      bad "$(basename "$f") 不是合法 JSON"
+    fi
+  done
+  "$PY" -c "import json,sys; d=json.load(open(sys.argv[1],encoding='utf-8')); sys.exit(0 if isinstance(d,list) else 1)" "$A" \
+    && ok "announcement.json 是数组" || bad "announcement.json 不是数组"
+fi
+
+echo
+if [ "$FAILED" -eq 0 ]; then echo "全部通过"; else echo "有失败项"; fi
+exit "$FAILED"

@@ -1,0 +1,4 @@
+# shell 脚本在 Linux 上跑，行尾必须是 LF。
+# `core.autocrlf=true` 的机器检出时会转成 CRLF，那时脚本会在第一行报
+# `bad interpreter: /bin/bash^M` —— 而它只在传到服务器之后才暴露。
+*.sh text eol=lf
