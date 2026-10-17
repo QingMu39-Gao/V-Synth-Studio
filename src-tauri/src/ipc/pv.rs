@@ -70,7 +70,10 @@ pub async fn pv_save_chunk(
             .map_err(|e| format!("写入失败：{e}"))?;
     }
 
-    let size = tokio::fs::metadata(&path).await.map(|m| m.len()).unwrap_or(0);
+    let size = tokio::fs::metadata(&path)
+        .await
+        .map(|m| m.len())
+        .unwrap_or(0);
     Ok(json!({
         "path": crate::platform::clean_path(&path),
         "name": path
