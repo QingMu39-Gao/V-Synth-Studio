@@ -95,7 +95,8 @@ count=0
       *) level=info ;;
     esac
 
-    date=$(date -u -r "$f" +%Y-%m-%dT%H:%M:%SZ)
+    date=$(date -u -r "$f" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || true)
+    [ -n "$date" ] || { echo "跳过（读不到修改时间，文件可能刚被删）：$name" >&2; continue; }
 
     [ $count -gt 0 ] && printf ',\n'
     printf '  {"id": "%s", "title": "%s", "body": "%s", "date": "%s", "level": "%s"' \
@@ -112,6 +113,13 @@ count=0
            sort -z -rn | cut -z -d' ' -f2-)
   printf '\n]\n'
 } >"$tmp"
+
+# 上线前的最后一道闸：产物必须能解析成 JSON。
+# 原子替换保证 nginx 不读到半个文件，代价是坏内容也会完整顶掉好内容 —— 所以要先验。
+if command -v python3 >/dev/null 2>&1; then
+  python3 -c 'import json,sys; json.load(open(sys.argv[1],encoding="utf-8"))' "$tmp" 2>/dev/null ||
+    { echo "生成的 JSON 不合法，拒绝上线：$tmp" >&2; exit 1; }
+fi
 
 mv -f "$tmp" "$OUT"
 trap - EXIT

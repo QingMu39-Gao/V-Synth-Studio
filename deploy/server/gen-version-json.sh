@@ -93,17 +93,38 @@ fi
     name=${best_name[$plat]:-}
     [ -n "$name" ] || continue
     path="$DL/$name"
+
+    # ⚠️ 取值必须落到变量里再单独判空。写成 `"size": $(stat -c%s "$path")` 时，
+    # 命令替换内的失败**不会**触发 `set -e`（errexit 不管替换里的退出码），
+    # 结果是 `"size": ,` —— 语法非法的 JSON 被原子替换上线，而我们还在打印「已更新」。
+    # 包在「扫描目录」与「写 JSON」之间被删就是这样发生的。
+    size=$(stat -c%s "$path" 2>/dev/null || true)
+    case "$size" in
+      ''|*[!0-9]*) echo "拿不到文件大小（包是不是刚被删）：$path" >&2; exit 1 ;;
+    esac
+
     # 只取第一列：sha256sum 在文件名含特殊字符时会给整行加 `\` 转义前缀，
     # 客户端要的是裸的 64 位小写十六进制。
-    sum=$(sha256sum "$path" | awk '{print $1}' | tr -d '\\' | tr 'A-Z' 'a-z')
+    sum=$(sha256sum "$path" 2>/dev/null | awk '{print $1}' | tr -d '\\' | tr 'A-Z' 'a-z' || true)
+    case "$sum" in
+      *[!0-9a-f]*|'') echo "拿不到 sha256：$path" >&2; exit 1 ;;
+    esac
+    [ ${#sum} -eq 64 ] || { echo "sha256 长度不对（${#sum}）：$path" >&2; exit 1; }
+
     printf '%s    "%s": {"url": "%s/%s", "size": %s, "sha256": "%s"}' \
-      "$sep" "$plat" "$BASE" "$name" \
-      "$(stat -c%s "$path")" \
-      "$sum"
+      "$sep" "$plat" "$BASE" "$name" "$size" "$sum"
     sep=$',\n'
   done
   printf '\n  }\n}\n'
 } >"$tmp"
+
+# 上线前的最后一道闸：产物必须能解析成 JSON。
+# 没有它的话，上面任何一种取值失败都会把坏文件原子替换上去（而原子替换正是我们要的，
+# 它保证 nginx 不读到半个文件 —— 代价是坏内容也会完整地顶掉好内容）。
+if command -v python3 >/dev/null 2>&1; then
+  python3 -c 'import json,sys; json.load(open(sys.argv[1],encoding="utf-8"))' "$tmp" 2>/dev/null ||
+    { echo "生成的 JSON 不合法，拒绝上线：$tmp" >&2; exit 1; }
+fi
 
 # 原子替换：nginx 永远读不到半个 JSON（同名同目录才保证 rename 原子）
 mv -f "$tmp" "$OUT"

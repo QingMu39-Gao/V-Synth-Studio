@@ -61,6 +61,45 @@ grep -q "\"size\": $want" "$V" && ok "size 与文件一致" || bad "size 与文�
 grep -q '"min_version": "1.0.0"' "$V" && grep -q '"force": false' "$V" \
   && ok "min_version / force 是常量" || bad "min_version / force 被改动了"
 
+# 扫描与写 JSON 之间包被删：必须失败，且**绝不能**把坏 JSON 顶上线。
+# 这一条对应真实事故：`"size": $(stat -c%s ...)` 里命令替换的失败不触发 `set -e`，
+# 于是写出了 `"size": ,` —— 语法非法的 JSON 被原子替换上线，脚本还打印「已更新」。
+# 用 PATH 注入一个必然失败的 `stat` 来复现（比真去抢时间窗可靠）。
+mkdir -p "$WORK/race/dl" "$WORK/race/api"
+printf 'Z%.0s' {1..100} >"$WORK/race/dl/v-synth-studio_2.0.0_x64-setup.exe"
+if VSS_DL_DIR="$WORK/race/dl" VSS_API_DIR="$WORK/race/api" bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
+  ok "正常场景能写出"
+else
+  bad "正常场景写不出来"
+fi
+GOOD=$(cat "$WORK/race/api/version.json")
+FAKEBIN="$WORK/race/fakebin" && mkdir -p "$FAKEBIN"
+printf '#!/bin/bash\nexit 1\n' >"$FAKEBIN/stat" && chmod +x "$FAKEBIN/stat"
+if PATH="$FAKEBIN:$PATH" VSS_DL_DIR="$WORK/race/dl" VSS_API_DIR="$WORK/race/api" \
+     bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
+  bad "取不到 size 时应当失败"
+else
+  ok "取不到 size 时返回非 0"
+fi
+[ "$(cat "$WORK/race/api/version.json")" = "$GOOD" ] \
+  && ok "失败时线上文件保持上一份完好内容" || bad "失败时线上文件被改坏了"
+if command -v python3 >/dev/null 2>&1 || command -v python >/dev/null 2>&1; then
+  PY2=$(command -v python3 || command -v python)
+  "$PY2" -c "import json,sys; json.load(open(sys.argv[1],encoding='utf-8'))" "$WORK/race/api/version.json" 2>/dev/null \
+    && ok "残留产物仍是合法 JSON" || bad "残留产物不是合法 JSON"
+fi
+# 同一道闸也要挡住 sha256 取不到的情况
+FAKEBIN2="$WORK/race/fakebin2" && mkdir -p "$FAKEBIN2"
+printf '#!/bin/bash\nexit 1\n' >"$FAKEBIN2/sha256sum" && chmod +x "$FAKEBIN2/sha256sum"
+if PATH="$FAKEBIN2:$PATH" VSS_DL_DIR="$WORK/race/dl" VSS_API_DIR="$WORK/race/api" \
+     bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
+  bad "取不到 sha256 时应当失败"
+else
+  ok "取不到 sha256 时返回非 0"
+fi
+[ "$(cat "$WORK/race/api/version.json")" = "$GOOD" ] \
+  && ok "sha256 失败时线上文件也没被改坏" || bad "sha256 失败时线上文件被改坏"
+
 # 没有可用包时必须失败（否则会写出一个没有 downloads 的 JSON，客户端当「无更新」）
 mkdir -p "$WORK/empty" && mkdir -p "$WORK/api2"
 if VSS_DL_DIR="$WORK/empty" VSS_API_DIR="$WORK/api2" bash "$HERE/gen-version-json.sh" >/dev/null 2>&1; then
