@@ -12,21 +12,21 @@
     "pack:archives": "node tools/pack_archives.mjs"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.3",
-    "@tauri-apps/plugin-dialog": "~2.8.2",
+    "@tauri-apps/api": "^2.12.4",
+    "@tauri-apps/plugin-dialog": "~2.8.3",
     "@ttqtt/liquid-glass-react": "^0.0.2",
     "qrcode.react": "^4.2.0",
-    "react": "^19.3.0",
-    "react-dom": "^19.3.0"
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.2",
+    "@tauri-apps/cli": "^2.12.3",
     "@types/node": "^26.6.5",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.1.2",
     "typescript": "~7.0.2",
     "vite": "^8.3.4",
-    "vitest": "^5.0.4"
+    "vitest": "^5.0.5"
   }
 }
