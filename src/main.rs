@@ -1,57 +1,32 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use gpui_kit::component::button::{Button, ButtonVariants};
+mod app;
+mod config;
+mod pages;
+
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
 
-struct VSynthStudio;
-
-impl Render for VSynthStudio {
-    fn render(&mut self, _: &mut Window, _: &mut Context<Self>) -> impl IntoElement {
-        div()
-            .flex()
-            .flex_col()
-            .size_full()
-            .child(
-                TitleBar::new().child(
-                    div()
-                        .flex()
-                        .items_center()
-                        .child("V-Synth-Studio"),
-                ),
-            )
-            .child(
-                div()
-                    .flex()
-                    .flex_col()
-                    .flex_1()
-                    .items_center()
-                    .justify_center()
-                    .gap_2()
-                    .child("Hello, World!")
-                    .child(
-                        Button::new("hello")
-                            .primary()
-                            .label("Click me")
-                            .on_click(|_, _, _| println!("Clicked!")),
-                    ),
-            )
-    }
-}
-
 fn main() {
-    application()
-        .with_assets(assets::Assets)
-        .run(|cx| {
-            init(cx);
-            let bounds = Bounds::centered(None, size(px(800.), px(600.)), cx);
-            let window_options = WindowOptions {
-                window_bounds: Some(WindowBounds::Windowed(bounds)),
-                ..TitleBar::window_options()
-            };
-            open_window(window_options, cx, |_, cx| {
-                cx.new(|_| VSynthStudio)
-            })
-            .expect("Failed to open window");
-        });
+    let config = config::Config::load();
+    let initial_theme = config.theme;
+
+    application().with_assets(assets::AllAssets).run(move |cx| {
+        init(cx);
+
+        let bounds = Bounds::centered(None, size(px(1360.), px(880.)), cx);
+        let options = WindowOptions {
+            window_bounds: Some(WindowBounds::Windowed(bounds)),
+            window_min_size: Some(size(px(960.), px(640.))),
+            ..TitleBar::window_options()
+        };
+
+        open_window(options, cx, move |window, cx| {
+            app::apply_theme(initial_theme, window, cx);
+            let view = cx.new(|_| app::VSynthApp::new(config.clone()));
+            view.update(cx, |this, cx| this.watch_system_theme(window, cx));
+            view
+        })
+        .expect("Failed to open window");
+    });
 }
