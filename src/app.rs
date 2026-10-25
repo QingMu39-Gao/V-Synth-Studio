@@ -1,5 +1,6 @@
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::group_box::{GroupBox, GroupBoxVariants as _};
+use gpui_kit::component::input::{Input, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
@@ -15,17 +16,36 @@ pub struct VSynthApp {
     notice: Option<String>,
     tools: Option<ToolStatus>,
     scanning_tools: bool,
+    output_input: Entity<InputState>,
+    download_input: Entity<InputState>,
+    ext_input: Entity<InputState>,
 }
 
 impl VSynthApp {
-    pub fn new(config: Config) -> Self {
+    pub fn new(
+        config: Config,
+        output_input: Entity<InputState>,
+        download_input: Entity<InputState>,
+        ext_input: Entity<InputState>,
+    ) -> Self {
         Self {
             page: Page::Dashboard,
             config,
             notice: None,
             tools: None,
             scanning_tools: false,
+            output_input,
+            download_input,
+            ext_input,
         }
+    }
+
+    fn save_paths(&mut self, cx: &mut Context<Self>) {
+        self.config.output_dir = self.output_input.read(cx).value().trim().to_string();
+        self.config.download_dir = self.download_input.read(cx).value().trim().to_string();
+        self.config.ext_dir = self.ext_input.read(cx).value().trim().to_string();
+        self.notice = self.config.save().err();
+        cx.notify();
     }
 
     pub fn refresh_tools(&mut self, cx: &mut Context<Self>) {
@@ -442,31 +462,47 @@ impl VSynthApp {
             .child(
                 GroupBox::new().outline().title("路径").child(
                     v_flex()
-                        .gap_1()
-                        .child(info_row(
+                        .gap_3()
+                        .child(path_field(
                             "输出目录",
-                            configured_path(&self.config.output_dir, "默认（系统下载目录）"),
+                            &self.output_input,
+                            "留空 = 系统下载目录",
                             muted,
-                            border,
                         ))
-                        .child(info_row(
+                        .child(path_field(
                             "下载目录",
-                            configured_path(&self.config.download_dir, "默认（系统下载目录）"),
+                            &self.download_input,
+                            "留空 = 系统下载目录",
                             muted,
-                            border,
                         ))
-                        .child(info_row(
+                        .child(path_field(
                             "扩展包目录",
-                            configured_path(&self.config.ext_dir, "默认（data 目录）"),
+                            &self.ext_input,
+                            "留空 = data 目录；扩展包体积大，建议换到别的盘",
                             muted,
-                            border,
                         ))
                         .child(info_row("工具目录", tools_dir_display(), muted, border))
                         .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("路径编辑将在下一批接入；当前只读取旧配置。"),
+                            h_flex()
+                                .items_center()
+                                .gap_3()
+                                .child(
+                                    Button::new("save-paths")
+                                        .label("保存路径")
+                                        .primary()
+                                        .on_click({
+                                            let entity = cx.entity();
+                                            move |_, _, cx| {
+                                                entity.update(cx, |this, cx| this.save_paths(cx));
+                                            }
+                                        }),
+                                )
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child("保存后写入 data/config.json。"),
+                                ),
                         ),
                 ),
             )
@@ -493,10 +529,8 @@ impl VSynthApp {
                 GroupBox::new().outline().title("迁移状态").child(
                     v_flex()
                         .gap_2()
-                        .child(bullet_line("设置页已接入外观、配置与路径读取"))
-                        .child(bullet_line(
-                            "路径编辑、外部工具启动、公告、赞助、关于尚未迁移",
-                        ))
+                        .child(bullet_line("设置页已接入外观、配置与路径编辑"))
+                        .child(bullet_line("外部工具启动、公告、赞助、关于尚未迁移"))
                         .child(h_flex().child(
                             Button::new("settings-back").label("返回总览").on_click(
                                 move |_, _, cx| {
@@ -617,13 +651,56 @@ fn tools_dir_display() -> String {
         .unwrap_or_else(|_| path.display().to_string())
 }
 
-fn configured_path(value: &str, fallback: &str) -> String {
-    let value = value.trim();
-    if value.is_empty() {
-        fallback.to_string()
-    } else {
-        value.to_string()
+fn path_field(
+    label: &'static str,
+    input: &Entity<InputState>,
+    hint: &'static str,
+    muted: Hsla,
+) -> impl IntoElement {
+    let browse_input = input.clone();
+    let clear_input = input.clone();
+    let browse_id = SharedString::from(format!("browse-{label}"));
+    let clear_id = SharedString::from(format!("clear-{label}"));
+
+    v_flex()
+        .gap_1()
+        .child(div().text_xs().text_color(muted).child(label))
+        .child(
+            h_flex()
+                .items_center()
+                .gap_2()
+                .child(div().flex_1().min_w_0().child(Input::new(input).w_full()))
+                .child(
+                    Button::new(browse_id)
+                        .label("浏览…")
+                        .on_click(move |_, window, cx| {
+                            let current = browse_input.read(cx).value().to_string();
+                            if let Some(path) = pick_folder(&current) {
+                                browse_input.update(cx, |state, cx| {
+                                    state.set_value(path.to_string_lossy().to_string(), window, cx);
+                                });
+                            }
+                        }),
+                )
+                .child(
+                    Button::new(clear_id)
+                        .label("清空")
+                        .on_click(move |_, window, cx| {
+                            clear_input.update(cx, |state, cx| {
+                                state.set_value("", window, cx);
+                            });
+                        }),
+                ),
+        )
+        .child(div().text_xs().text_color(muted).child(hint))
+}
+
+fn pick_folder(start: &str) -> Option<std::path::PathBuf> {
+    let mut dialog = rfd::FileDialog::new();
+    if !start.trim().is_empty() {
+        dialog = dialog.set_directory(start);
     }
+    dialog.pick_folder()
 }
 
 fn tool_row(

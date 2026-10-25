@@ -6,6 +6,7 @@ mod pages;
 mod tools;
 
 use gpui_kit::component::TitleBar;
+use gpui_kit::component::input::InputState;
 use gpui_kit::*;
 
 fn main() {
@@ -24,7 +25,15 @@ fn main() {
 
         open_window(options, cx, move |window, cx| {
             app::apply_theme(initial_theme, window, cx);
-            let view = cx.new(|_| app::VSynthApp::new(config.clone()));
+            let output_input =
+                cx.new(|cx| InputState::new(window, cx).default_value(config.output_dir.clone()));
+            let download_input =
+                cx.new(|cx| InputState::new(window, cx).default_value(config.download_dir.clone()));
+            let ext_input =
+                cx.new(|cx| InputState::new(window, cx).default_value(config.ext_dir.clone()));
+            let view = cx.new(|_| {
+                app::VSynthApp::new(config.clone(), output_input, download_input, ext_input)
+            });
             view.update(cx, |this, cx| {
                 this.watch_system_theme(window, cx);
                 this.refresh_tools(cx);
