@@ -3,6 +3,7 @@
 mod app;
 mod config;
 mod pages;
+mod tools;
 
 use gpui_kit::component::TitleBar;
 use gpui_kit::*;
@@ -24,7 +25,10 @@ fn main() {
         open_window(options, cx, move |window, cx| {
             app::apply_theme(initial_theme, window, cx);
             let view = cx.new(|_| app::VSynthApp::new(config.clone()));
-            view.update(cx, |this, cx| this.watch_system_theme(window, cx));
+            view.update(cx, |this, cx| {
+                this.watch_system_theme(window, cx);
+                this.refresh_tools(cx);
+            });
             view
         })
         .expect("Failed to open window");

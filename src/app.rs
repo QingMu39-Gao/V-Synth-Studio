@@ -5,6 +5,7 @@ use gpui_kit::*;
 
 use crate::config::{Config, ThemePreference};
 use crate::pages::Page;
+use crate::tools::{Tool, ToolStatus};
 
 const SIDEBAR_WIDTH: f32 = 228.0;
 
@@ -12,6 +13,8 @@ pub struct VSynthApp {
     page: Page,
     config: Config,
     notice: Option<String>,
+    tools: Option<ToolStatus>,
+    scanning_tools: bool,
 }
 
 impl VSynthApp {
@@ -20,7 +23,31 @@ impl VSynthApp {
             page: Page::Dashboard,
             config,
             notice: None,
+            tools: None,
+            scanning_tools: false,
         }
+    }
+
+    pub fn refresh_tools(&mut self, cx: &mut Context<Self>) {
+        if self.scanning_tools {
+            return;
+        }
+        self.scanning_tools = true;
+        let root = crate::config::app_root();
+        cx.spawn(async move |this, cx| {
+            let status = cx
+                .background_spawn(async move { crate::tools::detect(&root) })
+                .await;
+            if let Some(this) = this.upgrade() {
+                this.update(cx, |this, cx| {
+                    this.tools = Some(status);
+                    this.scanning_tools = false;
+                    cx.notify();
+                });
+            }
+        })
+        .detach();
+        cx.notify();
     }
 
     pub fn watch_system_theme(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -262,6 +289,25 @@ impl VSynthApp {
         let border = theme.border;
         let entity = cx.entity();
 
+        let tools_ready = self
+            .tools
+            .as_ref()
+            .map(ToolStatus::ready_count)
+            .map(|count| format!("{count}/3 就绪"))
+            .unwrap_or_else(|| "检测中…".to_string());
+        let refresh_button = Button::new("tools-refresh")
+            .label(if self.scanning_tools {
+                "检测中…"
+            } else {
+                "重新检测"
+            })
+            .on_click({
+                let entity = entity.clone();
+                move |_, _, cx| {
+                    entity.update(cx, |this, cx| this.refresh_tools(cx));
+                }
+            });
+
         let quick_buttons = Page::ALL
             .into_iter()
             .filter(|page| !matches!(page, Page::Dashboard | Page::Settings))
@@ -310,15 +356,52 @@ impl VSynthApp {
                             "gpui-kit 0.8".to_string(),
                             muted,
                             border,
-                        )),
+                        ))
+                        .child(info_row("外部工具", tools_ready, muted, border)),
+                ),
+            )
+            .child(
+                GroupBox::new().outline().title("外部工具").child(
+                    v_flex()
+                        .gap_2()
+                        .child(tool_row(
+                            "ffmpeg",
+                            self.tools.as_ref().map(|tools| &tools.ffmpeg),
+                            self.scanning_tools,
+                            theme,
+                        ))
+                        .child(tool_row(
+                            "yt-dlp",
+                            self.tools.as_ref().map(|tools| &tools.ytdlp),
+                            self.scanning_tools,
+                            theme,
+                        ))
+                        .child(tool_row(
+                            "python",
+                            self.tools.as_ref().map(|tools| &tools.python),
+                            self.scanning_tools,
+                            theme,
+                        ))
+                        .child(
+                            h_flex().items_center().gap_3().child(refresh_button).child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(format!("目录：{}", tools_dir_display())),
+                            ),
+                        ),
                 ),
             )
             .child(
                 GroupBox::new().outline().title("迁移进度").child(
                     v_flex()
                         .gap_2()
-                        .child(bullet_line("已完成：GPUI 外壳、侧栏导航、主题与配置持久化"))
-                        .child(bullet_line("下一步：总览状态、设置页、后端模块按页接入"))
+                        .child(bullet_line(
+                            "已完成：GPUI 外壳、导航、主题与配置、外部工具检测",
+                        ))
+                        .child(bullet_line(
+                            "下一步：路径编辑、设置分节、任务状态与页面业务",
+                        ))
                         .child(bullet_line("待迁：视频预览、波形编辑、文字 PV、安装更新")),
                 ),
             )
@@ -357,6 +440,37 @@ impl VSynthApp {
                 ),
             )
             .child(
+                GroupBox::new().outline().title("路径").child(
+                    v_flex()
+                        .gap_1()
+                        .child(info_row(
+                            "输出目录",
+                            configured_path(&self.config.output_dir, "默认（系统下载目录）"),
+                            muted,
+                            border,
+                        ))
+                        .child(info_row(
+                            "下载目录",
+                            configured_path(&self.config.download_dir, "默认（系统下载目录）"),
+                            muted,
+                            border,
+                        ))
+                        .child(info_row(
+                            "扩展包目录",
+                            configured_path(&self.config.ext_dir, "默认（data 目录）"),
+                            muted,
+                            border,
+                        ))
+                        .child(info_row("工具目录", tools_dir_display(), muted, border))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("路径编辑将在下一批接入；当前只读取旧配置。"),
+                        ),
+                ),
+            )
+            .child(
                 GroupBox::new().outline().title("配置").child(
                     v_flex()
                         .gap_1()
@@ -379,8 +493,10 @@ impl VSynthApp {
                 GroupBox::new().outline().title("迁移状态").child(
                     v_flex()
                         .gap_2()
-                        .child(bullet_line("设置页只接入了外观与配置读取"))
-                        .child(bullet_line("路径、外部工具、公告、赞助、关于尚未迁移"))
+                        .child(bullet_line("设置页已接入外观、配置与路径读取"))
+                        .child(bullet_line(
+                            "路径编辑、外部工具启动、公告、赞助、关于尚未迁移",
+                        ))
                         .child(h_flex().child(
                             Button::new("settings-back").label("返回总览").on_click(
                                 move |_, _, cx| {
@@ -492,4 +608,70 @@ fn config_path_display() -> String {
     path.strip_prefix(crate::config::data_dir())
         .map(|relative| format!("data/{}", relative.display()))
         .unwrap_or_else(|_| path.display().to_string())
+}
+
+fn tools_dir_display() -> String {
+    let path = crate::config::tools_dir();
+    path.strip_prefix(crate::config::app_root())
+        .map(|relative| relative.display().to_string())
+        .unwrap_or_else(|_| path.display().to_string())
+}
+
+fn configured_path(value: &str, fallback: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn tool_row(
+    label: &'static str,
+    tool: Option<&Tool>,
+    scanning: bool,
+    theme: &Theme,
+) -> impl IntoElement {
+    let muted = theme.muted_foreground;
+    let (status, color, detail) = match tool {
+        Some(tool) if tool.available => (
+            "可用",
+            theme.success,
+            tool.version
+                .clone()
+                .or_else(|| tool.path.clone())
+                .unwrap_or_else(|| "已找到可执行文件".to_string()),
+        ),
+        Some(_) => (
+            "缺失",
+            theme.danger,
+            "未在 tools/ 或 PATH 中找到".to_string(),
+        ),
+        None if scanning => ("检测中", muted, "正在扫描 tools/ 与 PATH".to_string()),
+        None => ("未检测", muted, "等待重新检测".to_string()),
+    };
+
+    h_flex()
+        .justify_between()
+        .items_center()
+        .gap_4()
+        .py_1()
+        .border_b_1()
+        .border_color(theme.border)
+        .child(
+            v_flex()
+                .gap_1()
+                .child(div().text_sm().child(label))
+                .child(div().text_xs().text_color(muted).child(detail)),
+        )
+        .child(
+            div()
+                .px_2()
+                .py_1()
+                .rounded(theme.radius)
+                .bg(color.opacity(0.14))
+                .text_color(color)
+                .text_xs()
+                .child(status),
+        )
 }

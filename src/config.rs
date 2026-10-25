@@ -48,7 +48,13 @@ impl ThemePreference {
 pub struct Config {
     #[serde(default)]
     pub theme: ThemePreference,
-    /// 旧版配置里的其它键（输出目录、Cookie、工具路径……）原样保留。
+    #[serde(default, rename = "outputDir")]
+    pub output_dir: String,
+    #[serde(default, rename = "downloadDir")]
+    pub download_dir: String,
+    #[serde(default, rename = "extDir")]
+    pub ext_dir: String,
+    /// 旧版配置里的其它键（Cookie、页面设置、工具路径……）原样保留。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
 }
@@ -57,6 +63,9 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             theme: ThemePreference::default(),
+            output_dir: String::new(),
+            download_dir: String::new(),
+            ext_dir: String::new(),
             extra: Map::new(),
         }
     }
@@ -86,8 +95,16 @@ impl Config {
     }
 }
 
+pub fn app_root() -> PathBuf {
+    root()
+}
+
 pub fn data_dir() -> PathBuf {
     app_root().join("data")
+}
+
+pub fn tools_dir() -> PathBuf {
+    app_root().join("tools")
 }
 
 pub fn config_path() -> PathBuf {
@@ -95,12 +112,12 @@ pub fn config_path() -> PathBuf {
 }
 
 #[cfg(debug_assertions)]
-fn app_root() -> PathBuf {
+fn root() -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
 }
 
 #[cfg(not(debug_assertions))]
-fn app_root() -> PathBuf {
+fn root() -> PathBuf {
     std::env::current_exe()
         .ok()
         .and_then(|path| path.parent().map(PathBuf::from))
