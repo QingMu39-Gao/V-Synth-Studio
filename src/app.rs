@@ -48,6 +48,20 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn refresh_tools_button(&self, cx: &mut Context<Self>) -> AnyElement {
+        let entity = cx.entity();
+        Button::new("tools-refresh")
+            .label(if self.scanning_tools {
+                "检测中…"
+            } else {
+                "重新检测"
+            })
+            .on_click(move |_, _, cx| {
+                entity.update(cx, |this, cx| this.refresh_tools(cx));
+            })
+            .into_any_element()
+    }
+
     pub fn refresh_tools(&mut self, cx: &mut Context<Self>) {
         if self.scanning_tools {
             return;
@@ -315,18 +329,6 @@ impl VSynthApp {
             .map(ToolStatus::ready_count)
             .map(|count| format!("{count}/3 就绪"))
             .unwrap_or_else(|| "检测中…".to_string());
-        let refresh_button = Button::new("tools-refresh")
-            .label(if self.scanning_tools {
-                "检测中…"
-            } else {
-                "重新检测"
-            })
-            .on_click({
-                let entity = entity.clone();
-                move |_, _, cx| {
-                    entity.update(cx, |this, cx| this.refresh_tools(cx));
-                }
-            });
 
         let quick_buttons = Page::ALL
             .into_iter()
@@ -403,12 +405,16 @@ impl VSynthApp {
                             theme,
                         ))
                         .child(
-                            h_flex().items_center().gap_3().child(refresh_button).child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(format!("目录：{}", tools_dir_display())),
-                            ),
+                            h_flex()
+                                .items_center()
+                                .gap_3()
+                                .child(self.refresh_tools_button(cx))
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(format!("目录：{}", tools_dir_display())),
+                                ),
                         ),
                 ),
             )
@@ -441,6 +447,7 @@ impl VSynthApp {
             .into_iter()
             .map(|preference| self.render_theme_button(preference, false, cx))
             .collect::<Vec<_>>();
+        let refresh_button = self.refresh_tools_button(cx);
 
         v_flex()
             .gap_4()
@@ -507,6 +514,48 @@ impl VSynthApp {
                 ),
             )
             .child(
+                GroupBox::new().outline().title("外部工具").child(
+                    v_flex()
+                        .gap_2()
+                        .child(tool_row(
+                            "ffmpeg",
+                            self.tools.as_ref().map(|tools| &tools.ffmpeg),
+                            self.scanning_tools,
+                            cx.theme(),
+                        ))
+                        .child(tool_row(
+                            "yt-dlp",
+                            self.tools.as_ref().map(|tools| &tools.ytdlp),
+                            self.scanning_tools,
+                            cx.theme(),
+                        ))
+                        .child(tool_row(
+                            "python",
+                            self.tools.as_ref().map(|tools| &tools.python),
+                            self.scanning_tools,
+                            cx.theme(),
+                        ))
+                        .child(
+                            h_flex()
+                                .items_center()
+                                .gap_3()
+                                .child(refresh_button)
+                                .child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(format!("目录：{}", tools_dir_display())),
+                                ),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("缺少 ffmpeg / yt-dlp 时，音频与下载相关功能不可用；请重新解压程序包补齐 tools/。"),
+                        ),
+                ),
+            )
+            .child(
                 GroupBox::new().outline().title("配置").child(
                     v_flex()
                         .gap_1()
@@ -526,11 +575,37 @@ impl VSynthApp {
                 ),
             )
             .child(
+                GroupBox::new().outline().title("关于").child(
+                    v_flex()
+                        .gap_1()
+                        .child(info_row(
+                            "程序版本",
+                            env!("CARGO_PKG_VERSION").to_string(),
+                            muted,
+                            border,
+                        ))
+                        .child(info_row(
+                            "运行环境",
+                            format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH),
+                            muted,
+                            border,
+                        ))
+                        .child(info_row("许可证", "GPL-3.0-only".to_string(), muted, border))
+                        .child(info_row("作者", "QingMu39".to_string(), muted, border))
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("界面基座 gpui-kit 0.8 / GPUI；第三方组件许可见 docs/THIRD-PARTY-NOTICES.md。"),
+                        ),
+                ),
+            )
+            .child(
                 GroupBox::new().outline().title("迁移状态").child(
                     v_flex()
                         .gap_2()
-                        .child(bullet_line("设置页已接入外观、配置与路径编辑"))
-                        .child(bullet_line("外部工具启动、公告、赞助、关于尚未迁移"))
+                        .child(bullet_line("设置页已接入外观、路径、外部工具与关于"))
+                        .child(bullet_line("公告、赞助、检查更新尚未迁移"))
                         .child(h_flex().child(
                             Button::new("settings-back").label("返回总览").on_click(
                                 move |_, _, cx| {
