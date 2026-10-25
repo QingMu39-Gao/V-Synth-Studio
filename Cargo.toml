@@ -1,0 +1,14 @@
+[package]
+name = "v-synth-studio"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+gpui-kit = "0.8.0"
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = 3
+panic = "abort"
+strip = true
