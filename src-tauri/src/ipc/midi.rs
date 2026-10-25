@@ -3,7 +3,7 @@
 //!
 //! ⚠️ **只有 `status` 碰得到 ORT 的状态，而它不建会话。**
 //! `ort` 的 `setup_api()` 是**惰性**的，任何 ORT 调用之前必须先
-//! `ort::init_from(<绝对路径的 onnxruntime.dll>).commit()`，否则它去找裸文件名然后
+//! `ort::init_from(<绝对路径的 onnxruntime.dll>).build()`，否则它去找裸文件名然后
 //! panic —— 而 tokio worker 线程 panic 的表现是「请求没有任何回复」，不是路由问题。
 //! 真正的初始化在 `game/engine.rs::load_runtime`。
 //!

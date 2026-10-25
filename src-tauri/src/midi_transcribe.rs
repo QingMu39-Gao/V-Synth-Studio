@@ -240,7 +240,7 @@ fn probe_cuda(dll: Option<&Path>) -> CudaInfo {
         }
     };
     /* ⛔ **ONNX Runtime 本体必须先加载，否则下面任何一句 ORT 调用都会 panic**：
-    `ort` 的 `api()` 是惰性初始化，没人调过 `ort::init_from(...).commit()` 时它会去找
+    `ort` 的 `api()` 是惰性初始化，没人调过 `ort::init_from(...).build()` 时它会去找
     **裸文件名** `onnxruntime.dll`，PATH 里当然没有；
     `transcribe` 里那句 `load_runtime(dll)` 来得太晚 —— `midi_status` 是首页一进就
     轮询的接口，它会先到这儿。worker 线程 panic 的表现是「这条命令永远不返回」，
@@ -308,36 +308,26 @@ fn probe_cuda(dll: Option<&Path>) -> CudaInfo {
         .map(|d| crate::platform::clean_path(d))
         .collect::<Vec<_>>();
 
-    /* ⛔ **`is_available()` 不足以当判据** —— 它只回答「这份 ORT 构建里编进了 CUDA
-    provider 没有」，与这台机器有没有 N 卡无关：在 A 卡机器上把四个目录加进 `PATH`
-    之后它照样回 `Ok(true)`，GPU 那一格就锁不住了。
-
-    ✅ 真判据只有一条：**真拿 CUDA 建一个会话**。
+    /* ✅ 判据只有一条：**真拿 CUDA 建一个会话**。`is_available()` 只回答「这份 ORT
+    构建里编进了 CUDA provider 没有」，与这台机器有没有 N 卡无关，不能用来锁 GPU 格。
     `error_on_failure()` 在这里是必须的 —— 默认的 `fail_silently` 会把「CUDA 没装上」
     吞掉、悄悄给一个 CPU 会话。
 
     图用内存里拼的最小 ONNX（`mini_onnx`）：**GPU 那一格该不该亮，跟用户下没下模型
     是两回事**，状态接口在没模型时也要答得出来。 */
-    use ort::ep::ExecutionProvider as _;
-    match ort::ep::CUDA::default().is_available() {
-        Ok(true) => {}
-        Ok(false) => {
-            return CudaInfo {
-                available: false,
-                detail: "这份 ONNX Runtime 里没有 CUDA provider（CPU 构建）".into(),
-            };
-        }
+    let env = match engine::environment() {
+        Ok(env) => env,
         Err(e) => {
             return CudaInfo {
                 available: false,
-                detail: format!("问 ONNX Runtime「有没有 CUDA」时出错：{e}"),
+                detail: e,
             };
         }
-    }
+    };
     /* ⚠️ 这里**不能用 `?` 或 `and_then` 串**：`with_execution_providers` 失败时回的是
     `ort::Error<SessionBuilder>`（它能把 builder 还给你），与后面那句的
     `ort::Error<()>` 不是一个类型。手工两步、各自 `map_err` 成字符串。 */
-    let probe = ort::session::Session::builder()
+    let probe = ort::session::Session::builder(env)
         .map_err(|e| e.to_string())
         .and_then(|b| {
             b.with_execution_providers([

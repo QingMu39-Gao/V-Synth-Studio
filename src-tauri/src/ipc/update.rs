@@ -354,13 +354,28 @@ fn verify(
 /// 为此加了 `sha2`：`flate2` / `zip` 里那个 CRC32 能被人顺手改成一致的，挡不住
 /// 「半路被换成别的安装包」，判完整性只能用密码学摘要。
 fn sha256_file(path: &Path) -> Result<String, String> {
+    use std::fmt::Write as _;
+    use std::io::Read;
+
     use sha2::{Digest, Sha256};
 
     let mut file =
         std::fs::File::open(path).map_err(|e| format!("读不了 {}：{e}", path.display()))?;
     let mut hasher = Sha256::new();
-    std::io::copy(&mut file, &mut hasher).map_err(|e| format!("读了半截：{e}"))?;
-    Ok(format!("{:x}", hasher.finalize()))
+    let mut buf = vec![0u8; 64 * 1024];
+    loop {
+        let n = file.read(&mut buf).map_err(|e| format!("读了半截：{e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    let digest = hasher.finalize();
+    let mut hex = String::with_capacity(digest.len() * 2);
+    for b in digest {
+        let _ = write!(hex, "{b:02x}");
+    }
+    Ok(hex)
 }
 
 #[cfg(test)]

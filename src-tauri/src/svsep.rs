@@ -1574,7 +1574,10 @@ fn reader_has_entry<R: std::io::Read + std::io::Seek>(
         let Ok(e) = z.by_index(i) else {
             continue;
         };
-        if e.name().replace('\\', "/") == want {
+        let Ok(name) = e.name() else {
+            continue;
+        };
+        if name.replace('\\', "/") == want {
             return true;
         }
     }
@@ -2427,7 +2430,10 @@ fn extract_from<R: std::io::Read + std::io::Seek>(
         // 排在靠后时进度会先冲到 100% 再长时间不动，看着就是卡死。
         let entry_src = e.compressed_size().max(1);
 
-        let raw_name = e.name().replace('\\', "/");
+        let raw_name = e
+            .name()
+            .map_err(|err| format!("读第 {i} 个条目的名字失败：{err}"))?
+            .replace('\\', "/");
         /* ⚠️ 用 `enclosed_name()` 而不是 `mangled_name()`/`sanitized_name()`：
         后两者会**静默地把 `..` 改掉**，于是危险条目变成「一个名字很怪的正常
         文件」被正常解出来 —— 那是把安全问题藏起来。我们宁可当场报错
@@ -2784,7 +2790,7 @@ mod tests {
                 let e = z.by_index(i).unwrap();
                 // `size()` 是解压后的字节数，`compressed_size()` 是盘上的
                 if best.as_ref().is_none_or(|(_, s)| e.size() > *s) {
-                    best = Some((e.name().to_string(), e.size()));
+                    best = Some((e.name().expect("条目名读不出来").to_string(), e.size()));
                 }
             }
             let (n, s) = best.expect("一个条目都没读到");

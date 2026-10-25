@@ -17,8 +17,10 @@
 //! 算法改动必须保持这两项回归全绿。
 
 use std::path::Path;
+use std::sync::{Mutex, OnceLock};
 
 use ndarray::{Array1, Array2, ArrayD, IxDyn};
+use ort::environment::Environment;
 use ort::session::{Session, SessionInputs};
 use ort::value::Tensor as OrtTensor;
 use ort::value::Value as OrtValue;
@@ -93,7 +95,7 @@ pub struct Report {
 /// 线程数也是显式设的：这个图偏窄，**ORT 按核数自己选的那个默认值反而最慢**
 /// —— 8 核上 T=300 的单步 segmenter：1 线程 2.66 s、4 线程 1.04 s、8 线程 3.30 s。
 fn ort_session(path: &Path, name: &str, threads: usize, gpu: bool) -> Result<Session, String> {
-    let mut builder = Session::builder().map_err(|e| format!("{name}: {e}"))?;
+    let mut builder = Session::builder(environment()?).map_err(|e| format!("{name}: {e}"))?;
     if gpu {
         /* CUDA 在前、CPU 在后。⛔ 别去掉 `error_on_failure()`：默认是 `fail_silently`，
         那样 CUDA 注册不上时会悄悄给一个 CPU 会话，界面显示在用 GPU、其实一直在 CPU
@@ -170,15 +172,35 @@ fn build_sessions(
     ))
 }
 
-/// 加载 ONNX Runtime 动态库。只需成功一次，重复调用无害。
+/// 进程级的 ONNX Runtime 环境。所有会话都必须挂在同一个环境上。
+static ENV: OnceLock<Environment> = OnceLock::new();
+static ENV_INIT: Mutex<()> = Mutex::new(());
+
+/// 加载 ONNX Runtime 动态库并建立环境。只需成功一次，重复调用无害。
+///
+/// 失败不缓存：第一次可能在扩展包还没装好时被状态探测调到，装好之后必须还能再试。
 pub fn load_runtime(dll: &Path) -> Result<(), String> {
+    if ENV.get().is_some() {
+        return Ok(());
+    }
+    let _guard = ENV_INIT.lock().unwrap_or_else(|e| e.into_inner());
+    if ENV.get().is_some() {
+        return Ok(());
+    }
     if !dll.is_file() {
         return Err(format!("找不到 ONNX Runtime：{}", dll.display()));
     }
-    ort::init_from(dll)
+    let env = ort::init_from(dll)
         .map_err(|e| format!("载入 ONNX Runtime 失败（{}）：{e}", dll.display()))?
-        .commit();
+        .build()
+        .map_err(|e| format!("建立 ONNX Runtime 环境失败（{}）：{e}", dll.display()))?;
+    let _ = ENV.set(env);
     Ok(())
+}
+
+/// 建会话用的环境。调用方必须先 `load_runtime`。
+pub(crate) fn environment() -> Result<&'static Environment, String> {
+    ENV.get().ok_or_else(|| "ONNX Runtime 尚未载入".to_string())
 }
 
 /// 跑完整条流水线。
