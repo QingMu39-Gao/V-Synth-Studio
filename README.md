@@ -19,11 +19,7 @@
 | 网易云专栏 | 搜歌、取词、导 LRC/SRT、下封面、下歌曲（**可选下载音质**，服务端降级时如实上报实际档位）；可选登录：手机验证码或 Cookie，带会员标签与登录态自动续期 |
 | 文字 PV | 歌词做成动态歌词视频 / PNG 序列（内置 JIZURA，离线可用） |
 | 资源库 | 工程分享、免费音源、编辑器官网、UTAU 系开源 —— **只收录链接**，不转载文件 |
-| 设置 | 玻璃材质 / 主题 / **背景壁纸** / 路径 / **扩展包目录** / 外部工具 / 关于（含检查更新） |
-
-**背景壁纸**：可以把你自己 Steam 库里 Wallpaper Engine 的壁纸当界面背景（场景 / 视频 / 图片
-都行）。只读你本机已有的文件 —— 不下载、不打包、不上传任何壁纸；场景壁纸在沙箱 iframe 里
-渲染，壁纸自带的脚本碰不到程序本体。
+| 设置 | 主题 / 路径 / **扩展包目录** / 外部工具 / 关于（含检查更新） |
 
 ## 安装
 
@@ -40,9 +36,8 @@
 > **和 ffmpeg** —— Linux 版的 ffmpeg 不随包、用系统仓库的版本（`dpkg -i` 手装没拉依赖的话，
 > `sudo apt install ffmpeg` 补上即可）。
 >
-> **macOS / Linux 版暂时没有这两样**：背景壁纸（Wallpaper Engine 只有 Windows 版）与
-> 离线音轨分离引擎（运行时是 Windows 专属）。界面上它们会置灰并写明原因；
-> 在线 MVSEP 与其余功能不受影响。
+> **macOS / Linux 版暂时没有离线音轨分离引擎**（运行时是 Windows 专属）。界面上它
+> 会置灰并写明原因；在线 MVSEP 与其余功能不受影响。
 >
 > **显卡加速**：Windows 的 A 卡 / 核显走 DirectML、N 卡走 CUDA，Linux 的 N 卡走 CUDA，
 > macOS 没有 CUDA、只有 CPU。另外 macOS / Linux 没有统一的回收站 API，「删除」即彻底删除。
@@ -70,7 +65,7 @@
 
 可以自由使用、修改、再分发；**再分发（含修改版）时必须同样以 GPL-3.0 开放源码**。
 
-随包分发的外部工具与库（FFmpeg / LibreSVIP / yt-dlp / JIZURA 与字体 / webwallgl 等）
+随包分发的外部工具与库（FFmpeg / LibreSVIP / yt-dlp / JIZURA 与字体等）
 **各自独立授权**、不属于本许可证覆盖范围，逐项说明见
 [`docs/THIRD-PARTY-NOTICES.md`](docs/THIRD-PARTY-NOTICES.md)。
 

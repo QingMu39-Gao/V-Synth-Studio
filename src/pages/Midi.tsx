@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
-import {GlassSegmentedControl} from '@ttqtt/liquid-glass-react'
+import {SegmentedControl} from '@/components/ui'
 import {api, MIDI_LANGUAGES, type MidiDeviceMode, type MidiNote, type MidiStatus,} from '@/lib/api'
 import {getConfig, saveConfig} from '@/lib/config'
 import {fileUrl, joinPath} from '@/lib/ipc'
@@ -641,14 +641,14 @@ export function Midi({onToast, onNavigate}: PageProps) {
                         都会激活第一个单选项，等于悄悄把推理方式改回「自动」。 */}
                     <div className="field">
                         <span className="field-label">{t("推理方式")}</span>
-                        {/* 禁用只加在 `<input type="radio">` 上，外层 `<label class="lg-segment">`
-                            照样收得到点击，所以「点了给提示、但不选中」要在**捕获阶段**做。
+                        {/* 被禁的那一格用 `aria-disabled`，点击照样冒泡，所以「点了给提示、
+                            但不选中」要在**捕获阶段**做。
                             ⛔ 别给这个容器加 `pointer-events: none` 来表达禁用 —— 那就成了
                             点了毫无反应，而这正是用户会来报的那个问题。 */}
                         <div
                             className="midi-infer"
                             onClickCapture={(e) => {
-                                const seg = (e.target as HTMLElement).closest('.lg-segment')
+                                const seg = (e.target as HTMLElement).closest('.seg-item')
                                 if (!seg || seg.getAttribute('data-disabled') !== 'true') return
                                 e.preventDefault()
                                 e.stopPropagation()
@@ -660,12 +660,12 @@ export function Midi({onToast, onNavigate}: PageProps) {
                                 )
                             }}
                         >
-                            <GlassSegmentedControl
+                            <SegmentedControl
                                 aria-label={t("推理方式")}
                                 items={DEVICE_MODES.map((m) => ({
                                     ...m,
-                                    /* 锁死那一格：只有 `cuda.ok` 为假时锁 GPU。`disabled` 是给
-                                       读屏与键盘用的，视觉上的置灰由库的 CSS 做。 */
+                                    /* 锁死那一格：只有 `cuda.ok` 为假时锁 GPU。`disabled` 同时
+                                       供读屏与键盘识别，视觉置灰由 `.seg-item[data-disabled]` 做。 */
                                     disabled: m.value === 'gpu' && !cuda?.ok,
                                 }))}
                                 value={device}

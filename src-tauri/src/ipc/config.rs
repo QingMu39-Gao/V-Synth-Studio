@@ -143,10 +143,9 @@ pub async fn migrate_legacy_settings(st: super::St<'_>, old: Value) -> Cmd {
 /// localStorage 键 → 配置键。
 ///
 /// ⚠️ **左侧必须是用户数据里真实存在的键名**（`fandiao.*` / `qingmu.*`），
-/// 改掉只会让这张表对不上；右侧配置键用短名（`theme` / `glassLevel` / …）。
+/// 改掉只会让这张表对不上；右侧配置键用短名（`theme` / `audio` / …）。
 const LEGACY_KEYS: &[(&str, &str)] = &[
     ("qingmu.theme", "theme"),
-    ("qingmu.glassLevel", "glassLevel"),
     ("fandiao.audio.settings", "audio"),
     ("fandiao.video.settings", "video"),
     ("fandiao.convert.options", "convert"),

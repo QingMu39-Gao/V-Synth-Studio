@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import {DisclosureGroup, GlassStepper, Picker,} from '@ttqtt/liquid-glass-react'
+import {Disclosure, Select, Stepper} from '@/components/ui'
 import {api, type Finding as ApiFinding} from '@/lib/api'
 import {getConfig, saveConfig} from '@/lib/config'
 import {baseName, errText, extOf} from '@/lib/format'
@@ -436,7 +436,7 @@ export function Convert({state, onToast}: PageProps) {
 
                 <Panel>
                     <PanelHead title={t("转换选项")} desc="默认与官方一致"/>
-                    <DisclosureGroup
+                    <Disclosure
                         className="convert-opts-fold"
                         label="展开转换选项"
                         secondaryLabel="导入 10 项 · 效果处理 7 项 · 导出 3 项"
@@ -457,7 +457,7 @@ export function Convert({state, onToast}: PageProps) {
                                 </div>
                                 <div className="convert-opt-fields">
                                     <Field label="音高信息输入模式">
-                                        <Picker
+                                        <Select
                                             label="音高信息输入模式"
                                             labelHidden
                                             value={options['音高信息输入模式']}
@@ -466,7 +466,7 @@ export function Convert({state, onToast}: PageProps) {
                                         />
                                     </Field>
                                     <Field label="换气音符处理方式">
-                                        <Picker
+                                        <Select
                                             label="换气音符处理方式"
                                             labelHidden
                                             value={options['换气音符处理方式']}
@@ -475,7 +475,7 @@ export function Convert({state, onToast}: PageProps) {
                                         />
                                     </Field>
                                     <Field label="音符组导入方式">
-                                        <Picker
+                                        <Select
                                             label="音符组导入方式"
                                             labelHidden
                                             value={options['音符组导入方式']}
@@ -501,7 +501,7 @@ export function Convert({state, onToast}: PageProps) {
                                 </div>
                                 <div className="convert-opt-fields">
                                     <Field label="音高变调（半音）" hint="正数升调、负数降调；要开「音高变调」才会生效">
-                                        <GlassStepper
+                                        <Stepper
                                             aria-label={t("音高变调半音数")}
                                             min={-24}
                                             max={24}
@@ -526,7 +526,7 @@ export function Convert({state, onToast}: PageProps) {
                                 <p className="group-label">{t("导出（只对支持这些开关的目标格式有意义）")}</p>
                                 <div className="convert-opt-fields">
                                     <Field label="VSQX 文件版本" hint="写 VSQX 时用哪一版；别的格式忽略">
-                                        <Picker
+                                        <Select
                                             label="VSQX 文件版本"
                                             labelHidden
                                             value={options['VSQX文件版本']}
@@ -535,7 +535,7 @@ export function Convert({state, onToast}: PageProps) {
                                         />
                                     </Field>
                                     <Field label="默认语言" hint="给歌手的默认发音语言">
-                                        <Picker
+                                        <Select
                                             label="默认语言"
                                             labelHidden
                                             value={options['默认语言']}
@@ -552,7 +552,7 @@ export function Convert({state, onToast}: PageProps) {
                                 />
                             </section>
                         </div>
-                    </DisclosureGroup>
+                    </Disclosure>
                 </Panel>
 
                 <Panel>
@@ -616,7 +616,7 @@ export function Convert({state, onToast}: PageProps) {
                                     </Finding>
                                 ) : (
                                     <div className="convert-findings">
-                                        {/* 库的 Finding 只有 warn / info 两档，err 的照 warn 显示（消息原文不动） */}
+                                        {/* Finding 只有 warn / info 两档，err 的照 warn 显示（消息原文不动） */}
                                         {r.findings.map((f, i) => (
                                             <Finding
                                                 key={`${r.key}-${i}`}

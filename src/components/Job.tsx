@@ -1,6 +1,5 @@
-import {GlassProgress} from '@ttqtt/liquid-glass-react'
 import {Button} from '@/components/Button'
-import {Chip} from '@/components/Panel'
+import {Chip, ProgressBar} from '@/components/Panel'
 import type {Job} from '@/lib/types'
 
 /* ── 状态 → 芯片 ─────────────────────────────────────────────
@@ -44,7 +43,6 @@ export function svsepTaskStatus(s: string | undefined): JobStatus {
 /**
  * 任务进度 —— 长任务一律显示它（AGENTS.md 的硬性要求）。
  *
- * 用**库的 `GlassProgress`**：`percent` 是 0~100，所以 `total` 给 100。
  * 「取消」只在 running 时出现；终态（done/error/canceled）由调用方的 toast 说明结果，
  * 这里只把状态落在标签上，别让用户盯着一根 100% 的条猜到底成没成。
  */
@@ -72,7 +70,7 @@ export function JobProgress({
                     </Button>
                 )}
             </div>
-            <GlassProgress aria-label="任务进度" value={pct} total={100}/>
+            <ProgressBar pct={pct}/>
             {job.status === 'error' && job.error && <p className="finding-text">失败：{job.error}</p>}
             {job.status === 'canceled' && <p className="job-note">已取消</p>}
             {job.logs && job.logs.length > 0 && (

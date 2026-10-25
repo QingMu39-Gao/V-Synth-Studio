@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState} from 'react'
-import {GlassCheckbox, GlassSegmentedControl, List, ListRow, ListSection, Picker,} from '@ttqtt/liquid-glass-react'
+import {Checkbox, List, ListRow, ListSection, SegmentedControl, Select} from '@/components/ui'
 import type {VideoInfo, VideoParse} from '@/lib/api'
 import {api} from '@/lib/api'
 import {
@@ -49,10 +49,10 @@ import {useI18n} from '@/lib/i18n'
  *
  * 三处布局约束：
  *  1. **分P / 剧集行本身不可点**：把 checkbox 塞进可点行是嵌套交互元素（无效 HTML、
- *     读屏也会错乱）—— 库的 `ListRow` 有 `onSelect` 时渲染的是真 `<button>`。
+ *     读屏也会错乱）。`ListRow` 有 `onSelect` 时渲染的是真 `<button>`。
  *     勾选框负责批量选择，行尾一个图标按钮负责「切到这一项重新解析」。
- *  2. **编码徽章（H.264 / HEVC / AV1）是第二行的文字，不是 chip**：`ListRow` 的选中态
- *     会把行内文字刷成 `--lg-accent-contrast`，而 chip 有自己的颜色，压在上面读不清。
+ *  2. **编码徽章（H.264 / HEVC / AV1）是第二行的文字，不是 chip**：chip 自带边框与颜色，
+ *     挤在行尾会和选中底色打架。
  *  3. **不做参数化深链**：hash 路由里没有对应物，`App.tsx` 也不传 params。
  *
  * 解析结果的类型来自 `lib/api.ts` —— 页内不要另声明一份 `VideoParse`，
@@ -906,7 +906,7 @@ export function Video({state, onNavigate, onRefreshState, onToast}: PageProps) {
                                     </div>
 
                                     {multiPages && hasSeason && (
-                                        <GlassSegmentedControl
+                                        <SegmentedControl
                                             aria-label={t("内容分组")}
                                             items={[
                                                 {value: 'pages', label: `分P ${pages.length}`},
@@ -920,9 +920,7 @@ export function Video({state, onNavigate, onRefreshState, onToast}: PageProps) {
                                         />
                                     )}
 
-                                    {/* ⚠️ 行必须包在 `ListSection` 里：库的 `List` 只是个外层 div，
-                      真正的 `<ul class="lg-list-group">`（分隔线、圆角组框、选中底色）是
-                      `ListSection` 渲染的 —— 直接塞 `ListRow` 会掉样式。 */}
+                                    {/* 行包在 `ListSection` 里；分隔线与选中底色由它统一画。 */}
                                     <List>
                                         <ListSection>
                                             {list.map((it) => (
@@ -930,7 +928,7 @@ export function Video({state, onNavigate, onRefreshState, onToast}: PageProps) {
                                                     key={it.key}
                                                     selected={it.active}
                                                     leading={
-                                                        <GlassCheckbox
+                                                        <Checkbox
                                                             aria-label={`勾选 ${it.label}`}
                                                             checked={selection.has(it.key)}
                                                             onCheckedChange={(c) => toggleSelect(it.key, c)}
@@ -1271,7 +1269,7 @@ export function Video({state, onNavigate, onRefreshState, onToast}: PageProps) {
                                 整段流模式下只能整段下载（视频与音频在一起），选不了「仅音频」。
                             </Finding>
                         ) : (
-                            <GlassSegmentedControl
+                            <SegmentedControl
                                 aria-label={t("下载模式")}
                                 items={[
                                     {value: 'video', label: '视频（含音频）'},
@@ -1326,7 +1324,7 @@ export function Video({state, onNavigate, onRefreshState, onToast}: PageProps) {
                                     : '转码需要 ffmpeg，当前未检测到，保持「不转码」即可下载。'
                             }
                         >
-                            <Picker
+                            <Select
                                 label="音频转码格式"
                                 labelHidden
                                 options={CONVERT_TO}

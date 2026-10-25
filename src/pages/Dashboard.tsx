@@ -7,12 +7,7 @@ import type {PageProps, ToastFn} from './types'
 import {Button} from '@/components/Button'
 import {Finding, Panel, PanelHead, Stat} from '@/components/Panel'
 
-/**
- * 总览：环境检测与常用入口。
- *
- * 卡片按「全局玻璃」开关走：开着时是玻璃面，关掉退回轻量材质（见 `components/Panel.tsx`）。
- * 这不是省事，是设计系统的地基：玻璃不给内容层。
- */
+/** 总览：环境检测与常用入口。 */
 
 const QUICK: { id: string; title: string; desc: string }[] = [
     {

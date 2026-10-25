@@ -59,7 +59,6 @@ pub fn default_config() -> Value {
            ⚠️ 它必须列在这里：没列出来的键 `load_config` 会当成不认识的过滤掉，
            表现就是「切成英文、重启又回中文」，而且不报错。 */
         "language": "zh-CN",
-        "glassLevel": 2,
         "outputDir": "",
         "downloadDir": "",
         "bilibiliCookie": "",
@@ -93,15 +92,6 @@ pub fn default_config() -> Value {
            ⚠️ 空串与填了路径**行为不同**：空 = 可写目录（绿色版 `<root>/data`、
            安装版 `%APPDATA%`，也就是老行为），所以老用户的文件一个都不用搬。 */
         "extDir": "",
-        /* 背景壁纸（背景层）：
-             `""`            静态图（默认，就是 `public/img/bg/` 那两张）
-             `"we:current"`  跟随 Wallpaper Engine 当前正在用的那张
-             `"we:<id>"`     固定用库里某一张（id 是工坊 id 或项目目录名）
-           `wallpaperPaused` 暂停动画（壁纸那层停帧，静态图照常）——性能不好时的一键开关。
-           `weDir` 手动指定的 Wallpaper Engine 目录（自动找不到时才需要）。 */
-        "wallpaper": "",
-        "wallpaperPaused": false,
-        "weDir": "",
         /* 检查更新与公告的本地状态：`ignoredUpdate` 是被忽略的版本号，
            `seenAnnouncements` 是读过的公告 id（前端只留最近 100 条）。
            状态项同样必须在这张表里 —— 漏了的表现为「写盘成功、重启消失、不报错」。 */

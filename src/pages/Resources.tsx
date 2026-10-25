@@ -1,8 +1,7 @@
 import {useCallback, useEffect, useMemo, useRef, useState} from 'react'
-import {Banner, Card, GlassBadge, GlassDialog, List, ListSection, SearchField,} from '@ttqtt/liquid-glass-react'
+import {Badge, Banner, Card, Dialog, List, ListSection, SearchField} from '@/components/ui'
 import {api, type ResourceItem} from '@/lib/api'
 import {useJob} from '@/lib/useJob'
-import {useMaterial} from '@/lib/useGlass'
 import {Button} from '@/components/Button'
 import {Icon} from '@/components/Icon'
 import {Chip, Panel, Stat} from '@/components/Panel'
@@ -15,9 +14,7 @@ import {useI18n} from '@/lib/i18n'
  * 资源库。
  *
  * 数据只有一份来源：`get_resources`（读的是 `data/resources.json`）。
- * 控件全部用库的组件：
- * `SearchField` / `Banner` / `List`+`ListSection` / `Card` / `GlassBadge` / `GlassDialog`，
- * 按钮走 `components/Button.tsx`（库的 `GlassButton`）。
+ * 控件走 `components/ui.tsx` 与 `components/Button.tsx`，全部是实色、无材质。
  *
  * 三条规则（`AGENTS.md` 第七节）在代码里的落点：
  *   1. **`verified.verdict` 三态**是徽章的唯一依据 —— `ok` 可达 / `warn` 存疑 / `dead` 失效，
@@ -39,9 +36,9 @@ const DEFAULT_NOTICE =
  * 不能只靠颜色（色盲用户看不到 ok/dead 的差别）。
  */
 const VERDICT = {
-    ok: {text: '可达', tone: 'accent' as const, icon: 'check' as const},
-    warn: {text: '存疑', tone: 'neutral' as const, icon: 'alert' as const},
-    dead: {text: '失效', tone: 'notification' as const, icon: 'alert' as const},
+    ok: {text: '可达', tone: 'ok' as const, icon: 'check' as const},
+    warn: {text: '存疑', tone: 'warn' as const, icon: 'alert' as const},
+    dead: {text: '失效', tone: 'err' as const, icon: 'alert' as const},
 }
 
 /** tag → chip 语义色，按关键词猜，猜不中就中性 */
@@ -116,8 +113,6 @@ function verdictOf(c: CheckInfo): 'ok' | 'warn' | 'dead' {
 
 export function Resources({onToast}: PageProps) {
     const {t} = useI18n()
-    /* 档位派生的材质：给库那些「自带 regular 默认值」的大玻璃用（Banner / Dialog） */
-    const {material} = useMaterial()
     const [groups, setGroups] = useState<{
         id: string;
         name: string;
@@ -374,18 +369,7 @@ export function Resources({onToast}: PageProps) {
             </div>
 
             {/* ── 顶部声明：不收录学习版 / 破解版（文案来自 resources.json）── */}
-            {/*
-        ⚠️ 库的 `Banner` / `GlassDialog` 是**大玻璃**，它们自带 `regular` 默认值，
-        不跟 `GlassProvider` 的 policy 走（设计系统里「大面=毛玻璃」）。于是液态档下
-        整页都是折射、只有这两块还是毛玻璃 —— 看着就是「这页材质没切」。
-        这里显式把档位派生的材质传下去，让它跟页面一致。
-      */}
-            <Banner
-                tone="warning"
-                title={t("说明")}
-                message={notice || DEFAULT_NOTICE}
-                material={material === 'liquid' ? 'clear' : 'regular'}
-            />
+            <Banner tone="warning" title={t("说明")} message={notice || DEFAULT_NOTICE}/>
 
             {/* ── 上次校验的汇总 ── */}
             {summary && (
@@ -404,7 +388,7 @@ export function Resources({onToast}: PageProps) {
                 </Panel>
             )}
 
-            {/* ── 校验进度：长任务一律 JobProgress（库的 GlassProgress + 取消）── */}
+            {/* ── 校验进度：长任务一律 JobProgress ── */}
             {(checking || job) && (
                 <Panel>
                     <JobProgress
@@ -486,9 +470,7 @@ export function Resources({onToast}: PageProps) {
                                 const peek = isOpen ? items : items.slice(0, PEEK)
                                 return (
                                     <section key={group.id} data-group={group.id}>
-                                        {/* 分组**整块**是一个面板：档 1~3 是 MaterialView、档 4 变玻璃面，
-                        跟总览页的段落一致。裸的 List 在两种材质下长得一样，
-                        那样「切材质」在这一页看不出变化。 */}
+                                        {/* 分组整块是一个面板；列表本身不再单独画一层边框。 */}
                                         <Panel padded={false}>
                                             <ListSection
                                                 header={
@@ -563,20 +545,12 @@ function CopyDialog({
     onClose: () => void
 }) {
     const {t} = useI18n()
-    /*
-     * ⚠️ 这里**故意不传 `material`**：库的 `GlassDialog` 内部是写死的
-     *   `{ ...surface, material: 'regular', size: 'large' }`
-     * （上游 `src/react/overlays/dialog.tsx`），传进去也会被它盖掉 —— 弹窗按设计
-     * 系统就是「大面 = 毛玻璃」。所以档 4 下整页都是折射，只有这个**模态框**仍是
-     * 毛玻璃，那是库的行为，不是这一页没切材质。Banner 不同，它认 `material`，所以
-     * 那边显式传了档位派生的值。
-     */
     const inputRef = useRef<HTMLInputElement>(null)
     useEffect(() => {
         if (value) inputRef.current?.select()
     }, [value])
     return (
-        <GlassDialog
+        <Dialog
             open={!!value}
             onOpenChange={(o) => !o && onClose()}
             title={t("手动复制链接")}
@@ -589,7 +563,7 @@ function CopyDialog({
                     关闭
                 </Button>
             </div>
-        </GlassDialog>
+        </Dialog>
     )
 }
 
@@ -625,8 +599,7 @@ function ResourceCard({
         : ''
 
     return (
-        /* `Card` 是内容层容器（实色、不采样背景）—— 正好是「玻璃是浮起来那一层」的规矩：
-           只有上面的工具条 / 按钮 / 弹层才带材质。 */
+        /* 内容卡片用实色底，工具条与弹层在外层。 */
         <Card className="res-item">
             <div className="res-item-head">
         <span className="res-item-name" title={item.name ?? ''}>
@@ -676,11 +649,11 @@ function ResourceCard({
                 </Button>
                 <span className="spacer"/>
                 {badge && (
-                    <GlassBadge tone={badge.tone} title={badgeTitle} aria-label={`链接状态：${badge.text}`}>
+                    <Badge tone={badge.tone} title={badgeTitle} aria-label={`链接状态：${badge.text}`}>
                         <Icon name={badge.icon} size={11}/>
                         {check?.status ? `${check.status} ` : ''}
                         {badge.text}
-                    </GlassBadge>
+                    </Badge>
                 )}
             </div>
         </Card>

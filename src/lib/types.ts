@@ -91,8 +91,6 @@ export interface CapInfo {
 }
 
 export interface Caps {
-    /** 背景壁纸：读 Wallpaper Engine 的 Steam 库 */
-    wallpaper?: CapInfo
     /** 本地音轨分离引擎（运行时可下载包） */
     svsepLocal?: CapInfo
     /** 显卡加速包（DirectML） */
@@ -111,7 +109,7 @@ export const capOk = (c?: CapInfo): boolean => c?.ok !== false
  *
  * 形状照建任务时那个 `json!({...})`：
  * `{ id, type, title, status, percent, message, logs, createdAt }`，失败时多一个 `error`。
- * **`percent` 是 0~100**（不是 0~1）—— `GlassProgress` 要 `value`/`total`，直接给 100 当 total。
+ * **`percent` 是 0~100**（不是 0~1）。
  */
 export interface Job {
     id: string

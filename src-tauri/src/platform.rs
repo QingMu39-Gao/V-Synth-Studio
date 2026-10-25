@@ -277,9 +277,6 @@ pub fn caps() -> serde_json::Value {
         }
     };
     serde_json::json!({
-        /* 背景壁纸读的是 Wallpaper Engine 的 Steam 库，而 WE 只有 Windows 版 ——
-        别的平台上「扫不到」不是没装，是这东西在那个系统上不存在。 */
-        "wallpaper": cap(win, "Wallpaper Engine 只有 Windows 版，Steam 库里读不到它"),
         "svsepLocal": cap(win, SVSEP_LOCAL_WHY),
         "svsepDirectml": cap(win, "DirectML 是 Windows 的显卡 API"),
         /* 显卡推理走 CUDA：Apple 从 macOS 10.14 起就不再支持，机器上不可能有。 */
@@ -340,13 +337,7 @@ mod tests {
         }
         // Windows 是唯一出货平台，这几项在它上面必须都是可用的
         if cfg!(windows) {
-            for name in [
-                "wallpaper",
-                "svsepLocal",
-                "svsepDirectml",
-                "midiGpu",
-                "trash",
-            ] {
+            for name in ["svsepLocal", "svsepDirectml", "midiGpu", "trash"] {
                 assert_eq!(
                     obj[name].get("ok").and_then(|b| b.as_bool()),
                     Some(true),

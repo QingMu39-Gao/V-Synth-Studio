@@ -14,7 +14,7 @@
  */
 
 import {useRef, useState} from 'react'
-import {GlassDialog} from '@ttqtt/liquid-glass-react'
+import {Dialog} from '@/components/ui'
 
 import {Button} from '@/components/Button'
 import {api, type ExtDirInfo} from '@/lib/api'
@@ -106,7 +106,7 @@ export function ExtDirAsk({onDecided}: { onDecided?: (info: ExtDirInfo) => void 
     }
 
     return (
-        <GlassDialog
+        <Dialog
             open={!!info}
             onOpenChange={(o) => {
                 /* 关掉这一问 = 现在不装；用户按的是「取消」而不是「用默认位置」，
@@ -130,6 +130,6 @@ export function ExtDirAsk({onDecided}: { onDecided?: (info: ExtDirInfo) => void 
                     用默认位置
                 </Button>
             </div>
-        </GlassDialog>
+        </Dialog>
     )
 }

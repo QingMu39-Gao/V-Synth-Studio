@@ -26,7 +26,6 @@ mod sponsors;
 mod svsep;
 mod update;
 mod upgrade;
-mod wallpaper;
 
 /// `app.log` 超过这个大小就滚成 `app.log.1`。
 ///
@@ -221,9 +220,6 @@ pub fn run() {
             ipc::tools::tools_detect,
             ipc::tools::tools_launch,
             ipc::tools::artifacts_status,
-            /* ── 背景壁纸（只读用户自己的 Wallpaper Engine 库）── */
-            ipc::wallpaper::wallpaper_scan,
-            ipc::wallpaper::wallpaper_pkg,
             /* ── 工程转换 ── */
             ipc::convert::convert_collect,
             ipc::convert::convert_inspect,

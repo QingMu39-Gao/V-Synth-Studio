@@ -20,7 +20,6 @@
 | LibreSVIP | `tools/libresvip/` | 2.9.0 | Apache License 2.0 |
 | JIZURA | `public/vendor/jizura/` | v0.10.1（单文件构建产物） | MIT |
 | Google Fonts（12 个家族） | `public/vendor/jizura/fonts/` | — | SIL OFL 1.1 |
-| webwallgl | `public/vendor/wallpaper/` | 2.1.0 | MIT |
 
 > ⚠️ 这张表里的 `tools/` 与 `public/vendor/` 都**不入库**（由补齐脚本现场取），所以它们的版本
 > 随「补齐那一刻的上游」变。换上游版本时记得回来改这一行。
@@ -45,10 +44,9 @@
 | 组件 | 实际版本 | 许可 | 用途 |
 |---|---|---|---|
 | React / React DOM | 19.3.0 | MIT | 整个界面的运行时 |
-| @ttqtt/liquid-glass-react | 0.0.2 | MIT | 玻璃材质组件库（材质、配色、字号、间距、圆角与动效） |
 | qrcode.react | 4.2.0 | ISC | 把 B 站登录二维码画成 SVG（纯前端渲染） |
 
-> 三者的许可全文随源码仓库的 `app/web-next/node_modules/` 分发；`package.json` 里记的是
+> 两者的许可全文随源码仓库的 `app/web-next/node_modules/` 分发；`package.json` 里记的是
 > 范围（`^`），上表这一列是**实际装上的版本**（`npm ls --depth=0` 实测）。
 
 ---
@@ -271,18 +269,3 @@ Google Fonts 抓取（用现代浏览器 UA 取 `css2`，拿到的是 woff2 子�
 OFL 1.1 全文：<https://openfontlicense.org/open-font-license-official-text/>。
 注意 OFL 的**保留字体名称**条款：不得把修改过的字体以原名称分发（本程序未修改字形，
 只是原样搬运子集文件）。
----
-
-## webwallgl（背景壁纸的场景渲染）
-
-- 版本 **2.1.0**，**MIT**，上游 <https://github.com/oneincase/webwallgl>。
-- 位置：`public/vendor/wallpaper/webwallgl.min.js`（随包的构建产物，1.05 MB），
-  许可全文同目录的 `LICENSE-webwallgl.txt`，用法说明 `README-webwallgl.md`。
-- 用途：在浏览器里渲染 Wallpaper Engine 的 `scene.pkg`，本程序拿它做界面背景。
-  **只渲染用户自己 Steam 库里已有的壁纸** —— 不下载、不打包、不再分发任何壁纸内容；
-  场景包与 `.tex` 贴图都是用户本机的文件，程序只读。
-- 为什么自带一份而不是当 npm 依赖：它必须在**沙箱 iframe** 里跑（`sandbox="allow-scripts"`，
-  不给 `allow-same-origin`），好让壁纸自带的 SceneScript 碰不到宿主的 IPC。宿主页、以及
-  「沙箱里读 `caches` 会抛」那几处绕法，写在 `public/vendor/wallpaper/index.html` 的注释里。
-- 升级：`npm pack webwallgl@<新版本>` → 用新的 `webwallgl.global.min.js` 覆盖那个文件 →
-  同步本节的版本号。

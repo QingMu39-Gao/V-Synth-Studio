@@ -1,4 +1,4 @@
-import {useCallback, useEffect, useRef, useState} from 'react'
+import {useCallback, useEffect, useState} from 'react'
 import {api, type AnnounceReply, type ExtDirInfo, type SponsorReply, type UpdateCheck} from '@/lib/api'
 import {getConfig, onConfigChange, saveConfig} from '@/lib/config'
 import {markSeen, unseen} from '@/lib/announce'
@@ -8,29 +8,14 @@ import type {AppState} from '@/lib/types'
 import type {PageProps, ToastFn} from './types'
 import {Button} from '@/components/Button'
 import {Field, TextInput} from '@/components/Field'
-import {Chip, Finding, GlassPanel, Panel, PanelHead, Stat} from '@/components/Panel'
-import {Wallpaper} from '@/components/WallpaperSettings'
+import {Chip, Finding, Panel, PanelHead, Stat} from '@/components/Panel'
 import {Upstream} from '@/components/Credit'
-import {GlassSlider} from '@ttqtt/liquid-glass-react'
-import {GLASS_LEVELS, type GlassLevel, useGlassLevel} from '@/lib/useGlass'
-import {useNavLens} from '@/lib/useNavLens'
 import {useI18n} from '@/lib/i18n'
 import type {ThemeMode} from '@/App'
 import './Settings.css'
 
-/**
- * 设置。
- *
- * 全局关模糊走**库的 `transparency`**（由 `App.tsx` 喂给 `GlassProvider`），它同时做三件事：
- * 系统里开了「减少透明度」时**自动**生效；关掉的是整个材质（模糊 + 半透明 + 折射）
- * 而不只是 `backdrop-filter`；开关一开所有玻璃面一起变，不会漏掉某个角落。
- *
- * 语义是**降低透明度**（无障碍需求），不是「性能模式」那种听起来像降级的说法。
- */
-
 const SECTIONS = [
     {id: 'appearance', label: '外观'},
-    {id: 'wallpaper', label: '壁纸'},
     {id: 'paths', label: '路径'},
     {id: 'tools', label: '外部工具'},
     /* 「公告」在「赞助 / 关于」之前：它是**要看的消息**，与设置项不是一类；放最后
@@ -56,10 +41,6 @@ export function Settings({
 }) {
     const {t} = useI18n()
     const [section, setSection] = useState<SectionId>('appearance')
-    /* 高亮块要量位置：和主侧栏同一套（见 lib/useNavLens.ts） */
-    const navRef = useRef<HTMLElement>(null)
-    const lensRef = useRef<HTMLSpanElement>(null)
-    useNavLens(navRef, lensRef, section)
     const [cfg, setCfg] = useState<Record<string, unknown>>({})
 
     /**
@@ -97,18 +78,8 @@ export function Settings({
 
     return (
         <div className="settings">
-            {/* 这一条小节导航和**主侧栏是同一种东西**：一块玻璃 + 一个滑过去的高亮块。
-          结构必须和 `App.tsx` 的主导航一致（`useNavLens` 靠这三个类名找目标）。 */}
-            <GlassPanel
-                className="settings-nav"
-                /* 参数**和主侧栏逐项对齐**（large 玻璃 / 26 圆角 / 12 内边距）——
-                   `.nav-lens` 那个 14px 圆角就是按「26 − 12」算的同心情形，换数字就对不上了 */
-                size="large"
-                radius={26}
-                padding={12}
-            >
-                <nav className="app-nav" aria-label={t("设置分节")} ref={navRef}>
-                    <span className="lg-selection-lens nav-lens" ref={lensRef} aria-hidden="true"/>
+            <Panel className="settings-nav" padded={false}>
+                <nav className="app-nav" aria-label={t("设置分节")}>
                     {SECTIONS.map((s) => (
                         <button
                             key={s.id}
@@ -121,14 +92,11 @@ export function Settings({
                         </button>
                     ))}
                 </nav>
-            </GlassPanel>
+            </Panel>
 
             <div className="stack-lg settings-body">
                 {section === 'appearance' && (
                     <Appearance theme={theme} onThemeChange={onThemeChange}/>
-                )}
-                {section === 'wallpaper' && (
-                    <Wallpaper onToast={onToast} state={state}/>
                 )}
                 {section === 'paths' && (
                     <Paths cfg={cfg} state={state} onSave={save} onToast={onToast}/>
@@ -155,12 +123,8 @@ function Appearance({
     theme: ThemeMode
     onThemeChange: (m: ThemeMode) => void
 }) {
-    const {level, setLevel} = useGlassLevel()
     const {language, t, setLanguage} = useI18n()
 
-    /** 滑块给的是 number，收进 1~3（拖动/键盘理论上都给不出界外值，防御一下） */
-    const clampLevel = (v: number): GlassLevel =>
-        Math.min(GLASS_LEVELS.length, Math.max(1, Math.round(v))) as GlassLevel
     const THEMES: { id: ThemeMode; label: string; desc: string }[] = [
         {id: 'system', label: t('跟随系统'), desc: t('系统切换配色时自动跟着换')},
         {id: 'light', label: t('明亮'), desc: t('浅色底、细描边')},
@@ -169,52 +133,6 @@ function Appearance({
 
     return (
         <>
-            {/*
-        玻璃等级：一个滑块管住三件事 —— 材质（毛玻璃/液态）、
-        「全局玻璃」（内容面板要不要玻璃面）、「降低透明度」（库的 opaque 策略）。
-        三个独立开关互相影响，合成分级之后语义才清楚：级别越高越「玻璃」，代价越大。
-        滑块本身是**库的 `GlassSlider`**（真 `<input type=range>` 打底，键盘/读屏都能用）。
-      */}
-            <Panel>
-                <PanelHead
-                    title={t("玻璃等级")}
-                    desc={t("级别越高越「玻璃」，开销也越大")}
-                />
-                <div className="slider-row">
-                    <GlassSlider
-                        aria-label="玻璃等级"
-                        min={1}
-                        max={GLASS_LEVELS.length}
-                        step={1}
-                        marks
-                        value={level}
-                        onValueChange={(v) => setLevel(clampLevel(v))}
-                        formatValue={(v) => `${v} 级：${GLASS_LEVELS[v - 1]?.label ?? ''}`}
-                        minLabel="1"
-                        maxLabel={String(GLASS_LEVELS.length)}
-                    />
-                    <div className="slider-legend">
-                        {GLASS_LEVELS.map((l) => (
-                            <button
-                                key={l.level}
-                                type="button"
-                                className="slider-legend-item"
-                                aria-pressed={level === l.level}
-                                onClick={() => setLevel(l.level)}
-                            >
-                <span className="slider-legend-label">
-                  {l.level} 级 · {l.label}
-                </span>
-                                <span className="slider-legend-desc">{l.desc}</span>
-                            </button>
-                        ))}
-                    </div>
-                </div>
-                <p className="hint">
-                    {t('等级只影响材质，背景图不变。')}
-                </p>
-            </Panel>
-
             <Panel>
                 <PanelHead title={t("主题")} desc={t("整套界面的配色")}/>
                 <div className="choice-grid">
@@ -620,13 +538,6 @@ const LICENSES: { feature: string; upstream: string; href?: string; license: str
         upstream: 'Google Fonts 18 个家族',
         license: 'SIL OFL 1.1',
         how: '随程序内置字体子集，字形未修改（SIL OFL 1.1）',
-    },
-    {
-        feature: '界面素材',
-        upstream: '@ttqtt/liquid-glass-react',
-        href: 'https://github.com/Tsdsj/liquid-glass-react',
-        license: 'MIT',
-        how: '玻璃材质、配色、字号、间距、圆角与动效来自它（独立的第三方组件库，非 Apple 官方产品，也不含 Apple 素材）',
     },
     {
         feature: '汉字读音',

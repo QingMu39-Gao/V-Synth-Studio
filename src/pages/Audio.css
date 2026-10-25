@@ -1,13 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   音频工具页（`pages/Audio.tsx`）自己的样式。
-
-   规矩和别的页面一样（`docs/NEXT-UI.md` §3.3）：
-     - **一行玻璃都没有**：材质来自库，页面只管排布；
-     - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**
-       （写死 = 亮色主题下瞎掉）；
-     - 控件是库的（`GlassButton` / `GlassSegmentedControl` / `GlassStepper` /
-       `Picker` / `DirectoryInput`），这里不重造。
-   ══════════════════════════════════════════════════════════════════════════ */
+/* 音频工具页（`pages/Audio.tsx`）自己的样式。颜色走 `index.css` 的令牌。 */
 
 /* ── 两栏：左（素材 + 操作 + 输出）/ 右（进度 + 结果 + 人声分离）────── */
 .audio-layout {
@@ -74,11 +65,9 @@
     color: inherit;
     text-align: start;
     cursor: pointer;
-    /* 玻璃面上的元素用填充，不画不透明的页面底（库的规矩：实色 = 在材质上凿洞） */
     background: var(--lg-fill-quaternary);
     border: 1px solid var(--lg-separator);
     border-radius: var(--lg-radius-s);
-    transition: border-color var(--lg-duration-layout) var(--lg-ease-out);
 }
 
 .audio-op:hover {
@@ -123,7 +112,6 @@
     background: var(--lg-fill-quaternary);
     border: 1px solid var(--lg-separator);
     border-radius: var(--lg-radius-s);
-    transition: border-color var(--lg-duration-layout) var(--lg-ease-out);
 }
 
 .audio-format:hover {
@@ -226,17 +214,4 @@
     font-size: 12px;
     color: var(--lg-label-secondary);
     word-break: break-all;
-}
-
-/* ── 音轨分离：这一页只剩指路 ─────────────────────────────────────────
-   分离整条链在独立页 `pages/Svsep.tsx`（侧栏「音轨分离」）：在线 MVSEP
-   与离线内嵌引擎两条差异极大的路，外加「服务起没起 / 模型下没下」这些状态，
-   塞在音频页右栏一张卡里说不清。 */
-
-/* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
-   必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
-@supports (corner-shape: squircle) {
-    :where(.audio-op, .audio-format) {
-        corner-shape: squircle;
-    }
 }

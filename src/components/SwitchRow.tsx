@@ -1,12 +1,7 @@
-import {GlassSwitch} from '@ttqtt/liquid-glass-react'
+import {Switch} from '@/components/ui'
 import './SwitchRow.css'
 
-/**
- * 一行开关：左边标签 + 说明，右边库的 `GlassSwitch`。
- *
- * ⚠️ 库的 switch **禁用后不响应点击**，也没有原生 title 可读，所以禁用的理由必须走
- * `disabledHint` 拼进说明里 —— 不然用户只会以为开关坏了。
- */
+/** 一行开关：左边标签 + 说明，右边开关。 */
 export function SwitchRow({
                               label,
                               desc,
@@ -29,7 +24,7 @@ export function SwitchRow({
                 <span className="switch-label">{label}</span>
                 {text ? <span className="switch-desc">{text}</span> : null}
             </div>
-            <GlassSwitch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onChange}/>
+            <Switch aria-label={label} checked={checked} disabled={disabled} onCheckedChange={onChange}/>
         </div>
     )
 }

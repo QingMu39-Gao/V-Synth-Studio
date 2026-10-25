@@ -349,8 +349,8 @@ export function WaveEditor({
     }, [placeHead])
 
     /* ── 重画 ──
-       依赖里带上 size：换主题时 `GlassProvider` 会写 `data-lg-theme`，
-       靠 `themeTick` 触发一次重画（canvas 拿不到 CSS 变量，只能把令牌取出来用）。 */
+       换主题时 `<html data-theme>` 变化，靠 `themeTick` 触发一次重画
+       （canvas 拿不到 CSS 变量，只能把令牌取出来用）。 */
     const themeTick = useCanvasThemeTick()
     /* ⚠️ 调色板按主题缓存：每轮重画都 `getComputedStyle` + 逐条读令牌会强制样式重算 */
     const P = useMemo(() => palette(), [themeTick])
@@ -794,7 +794,7 @@ function useCanvasThemeTick(): number {
         const obs = new MutationObserver(() => setTick((t) => t + 1))
         obs.observe(document.documentElement, {
             attributes: true,
-            attributeFilter: ['data-lg-theme', 'data-theme'],
+            attributeFilter: ['data-theme'],
         })
         return () => obs.disconnect()
     }, [])

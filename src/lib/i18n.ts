@@ -32,7 +32,6 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
     '资源库': {'zh-CN': '资源库', 'en-US': 'Resources', 'ja-JP': 'リソース'},
     '设置': {'zh-CN': '设置', 'en-US': 'Settings', 'ja-JP': '設定'},
     '外观': {'zh-CN': '外观', 'en-US': 'Appearance', 'ja-JP': '外観'},
-    '壁纸': {'zh-CN': '壁纸', 'en-US': 'Wallpaper', 'ja-JP': '壁紙'},
     '路径': {'zh-CN': '路径', 'en-US': 'Paths', 'ja-JP': 'パス'},
     '外部工具': {'zh-CN': '外部工具', 'en-US': 'External Tools', 'ja-JP': '外部ツール'},
     '关于': {'zh-CN': '关于', 'en-US': 'About', 'ja-JP': '概要'},
@@ -54,12 +53,6 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
     'English': {'zh-CN': 'English', 'en-US': 'English', 'ja-JP': '英語'},
     '日本語': {'zh-CN': '日本語', 'en-US': 'Japanese', 'ja-JP': '日本語'},
     '已选': {'zh-CN': '已选', 'en-US': 'Selected', 'ja-JP': '選択中'},
-    '玻璃等级': {'zh-CN': '玻璃等级', 'en-US': 'Glass level', 'ja-JP': 'ガラスレベル'},
-    '级别越高越「玻璃」，开销也越大': {
-        'zh-CN': '级别越高越「玻璃」，开销也越大',
-        'en-US': 'Higher levels use stronger glass effects and more resources',
-        'ja-JP': 'レベルが高いほどガラス効果が強くなり、負荷も増えます'
-    },
     '选择应用界面语言': {
         'zh-CN': '选择应用界面语言',
         'en-US': 'Choose the application interface language',
@@ -79,11 +72,6 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
         'zh-CN': '深色底，长时间看不刺眼',
         'en-US': 'Dark background for comfortable long sessions',
         'ja-JP': '長時間でも見やすいダークテーマ'
-    },
-    '等级只影响材质，背景图不变。': {
-        'zh-CN': '等级只影响材质，背景图不变。',
-        'en-US': 'The level only affects the material; the wallpaper stays unchanged.',
-        'ja-JP': 'レベルはマテリアルのみ変更し、壁紙は変わりません。'
     },
     "来源工程": {'zh-CN': "来源工程", 'en-US': "Source project", 'ja-JP': "ソースプロジェクト"},
     "把工程文件拖到这里": {
@@ -558,11 +546,6 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
         "en-US": "The offline separation runtime is Windows-only (python.exe + DirectML)",
         "ja-JP": "オフライン分離のランタイムはWindows専用です（python.exe + DirectML）"
     },
-    "Wallpaper Engine 只有 Windows 版，Steam 库里读不到它": {
-        "zh-CN": "Wallpaper Engine 只有 Windows 版，Steam 库里读不到它",
-        "en-US": "Wallpaper Engine is Windows-only, so it is not in this Steam library",
-        "ja-JP": "Wallpaper EngineはWindows版のみのため、このSteamライブラリにはありません"
-    },
     "macOS 上没有 CUDA，显卡推理用不了；CPU 推理正常": {
         "zh-CN": "macOS 上没有 CUDA，显卡推理用不了；CPU 推理正常",
         "en-US": "There is no CUDA on macOS, so GPU inference is unavailable; CPU inference works",
@@ -597,21 +580,6 @@ export const DICT: Record<string, Record<UiLanguage, string>> = {
         "zh-CN": "下面的「在线分离：MVSEP」照常用。",
         "en-US": "“Online separation: MVSEP” below still works as usual.",
         "ja-JP": "下の「オンライン分離：MVSEP」はそのまま使えます。"
-    },
-    "这个平台用不了 Wallpaper Engine 壁纸": {
-        "zh-CN": "这个平台用不了 Wallpaper Engine 壁纸",
-        "en-US": "Wallpaper Engine wallpapers are unavailable on this platform",
-        "ja-JP": "このプラットフォームではWallpaper Engineの壁紙を使えません"
-    },
-    "Wallpaper Engine 只有 Windows 版": {
-        "zh-CN": "Wallpaper Engine 只有 Windows 版",
-        "en-US": "Wallpaper Engine is Windows-only",
-        "ja-JP": "Wallpaper EngineはWindows版のみです"
-    },
-    "背景只能用自带的静态图；玻璃材质、主题、配色都不受影响。": {
-        "zh-CN": "背景只能用自带的静态图；玻璃材质、主题、配色都不受影响。",
-        "en-US": "Only the built-in static images can be used as the background; glass, theme and colours are unaffected.",
-        "ja-JP": "背景には付属の静止画像のみを使用できます。ガラス表現・テーマ・配色には影響しません。"
     },
     "配置在程序目录": {
         "zh-CN": "配置在程序目录",

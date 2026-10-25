@@ -1,7 +1,7 @@
 /*
  * 波形编辑器的样式（`components/WaveEditor.tsx`）。
  *
- * 画布是**内容层**（不是控件），所以不套玻璃，只要一个底和圆角。
+ * 画布是内容层，只要一个实色底和圆角。
  * 颜色由组件自己从令牌里取出来喂给 canvas（canvas 认不了 CSS 变量）。
  */
 
@@ -148,12 +148,4 @@
     font-size: 12px;
     color: var(--lg-label-secondary);
     white-space: nowrap;
-}
-
-/* 苹果式圆角（连续曲率）只给内容层，且必须配 `@supports`：
-   不认这条的环境整条声明被丢掉，退回普通圆弧。 */
-@supports (corner-shape: squircle) {
-    :where(.wave-seg-row, .wave-canvas) {
-        corner-shape: squircle;
-    }
 }

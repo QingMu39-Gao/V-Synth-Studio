@@ -1,5 +1,5 @@
 import {useEffect, useMemo, useRef, useState, useSyncExternalStore} from 'react'
-import {GlassSegmentedControl, GlassSwitch} from '@ttqtt/liquid-glass-react'
+import {SegmentedControl, Switch} from '@/components/ui'
 import {api} from '@/lib/api'
 import {getConfig, onConfigChange, saveConfig, syncConfig} from '@/lib/config'
 import {baseName, errText} from '@/lib/format'
@@ -1014,7 +1014,7 @@ export function Lyrics({state, onNavigate, onRefreshState, onToast}: PageProps) 
                     <PanelHead
                         title={t("歌词预览")}
                         desc="原文与译文分开显示"
-                        extra={<GlassSegmentedControl aria-label={t("预览方式")} items={MODES} value={mode}
+                        extra={<SegmentedControl aria-label={t("预览方式")} items={MODES} value={mode}
                                                       onValueChange={setMode}/>}
                     />
                     <div className="stack">
@@ -1078,7 +1078,7 @@ export function Lyrics({state, onNavigate, onRefreshState, onToast}: PageProps) 
                             hint="双语导出：LRC 会在原文下面加一行同时间戳的译文；SRT 会把译文放在同一条字幕的第二行。"
                         >
               <span className="lyrics-controls">
-                <GlassSegmentedControl
+                <SegmentedControl
                     aria-label={t("导出格式")}
                     items={[
                         {value: 'lrc', label: 'LRC'},
@@ -1089,7 +1089,7 @@ export function Lyrics({state, onNavigate, onRefreshState, onToast}: PageProps) 
                 />
                 <span className="spacer"/>
                 <span className="field-hint">{t("双语")}</span>
-                <GlassSwitch aria-label={t("双语导出")} checked={bilingual} onCheckedChange={setBilingual}/>
+                <Switch aria-label={t("双语导出")} checked={bilingual} onCheckedChange={setBilingual}/>
               </span>
                         </Field>
 
@@ -1122,7 +1122,7 @@ export function Lyrics({state, onNavigate, onRefreshState, onToast}: PageProps) 
                             label="下载音质"
                             hint="档位是「上限」而不是承诺：服务端给不到就按它能拿到的最高档下，并如实写明实际存下来的是哪一档（求无损只给 320K 时不会假装成功）。无损 / Hi-Res 需要对应会员，未登录最高 128K。会员曲 `VIP` / `付费专辑` 只给试听片段，后端会拦下来。"
                         >
-                            <GlassSegmentedControl
+                            <SegmentedControl
                                 aria-label={t("下载音质")}
                                 items={[
                                     {value: 'auto', label: '自动'},
@@ -1149,7 +1149,7 @@ export function Lyrics({state, onNavigate, onRefreshState, onToast}: PageProps) 
                         </div>
 
                         {saved && (
-                            /* 路径文字放 span 里：库的按钮带 `.lg-*` 类，直接塞进 <p> 会把整行染成次要色 */
+                            /* 路径文字放 span 里：按钮有自己的字号与颜色，直接塞进 <p> 会串样式 */
                             <div className="lyrics-saved">
                                 <span>已写入：{saved}</span>
                                 <Button

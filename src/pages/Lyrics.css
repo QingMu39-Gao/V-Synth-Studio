@@ -1,12 +1,7 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   歌词页。
-
-   颜色一律用库的 `--lg-*` 令牌（**不写死颜色** —— 写死 = 亮色下瞎掉，见 index.css 顶部）。
-   尺寸用 `--lg-space-*` / `--lg-radius-*`。这里没有一行玻璃 —— 材质归库。
-
-   两栏在 1180px 以下并成一栏：这个页面左边四张卡、右边两张，
-   `.app-main` 在侧栏 228px 之外剩下的宽度不够 ÷2，硬撑会把预览挤成一条。
-   ══════════════════════════════════════════════════════════════════════════ */
+/*
+ * 歌词页。两栏在 1180px 以下并成一栏：左边四张卡、右边两张，
+ * 侧栏之外剩下的宽度不够 ÷2，硬撑会把预览挤成一条。
+ */
 
 .lyrics-cols {
     display: grid;
@@ -43,9 +38,7 @@
     display: flex;
     align-items: center;
     gap: var(--lg-space-3);
-    /* `<button>` 的 UA 默认就是 border-box，这行是写明意图：与 index.css 的 `.input` 同一个
-       坑 —— 玻璃档 1~3 的面板不是 `.lg-root`，拿不到库的 `box-sizing: border-box`；
-       哪天这个元素换成 div 就会立刻变宽 26px。 */
+    /* `<button>` 的 UA 默认是 border-box；写明意图，换成 div 时不变宽。 */
     box-sizing: border-box;
     width: 100%;
     min-height: 46px;
@@ -57,11 +50,9 @@
     font: inherit;
     text-align: start;
     cursor: pointer;
-    transition: background 140ms ease-out;
 }
 
 .lyrics-result:hover {
-    /* 面板已经是玻璃：里面只加填充，不再叠一层玻璃（库的规矩，见 GLASS-HANDOFF §2.2） */
     background: var(--lg-fill-quaternary);
 }
 
@@ -261,7 +252,7 @@
     overflow-wrap: anywhere;
 }
 
-/* 路径 + 「打开所在目录」按钮一行（按钮是库的控件，别用 `.field` 那套 label 包它） */
+/* 路径 + 「打开所在目录」按钮一行（别用 `.field` 那套 label 包按钮） */
 .lyrics-saved:has(button) {
     display: flex;
     align-items: center;

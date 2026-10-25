@@ -1,5 +1,5 @@
 import {useEffect, useRef, useState} from 'react'
-import {GlassSegmentedControl, GlassStepper, Picker,} from '@ttqtt/liquid-glass-react'
+import {SegmentedControl, Select, Stepper} from '@/components/ui'
 import {api} from '@/lib/api'
 import {getConfig, saveConfig} from '@/lib/config'
 import {baseName, dirName, errText, extOf, formatBytes, formatDuration, stripExt} from '@/lib/format'
@@ -748,7 +748,7 @@ export function Audio({state, onNavigate, onToast}: PageProps) {
                             ))}
                         </div>
 
-                        {/* 参数：随操作切换（表单字段是库的 / 我们 components 的包装） */}
+                        {/* 参数：随操作切换（表单字段走 `Field` 与 `components/ui`） */}
                         <div className="stack">
                             {(settings.action === 'convert' || settings.action === 'extract') && (
                                 <>
@@ -787,12 +787,10 @@ export function Audio({state, onNavigate, onToast}: PageProps) {
                                         )}
                                     </Field>
 
-                                    {/* 两个选择器：库的 `Picker`（选项多的走菜单、少的走分段控件），
-                      外面套我们自己的 `Field`。**`labelHidden` 不能省** ——
-                      `Field` 已经把标签显示出来了，再让 `Picker` 显示一遍就是同一个词出现两次。 */}
+                                    {/* 两个选择器外面套 `Field`，`labelHidden` 避免标签出现两次。 */}
                                     <div className="audio-num-row">
                                         <Field label="采样率" hint="目标格式支持的话就跟着改。">
-                                            <Picker
+                                            <Select
                                                 label="采样率"
                                                 labelHidden
                                                 value={String(settings.sampleRate)}
@@ -801,7 +799,7 @@ export function Audio({state, onNavigate, onToast}: PageProps) {
                                             />
                                         </Field>
                                         <Field label="声道" hint="单声道体积小一半；做伴奏对轨一般保持立体声。">
-                                            <Picker
+                                            <Select
                                                 label="声道"
                                                 labelHidden
                                                 value={String(settings.channels)}
@@ -826,7 +824,7 @@ export function Audio({state, onNavigate, onToast}: PageProps) {
                                         hint="正数升调、负数降调；±12 半音以内精度最好。"
                                     >
                                         <div className="audio-num-row">
-                                            <GlassStepper
+                                            <Stepper
                                                 aria-label={t("变调半音数")}
                                                 min={-24}
                                                 max={24}
@@ -863,7 +861,7 @@ export function Audio({state, onNavigate, onToast}: PageProps) {
                                         hint="大于 1 是加速，小于 1 是减速；音高保持不变。"
                                     >
                                         <div className="audio-num-row">
-                                            <GlassStepper
+                                            <Stepper
                                                 aria-label={t("速度倍率")}
                                                 min={0.1}
                                                 max={10}
@@ -920,7 +918,7 @@ export function Audio({state, onNavigate, onToast}: PageProps) {
                             {settings.action === 'normalize' && (
                                 <>
                                     <Field label="目标响度（LUFS）" hint={LUFS_DESC[String(settings.targetLufs)] ?? ''}>
-                                        <GlassSegmentedControl
+                                        <SegmentedControl
                                             aria-label={t("目标响度")}
                                             items={LUFS.map((l) => ({value: l.value, label: l.label}))}
                                             value={String(settings.targetLufs)}

@@ -1,8 +1,6 @@
 import type {InputHTMLAttributes, ReactNode, TextareaHTMLAttributes} from 'react'
 
-/**
- * 表单字段。实色，走令牌 —— 内容层的东西，不套玻璃。
- */
+/** 表单字段。实色，颜色走令牌。 */
 
 export function Field({
                           label,

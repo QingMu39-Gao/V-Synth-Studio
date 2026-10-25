@@ -1,4 +1,3 @@
-import * as React from 'react'
 import {lazy, type ReactNode, Suspense, useCallback, useEffect, useRef, useState} from 'react'
 import {api, type Announcement, type UpdateCheck} from '@/lib/api'
 import {type AppConfig, getConfig, onConfigError, saveConfig, syncConfig} from '@/lib/config'
@@ -8,13 +7,9 @@ import {useUpdateDownload} from '@/lib/useUpdateDownload'
 import {setUiLanguage, type UiLanguage, useI18n} from '@/lib/i18n'
 import type {AppState} from '@/lib/types'
 import {Icon, type IconName} from '@/components/Icon'
-import {GlassPanel, Panel} from '@/components/Panel'
+import {Panel} from '@/components/Panel'
 import {Button} from '@/components/Button'
-import {BackdropToneProvider, GlassDialog, GlassProvider, ScrollEdge, useGlassPolicy,} from '@ttqtt/liquid-glass-react'
-import {levelMaterial, levelTransparency, useGlassLevel} from '@/lib/useGlass'
-import {useNavLens} from '@/lib/useNavLens'
-import {materialOptions} from '@/components/Glass'
-import {WallpaperLayer} from '@/components/WallpaperLayer'
+import {Dialog} from '@/components/ui'
 /*
  * 页面**按需加载**：首屏只拿外壳，访问哪一页才拉哪一包
  * （各页那 8 份 CSS 也跟着分包，不再一次性压在 `index.css` 后面）。
@@ -31,22 +26,7 @@ const Audio = lazy(() => import('@/pages/Audio').then((m) => ({default: m.Audio}
 const Lyrics = lazy(() => import('@/pages/Lyrics').then((m) => ({default: m.Lyrics})))
 const Pv = lazy(() => import('@/pages/Pv').then((m) => ({default: m.Pv})))
 
-/**
- * 外壳：顶栏 + 侧栏 + 内容区。
- *
- * **玻璃的范围**：侧栏 + 顶栏里的控件 + 正文面板（「全局玻璃」开关，见 `components/Panel.tsx`）。
- * 顶栏只有品牌。玻璃是「浮起来的那一层」，铺满整屏就没有东西浮起来了。
- *
- * `GlassProvider` 统一管主题与辅助功能偏好；**玻璃等级由 `useGlassLevel()` 决定**
- * （材质 / 透明度 / 折射全从它派生）。主题是全局的一套配色，材质是玻璃面自己的事。
- *
- * ## 主题为什么不能自己写 `data-theme`
- *
- * 库的 `GlassProvider` 会写 `<html data-lg-theme>`，而且它自己的全部 token
- * （`--lg-label` / `--lg-bg` / `--lg-separator` …）都挂在 `[data-lg-theme="light|dark"]`
- * 下 —— `:root` 上没有裸定义。所以主题**只有一个来源**：喂给 Provider 的那个值。
- * 两个写入方（我写 `data-theme`、它写 `data-lg-theme`）就会互相打架。
- */
+/** 外壳：顶栏 + 侧栏 + 内容区。主题写进 `<html data-theme>`，配色只在 CSS 里。 */
 
 /** 侧栏一行。`icon` 必须是 `Icon.tsx` 那张表里有的名字。 */
 interface PageDef {
@@ -105,6 +85,18 @@ export default function App() {
     })
     const [theme, setTheme] = useState<ThemeMode>(readTheme)
     const [state, setState] = useState<AppState | null>(null)
+
+    useEffect(() => {
+        const media = window.matchMedia('(prefers-color-scheme: dark)')
+        const apply = () => {
+            const resolved = theme === 'system' ? (media.matches ? 'dark' : 'light') : theme
+            document.documentElement.dataset.theme = resolved
+        }
+        apply()
+        if (theme !== 'system') return
+        media.addEventListener('change', apply)
+        return () => media.removeEventListener('change', apply)
+    }, [theme])
     const [refreshing, setRefreshing] = useState(true)
     const [dead, setDead] = useState<string | null>(null)
     const [toasts, setToasts] = useState<{ id: number; msg: string; tone: string }[]>([])
@@ -279,48 +271,9 @@ export default function App() {
         lyrics: <Lyrics {...pageProps} />,
         pv: <Pv {...pageProps} />,
     }
-    const {level} = useGlassLevel()
-    const material = levelMaterial(level)
-    const navRef = useRef<HTMLElement>(null)
-    const lensRef = useRef<HTMLSpanElement>(null)
-    useNavLens(navRef, lensRef, active)
-
-
     return (
-        <GlassProvider
-            theme={theme}
-            transparency={levelTransparency(level)}
-            /* ⚠️ 材质要写在 **Provider** 上，不能只给自家包装的面传：库的控件
-               （GlassButton / GlassSegmentedControl / TabBar…）不接材质参数，读的是 policy。
-               只给自家包装的面传，库控件会停在 `regular`，切到液态玻璃时只有自家那几块变 clear。
-               GlassPolicy 里没有 refraction，所以折射仍由 materialOptions() 按面给。 */
-            material={materialOptions(material).material}
-            /*
-              折射（SVG 位移滤镜）**只在选「液态玻璃」时打开**。
-              库默认是关的，理由两条，都写在它的 README 和 AGENTS.md 里：
-                - 「开销大约三倍」（它文档站的开关也这么写）
-                - 「只有在自己的 Chrome / GPU 矩阵上验证过才打开」
-              我们这里可以开：桌面端跑的就是 WebView2（Chromium），图形栈是确定的，
-              不是「一堆未知浏览器」。而「液态玻璃」要的就是边缘折弯 ——
-              不开的话两种材质的差别只剩模糊半径，名不副实。
-              选「毛玻璃」时是纯 CSS，零额外开销。
-            */
-            /* 折射只在液态档要（3、4 级）—— 按材质判，别写死某一个等级号：
-               写 `level === 3` 时 4 级反而是纯模糊、没有位移贴图。 */
-            enableSvgAuto={material === 'liquid'}
-        >
-            <ToneScope>
-                {/* 背景壁纸（最底层，`body::before` 的替代品）。放这里而不是放页面里：
-                    它整站只有一份，换页不该重建 —— 场景壁纸重建一次要几秒。 */}
-                <WallpaperLayer/>
-                <div className="app">
-                    {/* 平栏的代价：内容会从它下面经过。库的 ScrollEdge 就是治这个的
-              （它的注释：「不是装饰、不是色块，只在内容真的从浮动 UI 下面经过时出现」）。
-              不给 targetRef 就是盯页面滚动 —— 正是我们这个场景。 */}
-                    <ScrollEdge edge="top" variant="soft" height={64} className="app-top-edge"/>
-                    {/* ── 顶栏：只有品牌 ──────────────────────────────────
-              右上角那组控件不在顶栏里。功能没有丢：材质切换在「设置 → 玻璃材质」里，
-              重新检测在总览页的「环境就绪度」里，连接状态由连不上时那一整块提示负责。 */}
+        <div className="app">
+                    {/* ── 顶栏：只有品牌 ────────────────────────────────── */}
                     <header className="app-topbar">
                         <div className="app-topbar-inner">
                             <div className="brand">
@@ -332,43 +285,34 @@ export default function App() {
                     </header>
 
                     <div className="app-body">
-                        {/* ── 侧栏：玻璃（浮起来的那一层）──────────────────── */}
-                        <GlassPanel
-                            className="app-sidebar"
-                            contentClassName="app-sidebar-inner"
-                            fill
-                            /* 侧栏是**大玻璃**：228×500 的整列，模糊与不翻转都跟小玻璃不是一套参数 */
-                            size="large"
-                            radius={26}
-                            padding={12}
-                        >
-                            <nav aria-label="主导航" className="app-nav" ref={navRef}>
-                                {/* 高亮块本身来自库的 .lg-selection-lens：外观、弹簧曲线、阴影都是它的，
-                    我们只负责量位置（见 useNavLens）*/}
-                                <span className="lg-selection-lens nav-lens" ref={lensRef} aria-hidden="true"/>
-                                {PAGES.map((p, i) => (
-                                    <div key={p.id}>
-                                        {p.group !== PAGES[i - 1]?.group &&
-                                            <div className="nav-group">{t(p.group)}</div>}
-                                        <button
-                                            type="button"
-                                            className="nav-row"
-                                            aria-current={active === p.id ? 'page' : undefined}
-                                            onClick={() => navigate(p.id)}
-                                        >
-                                            <Icon name={p.icon} size={17}/>
-                                            <span className="nav-row-label">{t(p.title)}</span>
-                                        </button>
-                                    </div>
-                                ))}
-                            </nav>
+                        {/* ── 侧栏 ─────────────────────────────────────── */}
+                        <aside className="app-sidebar">
+                            <div className="app-sidebar-inner">
+                                <nav aria-label="主导航" className="app-nav">
+                                    {PAGES.map((p, i) => (
+                                        <div key={p.id}>
+                                            {p.group !== PAGES[i - 1]?.group &&
+                                                <div className="nav-group">{t(p.group)}</div>}
+                                            <button
+                                                type="button"
+                                                className="nav-row"
+                                                aria-current={active === p.id ? 'page' : undefined}
+                                                onClick={() => navigate(p.id)}
+                                            >
+                                                <Icon name={p.icon} size={17}/>
+                                                <span className="nav-row-label">{t(p.title)}</span>
+                                            </button>
+                                        </div>
+                                    ))}
+                                </nav>
 
-                            <div className="sidebar-foot">
-                                <ThemeSwitch value={theme} onChange={changeTheme} t={t}/>
+                                <div className="sidebar-foot">
+                                    <ThemeSwitch value={theme} onChange={changeTheme} t={t}/>
+                                </div>
                             </div>
-                        </GlassPanel>
+                        </aside>
 
-                        {/* ── 内容区：**不是玻璃**。正文用实色，字才读得清 ──── */}
+                        {/* ── 内容区 ──────────────────────────────────── */}
                         <main className="app-main" id="main" tabIndex={-1}>
                             <header className="page-head">
                                 <h1 className="page-title">{t(current.title)}</h1>
@@ -398,7 +342,7 @@ export default function App() {
                     {/* 公告：启动时只有「没读过的」才弹（见上面那个 effect）。
                         一条条过，「知道了」记下这条再弹下一条。关框（右上角/背景）与
                         「知道了」等价 —— 否则关掉之后下次启动还会弹同一条。 */}
-                    <GlassDialog
+                    <Dialog
                         open={announceOpen}
                         onOpenChange={(open) => {
                             if (!open) dismissAnnounce()
@@ -444,7 +388,7 @@ export default function App() {
                                 {t('知道了')}
                             </Button>
                         </div>
-                    </GlassDialog>
+                    </Dialog>
 
                     {/* 启动那次静默检查**只在真有新版时**把这个框打开（见上面那个 effect）。
                         「设置 → 关于」里还有一份手动的，两处共用同一个后端命令。
@@ -453,7 +397,7 @@ export default function App() {
                         `onOpenChange` 直接把关闭请求吃掉，也不给「稍后 / 忽略」。但**必须留退路**：
                         「打开发布页」与「退出程序」始终在，对象存储挂了、下载失败了也不至于
                         把人锁在一个只能看的框里。 */}
-                    <GlassDialog
+                    <Dialog
                         open={updateOpen}
                         onOpenChange={(open) => {
                             if (!open && forced) return
@@ -575,7 +519,7 @@ export default function App() {
                                 </>
                             )}
                         </div>
-                    </GlassDialog>
+                    </Dialog>
 
                     <div className="toasts" aria-live="polite">
                         {toasts.map((t) => (
@@ -584,44 +528,8 @@ export default function App() {
                             </div>
                         ))}
                     </div>
-                </div>
-            </ToneScope>
-        </GlassProvider>
+        </div>
     )
-}
-
-/* ══════════════════════════════════════════════════════════════ 侧栏高亮块 ══ */
-
-/**
- * 侧栏高亮块：选中项外面那块高亮**滑**过去。位置必须**实测**（`offsetTop` / `offsetHeight`），
- * 不能按数据算 —— 分组标题、行高都会影响它。库的 `useSelectionLens` 没从包里导出，
- * 所以这里重写「量位置」那几行；**外观、弹簧曲线、阴影全部复用库的 `.lg-selection-lens`**。
- *
- * 三个必须注意的点（都会变成看得见的 bug）：
- *
- *  1. **首帧不能滑**：第一次量位置时先把 `transition` 关掉，量完强制回流再恢复。
- *  2. **用 `offsetTop`，不用 `getBoundingClientRect()`**：侧栏滚动后 rect 会偏，
- *     `offsetTop` 相对 offsetParent 恒定 —— 前提是 nav 上有 `position: relative`。
- *  3. **行要 `position: relative; z-index: 1`**，否则被这块绝对定位的高亮盖住。
- */
-
-/* ══════════════════════════════════════════════════════════════ 背景色调 ══ */
-
-/**
- * 声明「这层玻璃背后是深是浅」。
- *
- * ⚠️ **不声明的话材质选不起来。** 库的规矩（`docs/design-system.md` 第 4 节）：
- * `tone="mixed"` 是安全默认值 —— 未知背景保持应用外观，并把 `clear` **退回 `regular`**。
- * 于是不声明时玻璃面报 `data-material="regular"`，一个 `feDisplacementMap` 都不会有，
- * 选「液态玻璃」等于没选。
- *
- * 它不能自己猜：读背景色调要么截屏页面、要么跨源读像素，库的 `AGENTS.md` 禁止这两件事。
- * 所以由区域声明、后代继承 —— 这里用 `useGlassPolicy()` 拿 Provider **解析后**的主题
- * （`'system'` 已解析成 light/dark），只有一个真相来源。
- */
-function ToneScope({children}: { children: React.ReactNode }) {
-    const {resolvedTheme} = useGlassPolicy()
-    return <BackdropToneProvider tone={resolvedTheme}>{children}</BackdropToneProvider>
 }
 
 /* ══════════════════════════════════════════════════════════════ 页面占位 ══ */
@@ -640,12 +548,6 @@ function PageSkeleton() {
 
 /* ══════════════════════════════════════════════════════════════ 主题开关 ══ */
 
-/**
- * 主题切换。**故意留着手写的 `.seg`，不换成库的 `GlassSegmentedControl`。**
- *
- * 它在侧栏那块玻璃**里面** —— 库的规矩是「不要玻璃叠玻璃」（放玻璃上的元素用填充和
- * 透明度，不再叠一层）。
- */
 function ThemeSwitch({value, onChange, t}: {
     value: ThemeMode;
     onChange: (m: ThemeMode) => void;

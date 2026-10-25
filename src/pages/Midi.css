@@ -45,7 +45,6 @@
     font: inherit;
     font-variant-numeric: tabular-nums;
     cursor: pointer;
-    transition: all 200ms var(--lg-ease-out);
 }
 
 .midi-step:hover {
@@ -61,11 +60,8 @@
 }
 
 /* ── 推理方式那个三选一 ───────────────────────────────────
-   控件本身是玻璃库的 `<GlassSegmentedControl>`（和音轨分离页同一个），
-   这里只负责让它别撑满整行。
-   ⛔ **别给容器加 `pointer-events: none` 来表达「禁用」** —— 被禁的那一格要靠
-   容器的 `onClickCapture`（在 `Midi.tsx` 里）弹提示，一屏蔽就变成点了毫无反应，
-   而「点了没反应」正是用户会来报的那个问题。 */
+   ⛔ 别给容器加 `pointer-events: none`：被禁的那一格靠容器的 `onClickCapture`
+   （在 `Midi.tsx` 里）弹提示，屏蔽了就变成点了毫无反应。 */
 .midi-infer {
     display: inline-flex;
     width: fit-content;

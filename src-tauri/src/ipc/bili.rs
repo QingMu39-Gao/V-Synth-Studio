@@ -7,7 +7,7 @@
 //!   * 写盘进 `bilibiliCookie`（下载与预览那条路读的就是这个键）；
 //!   * `get_config` / `get_state` 那边还有一层打码（`mask_secrets`）。
 //!
-//! 前端是 `components/ScanLogin.tsx`（`GlassDialog` + `qrcode.react`）。
+//! 前端是 `components/ScanLogin.tsx`（`Dialog` + `qrcode.react`）。
 
 use serde_json::{Value, json};
 

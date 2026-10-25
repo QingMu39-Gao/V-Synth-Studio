@@ -44,7 +44,7 @@ export function DownloadProgress({
 /**
  * 不可逆操作的**两段式**危险区：第一下把按钮换成「确认删除」，第二下才真删。
  *
- * ⚠️ 不用 `window.confirm` —— 它和整站的玻璃面板不是一个东西。旁边那个「算了」
+ * ⚠️ 不用 `window.confirm` —— 它和整站的界面风格不是一套。旁边那个「算了」
  * 是唯一的撤销口，所以确认那一行必须一直看得见。
  */
 export function DangerZone({

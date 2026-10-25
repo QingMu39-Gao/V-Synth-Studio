@@ -1,6 +1,6 @@
 /* ── 「下得慢就自己去网盘下」那一行（components/ManualPacks.tsx）───────
    链接**必须是蓝的**：它在这一段里是唯一一个能点的东西，而这个蓝不能用主题强调色
-   （那套玻璃主题的 accent 是青绿，混在灰字里认不出来）。 */
+   （旧的青绿 accent 混在灰字里认不出来）。 */
 .manual-packs {
     margin: var(--lg-space-3) 0 0;
     font-size: 13px;

@@ -327,22 +327,6 @@ export const api = {
      */
     allowPath: (path: string) => call<{ allowed: string }>('allow_path', {path}),
 
-    /* ── 背景壁纸（只读用户自己的 Wallpaper Engine 库）────────── */
-    /**
-     * 扫一遍壁纸库：装了没、有哪些、现在用的是哪一张。
-     *
-     * 只读磁盘上的 `project.json`（几十个小文件），不联网、不改动任何东西。
-     */
-    wallpaperScan: () => call<WeScan>('wallpaper_scan'),
-    /**
-     * 读一个场景包（`scene.pkg`）的字节，给 webwallgl 的 `bytesSource` 用。
-     *
-     * ⚠️ 后端回的是 **`tauri::ipc::Response`（原始字节）**，不是 JSON 数组 ——
-     * 几十 MB 的包过 JSON 会膨胀好几倍、把窗口卡死。所以这里的返回类型不是普通对象，
-     * 用之前先 `loadPkg()`（`lib/wallpaper.ts`）归一化。
-     */
-    wallpaperPkg: (path: string) => call<ArrayBuffer>('wallpaper_pkg', {path}),
-
     /* ── 工程转换 ─────────────────────────────────────────── */
     /**
      * 递归收集一个目录里的工程文件（本地路径数组）。
@@ -862,29 +846,6 @@ export interface SvsepDml {
      * 对它同样成立。见 `MANUAL_PACKS_URL`。
      */
     manual?: string[]
-}
-
-/** 库里的一张壁纸（`wallpaper_scan` 回包里的元素；解析逻辑见 `lib/wallpaper.ts`）。 */
-export interface WeItem {
-    id: string
-    title: string
-    /** `scene` / `video` / `web` / …（`project.json` 的 type，已小写） */
-    type: string
-    /** workshop / myprojects / defaultprojects / local */
-    source: string
-    dir: string
-    pkg: string | null
-    media: string | null
-    preview: string | null
-}
-
-/** `wallpaper_scan` 的回包。 */
-export interface WeScan {
-    found: boolean
-    weDir: string | null
-    currentFile: string | null
-    current: WeItem | null
-    items: WeItem[]
 }
 
 /**

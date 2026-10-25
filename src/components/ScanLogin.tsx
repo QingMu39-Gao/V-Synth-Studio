@@ -1,5 +1,5 @@
 import {useCallback, useEffect, useRef, useState} from 'react'
-import {GlassDialog} from '@ttqtt/liquid-glass-react'
+import {Dialog} from '@/components/ui'
 import {QRCodeSVG} from 'qrcode.react'
 import {Button} from '@/components/Button'
 import {api} from '@/lib/api'
@@ -139,7 +139,7 @@ export function ScanLogin({
     const showQR = !!qrcode && phase !== 'expired'
 
     return (
-        <GlassDialog
+        <Dialog
             open={open}
             onOpenChange={(o) => !o && onClose()}
             title="扫码登录 B 站"
@@ -182,6 +182,6 @@ export function ScanLogin({
                     </Button>
                 </div>
             </div>
-        </GlassDialog>
+        </Dialog>
     )
 }

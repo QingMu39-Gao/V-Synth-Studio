@@ -1,12 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   工程转换页（`pages/Convert.tsx`）自己的样式。
-
-   规矩和其它页面一样（见 `docs/NEXT-UI.md` §3.3）：
-     - **一行玻璃都没有**：材质来自库，页面只管排布；
-     - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**（写死 = 亮色下瞎掉）；
-     - 控件是库的（`GlassButton` / `GlassSwitch` / `Picker` / `GlassStepper` /
-       `DisclosureGroup` / `DirectoryInput`），这里不重造。
-   ══════════════════════════════════════════════════════════════════════════ */
+/* 工程转换页（`pages/Convert.tsx`）自己的样式。颜色走 `index.css` 的令牌。 */
 
 /* ── 两栏：左（来源 + 目标格式）/ 右（输出 + 选项 + 预检 + 执行）────────
    目标格式一格一格的（40 种），宽度不够时窄栏会挤成一列字，所以给左右都留 minmax(0, …)
@@ -46,8 +38,6 @@
     background: var(--lg-fill-quaternary);
     border: 1px dashed var(--lg-separator);
     border-radius: var(--lg-radius-m);
-    transition: border-color var(--lg-duration-layout) var(--lg-ease-out),
-    background var(--lg-duration-layout) var(--lg-ease-out);
 }
 
 .convert-drop[data-over='true'] {
@@ -163,11 +153,9 @@
     color: inherit;
     text-align: start;
     cursor: pointer;
-    /* 玻璃面上的元素用填充，不画不透明的页面底（库的规矩：实色 = 在材质上凿洞） */
     background: var(--lg-fill-quaternary);
     border: 1px solid var(--lg-separator);
     border-radius: var(--lg-radius-s);
-    transition: border-color var(--lg-duration-layout) var(--lg-ease-out);
 }
 
 .convert-format:hover:not(:disabled) {
@@ -204,8 +192,7 @@
 }
 
 /* ── 转换选项（可折叠）────────────────────────────────────────────────
-   折叠行本身是**库的 `DisclosureGroup`**（真 `<details>`），这里只补两件事：
-   它在玻璃面板里不能画自己的实色底（等于在材质上凿洞），以及里面三组的间距。 */
+   折叠行是原生 `<details>`；这里只补底色与里面三组的间距。 */
 .convert-opts-fold {
     background: var(--lg-fill-quaternary);
 }
@@ -228,7 +215,7 @@
     border-block-start: 1px solid var(--lg-separator);
 }
 
-/* 一排开关：窄了自动落成一列（每个开关右边跟着库的 GlassSwitch，别挤） */
+/* 一排开关：窄了自动落成一列，别把右侧开关挤变形 */
 .convert-opt-grid {
     display: grid;
     gap: var(--lg-space-3);
@@ -278,7 +265,7 @@
 }
 
 /* ── 执行 ─────────────────────────────────────────────────────────────
-   主动作一屏只有一个（库的规矩），所以「开始转换」是 primary、「预检」是普通玻璃。 */
+   主动作一屏只有一个：「开始转换」是 primary，「预检」是普通按钮。 */
 .convert-run {
     display: flex;
     flex-direction: column;
@@ -297,12 +284,4 @@
     margin-block-start: var(--lg-space-4);
     padding-block-start: var(--lg-space-4);
     border-block-start: 1px solid var(--lg-separator);
-}
-
-/* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
-   必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
-@supports (corner-shape: squircle) {
-    :where(.convert-source, .convert-format, .convert-drop) {
-        corner-shape: squircle;
-    }
 }

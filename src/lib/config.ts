@@ -23,7 +23,6 @@ import {call} from './ipc'
 /** `config.json` 的形状。后端 `default_config()` 里有的键就是这些（加了新键要两边一起加）。 */
 export interface AppConfig {
     theme?: 'system' | 'light' | 'dark'
-    glassLevel?: number
     outputDir?: string
     downloadDir?: string
     bilibiliCookie?: string
@@ -54,11 +53,6 @@ export interface AppConfig {
      * 存 id 而不是「看过公告栏没有」：公告是一条条发的，用户可能只想看其中一条。
      */
     seenAnnouncements?: string[]
-    /* 背景壁纸：`""` 静态图 / `"we:current"` 跟随 WE 当前壁纸 / `"we:<id>"` 固定一张。
-       `wallpaperPaused` 暂停动画；`weDir` 手动指定的 WE 目录（自动找不到时才用）。 */
-    wallpaper?: string
-    wallpaperPaused?: boolean
-    weDir?: string
 
     [k: string]: unknown
 }
@@ -74,7 +68,7 @@ function emit() {
     for (const l of listeners) l()
 }
 
-/** 同步读当前配置（不认识 React 的地方用，比如 `useGlass` 的存储层）。 */
+/** 同步读当前配置（不认识 React 的地方用）。 */
 export function getConfig(): AppConfig {
     return snapshot
 }
@@ -82,8 +76,7 @@ export function getConfig(): AppConfig {
 /**
  * 订阅配置变化，**不经过 React**。
  *
- * ⚠️ 回调里只读 `getConfig()` 做派生（`useGlass` 的等级就是这样的），不要在这里
- * 再 `saveConfig` —— 会在 `emit()` 里递归。
+ * ⚠️ 回调里只读 `getConfig()` 做派生，不要在这里再 `saveConfig` —— 会在 `emit()` 里递归。
  *
  * 返回值是**退订函数** —— `useSyncExternalStore` 要求订阅函数回一个清理函数
  * （见 `lib/i18n.ts`），不回就会每次挂载都往 `listeners` 里叠一个回调。
@@ -162,24 +155,18 @@ async function boot(): Promise<AppConfig> {
             /* 搬不动不是致命的：用户在新界面里重设一次就行，别拦着启动 */
             console.warn('[config] 旧设置迁移失败：', e)
         }
-        /* ⚠️ `theme` / `glassLevel` 这两个**轮不到后端那张表**：它们在
-           `default_config()` 里本来就有默认值，而迁移的规则是「已有的键优先」——
-           `cfg.get(key).is_some()` 恒为真，于是永远跳过。所以这里补一刀：
-           **只有还停在默认值上**才把捞到的值提上来（已经改过就不动）。 */
+        /* `theme` 在 `default_config()` 里本来就有默认值，迁移规则是「已有的键优先」，
+           所以它轮不到后端那张表。这里只在还停在默认值时把旧值提上来。 */
         const patch: Record<string, unknown> = {}
         if (cfg.theme === 'system' && old['qingmu.theme']) {
             const t = old['qingmu.theme']
             if (t === 'light' || t === 'dark' || t === 'system') patch.theme = t
         }
-        if ((cfg.glassLevel ?? 2) === 2 && old['qingmu.glassLevel']) {
-            const n = Number(old['qingmu.glassLevel'])
-            if (n >= 1 && n <= 4) patch.glassLevel = Math.round(n)
-        }
         if (Object.keys(patch).length) {
             try {
                 cfg = (await call<ConfigReply>('set_config', {patch})).config ?? cfg
             } catch (e) {
-                console.warn('[config] 旧主题 / 玻璃等级没能提上来：', e)
+                console.warn('[config] 旧主题没能提上来：', e)
             }
         }
     }

@@ -3,8 +3,8 @@ import {afterEach, beforeEach, describe, expect, it, vi} from 'vitest'
 /*
  * 配置的门面。这里钉的是三条**看不出来但改错就坏**的约束：
  *
- *  1. 旧 localStorage 键只在启动时捞一次（`theme` / `glassLevel` 要按「还停在默认值」
- *     才提上来 —— 后端那张迁移表对这两个键恒为「已有」，轮不到它）；
+ *  1. 旧 localStorage 键只在启动时捞一次（`theme` 要按「还停在默认值」才提上来 ——
+ *     后端那张迁移表对它有默认值，轮不到它）；
  *  2. `saveConfig` 立刻改内存、250ms 后才落盘，且多次改动合并成一次 `set_config`；
  *  3. 迟到的回包不许覆盖更新的值（打码后的完整配置回灌，靠 generation 挡住）。
  */
@@ -38,13 +38,13 @@ describe('ensureConfig', () => {
   it('后端是唯一真相：读到的配置立刻可用，重复调用只打一次 IPC', async () => {
     const cfg = await fresh()
     callMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_config') return replied({theme: 'dark', glassLevel: 3})
+      if (cmd === 'get_config') return replied({theme: 'dark', outputDir: 'D:\\out'})
       throw new Error(`不该调 ${cmd}`)
     })
 
     expect(cfg.getConfig()).toEqual({})
-    expect(await cfg.ensureConfig()).toEqual({theme: 'dark', glassLevel: 3})
-    expect(cfg.getConfig()).toEqual({theme: 'dark', glassLevel: 3})
+    expect(await cfg.ensureConfig()).toEqual({theme: 'dark', outputDir: 'D:\\out'})
+    expect(cfg.getConfig()).toEqual({theme: 'dark', outputDir: 'D:\\out'})
 
     await cfg.ensureConfig()
     expect(callMock).toHaveBeenCalledTimes(1)
@@ -67,7 +67,7 @@ describe('ensureConfig', () => {
 
 describe('旧浏览器存储的迁移', () => {
   function stubLegacy(): void {
-    const store: Record<string, string> = {'qingmu.theme': 'dark', 'qingmu.glassLevel': '4', '别的键': 'x'}
+    const store: Record<string, string> = {'qingmu.theme': 'dark', '别的键': 'x'}
     vi.stubGlobal('localStorage', {
       length: Object.keys(store).length,
       key: (i: number) => Object.keys(store)[i],
@@ -79,33 +79,32 @@ describe('旧浏览器存储的迁移', () => {
     const cfg = await fresh()
     stubLegacy()
     callMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_config') return replied({theme: 'system', glassLevel: 2})
+      if (cmd === 'get_config') return replied({theme: 'system'})
       if (cmd === 'migrate_legacy_settings') return replied({})
-      if (cmd === 'set_config') return replied({theme: 'dark', glassLevel: 4})
+      if (cmd === 'set_config') return replied({theme: 'dark'})
       throw new Error(`不该调 ${cmd}`)
     })
 
     await cfg.ensureConfig()
 
     const migrate = callMock.mock.calls.find((c) => c[0] === 'migrate_legacy_settings')
-    expect(migrate?.[1]).toEqual({old: {'qingmu.theme': 'dark', 'qingmu.glassLevel': '4'}})
-    expect(cfg.getConfig()).toEqual({theme: 'dark', glassLevel: 4})
+    expect(migrate?.[1]).toEqual({old: {'qingmu.theme': 'dark'}})
+    expect(cfg.getConfig()).toEqual({theme: 'dark'})
   })
 
-  it('只把还停在默认值上的那两项提上来（用户已经改过的绝不动）', async () => {
+  it('用户已经改过的主题绝不动', async () => {
     const cfg = await fresh()
     stubLegacy()
     callMock.mockImplementation(async (cmd: string) => {
-      if (cmd === 'get_config') return replied({theme: 'light', glassLevel: 2})
+      if (cmd === 'get_config') return replied({theme: 'light'})
       if (cmd === 'migrate_legacy_settings') return replied({})
-      if (cmd === 'set_config') return replied({theme: 'light', glassLevel: 4})
       throw new Error(`不该调 ${cmd}`)
     })
 
     await cfg.ensureConfig()
 
-    const set = callMock.mock.calls.find((c) => c[0] === 'set_config')
-    expect(set?.[1]).toEqual({patch: {glassLevel: 4}})
+    expect(callMock.mock.calls.some((c) => c[0] === 'set_config')).toBe(false)
+    expect(cfg.getConfig()).toEqual({theme: 'light'})
   })
 
   it('迁移失败不是致命的：保留读到的那份配置', async () => {
@@ -127,18 +126,18 @@ describe('saveConfig', () => {
   it('内存立刻生效，落盘走 250ms 防抖且合并成一次调用', async () => {
     const cfg = await fresh()
     vi.useFakeTimers()
-    callMock.mockImplementation(async () => replied({theme: 'dark', glassLevel: 3}))
+    callMock.mockImplementation(async () => replied({theme: 'dark', outputDir: 'D:\\out'}))
 
     cfg.saveConfig({theme: 'dark'})
     expect(cfg.getConfig().theme).toBe('dark')
 
-    cfg.saveConfig({glassLevel: 3})
+    cfg.saveConfig({outputDir: 'D:\\out'})
     await vi.advanceTimersByTimeAsync(249)
     expect(callMock).not.toHaveBeenCalled()
 
     await vi.advanceTimersByTimeAsync(1)
     expect(callMock).toHaveBeenCalledTimes(1)
-    expect(callMock.mock.calls[0][1]).toEqual({patch: {theme: 'dark', glassLevel: 3}})
+    expect(callMock.mock.calls[0][1]).toEqual({patch: {theme: 'dark', outputDir: 'D:\\out'}})
   })
 
   it('后端回的是打码后的完整配置，用它替掉内存那份', async () => {
@@ -161,12 +160,12 @@ describe('saveConfig', () => {
     cfg.saveConfig({theme: 'dark'})
     await vi.advanceTimersByTimeAsync(250)      // 第一次落盘，回包还挂着
 
-    cfg.saveConfig({glassLevel: 4})             // 更晚的一次改动
+    cfg.saveConfig({outputDir: 'D:\\new'})          // 更晚的一次改动
     pendingReplies[0](replied({theme: 'system'}))   // 旧回包现在才回来
     await vi.advanceTimersByTimeAsync(0)
 
     expect(cfg.getConfig().theme).toBe('dark')
-    expect(cfg.getConfig().glassLevel).toBe(4)
+    expect(cfg.getConfig().outputDir).toBe('D:\\new')
   })
 
   it('保存失败时报一句，但内存那份不回滚', async () => {

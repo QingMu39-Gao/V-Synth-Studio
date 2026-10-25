@@ -33,7 +33,6 @@ pub mod state;
 pub mod svsep;
 pub mod tools;
 pub mod update;
-pub mod wallpaper;
 
 use std::sync::Arc;
 

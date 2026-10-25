@@ -1,12 +1,4 @@
-/* ══════════════════════════════════════════════════════════════════════════
-   视频解析页（`pages/Video.tsx`）自己的样式。
-
-   规矩和别的页面一样（`docs/NEXT-UI.md` §3.3）：
-     - **一行玻璃都没有**：材质来自库，页面只管排布；
-     - 颜色全部走 `index.css` 与库的 `--lg-*` 令牌，**不写死颜色**（写死 = 亮色下瞎掉）；
-     - 控件是库的（`List` / `GlassCheckbox` / `GlassSegmentedControl` / `GlassSwitch` /
-       `Picker`），加上 `components/` 里那几个包装，这里不重造。
-   ══════════════════════════════════════════════════════════════════════════ */
+/* 视频解析页（`pages/Video.tsx`）自己的样式。颜色走 `index.css` 的令牌。 */
 
 /* ── 结果：左（封面 + 数字 + 简介）/ 右（标题 + 分P + 画质）────────────
    左栏固定上限、右栏吃掉剩下的宽度；窄屏落成一栏。 */
@@ -223,14 +215,6 @@
     white-space: nowrap;
     font-family: var(--lg-font-mono);
     font-size: 12px;
-}
-
-/* 苹果式圆角（连续曲率）。**只给内容层**：玻璃面不能这么画（库的位移贴图是受限几何）。
-   必须配 `@supports` —— 不认这条的环境整条声明被丢掉，退回普通圆弧，是安全降级。 */
-@supports (corner-shape: squircle) {
-    :where(.video-cover, .video-cover-empty) {
-        corner-shape: squircle;
-    }
 }
 
 /* ── 预览播放器（`components/Preview.tsx`）──────────────────────────────

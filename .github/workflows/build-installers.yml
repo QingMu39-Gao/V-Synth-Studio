@@ -110,7 +110,6 @@ jobs:
 
       # 仓库自己的几张表、以及仓库与 workflow 的漂移 —— 这些在本地跑不到（YAML 读不到
       # JS 常量），只会在 CI 里炸，而那时每轮要等十几分钟。放在最前面，早失败。
-      # 壁纸握手那条是**跑脚本**而不是查表：坏掉的表现是「重启后背景不动」，编译期看不出来。
       #
       # ⚠️ 显式用 bash：Windows 的默认 shell 是 pwsh，而 pwsh 只透传**最后一条**命令的
       #    退出码 —— 前两条红了这步照样是绿的。bash 默认带 `-e`，任一条失败就停。
@@ -120,7 +119,6 @@ jobs:
           node tools/check-artifact-paths.mjs
           node tools/check_assets_agree.mjs
           node tools/check_version_agree.mjs
-          node tools/check_wallpaper_handshake.mjs
 
       - name: 装前端依赖
         run: pnpm install --frozen-lockfile

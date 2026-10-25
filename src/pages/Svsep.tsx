@@ -7,7 +7,7 @@ import {Chip, Finding, Panel, PanelHead, ProgressBar, Stat} from '@/components/P
 import {DangerZone, DownloadProgress} from '@/components/Dependency'
 import {JobStatusChip, svsepTaskStatus} from '@/components/Job'
 import {ManualPacks} from '@/components/ManualPacks'
-import {GlassSegmentedControl} from '@ttqtt/liquid-glass-react'
+import {SegmentedControl} from '@/components/ui'
 import {DropHint, useFilePick} from '@/components/FilePick'
 import {askExtDirOnce, ExtDirAsk} from '@/lib/extDir'
 import {baseName, errText, formatBytes} from '@/lib/format'
@@ -506,7 +506,7 @@ export function Svsep({onNavigate, onToast, state}: PageProps) {
     const installError = installer.error || dl?.error || null
 
     /* 一键删掉所有下下来的依赖（模型 730 MB + 运行时 7.4 GB + ffmpeg）。
-       ⚠️ **不用 `window.confirm`**：它和整站的玻璃面板不是一个东西。做成**两段式按钮**
+       ⚠️ **不用 `window.confirm`**：它和整站的界面风格不是一套。做成**两段式按钮**
        —— 第一下把按钮变成「确认删除（要重下 8 GB）」，第二下才真删；旁边有「算了」。
        点别处不清除，所以这个态一直立着，直到用户切走再回来（页面重建）。
        几万个文件，后端在后台删，进度看 st.download.delete。 */
@@ -875,7 +875,7 @@ export function Svsep({onNavigate, onToast, state}: PageProps) {
                         <div className="btn-row">
                             <div className="svsep-infer">
                                 <span className="dim">{t("推理方式")}</span>
-                                <GlassSegmentedControl
+                                <SegmentedControl
                                     aria-label={t("推理方式")}
                                     items={INFER_MODES}
                                     value={inferMode}
