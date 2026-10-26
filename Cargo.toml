@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 gpui-kit = "0.8.0"
+gpui-webview = "0.8.0"
 open = "5"
 rfd = "0.16"
 serde = { version = "1", features = ["derive"] }
