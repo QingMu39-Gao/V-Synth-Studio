@@ -7810,6 +7810,7 @@ version = "0.1.0"
 dependencies = [
  "gpui-kit",
  "gpui-webview",
+ "lb-wry",
  "open",
  "rfd",
  "serde",

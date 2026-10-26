@@ -4,10 +4,14 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
+use gpui_webview::WebView;
+
 use crate::config::{Config, ThemePreference};
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
 use crate::tools::{Tool, ToolStatus};
+
+const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
 
 const SIDEBAR_WIDTH: f32 = 228.0;
 
@@ -24,6 +28,8 @@ pub struct VSynthApp {
     resource_error: Option<String>,
     resource_search: Entity<InputState>,
     resource_group: Option<String>,
+    webview: Option<Entity<WebView>>,
+    webview_error: Option<String>,
 }
 
 impl VSynthApp {
@@ -51,6 +57,36 @@ impl VSynthApp {
             resource_error,
             resource_search,
             resource_group: None,
+            webview: None,
+            webview_error: None,
+        }
+    }
+
+    fn set_page(&mut self, page: Page, window: &mut Window, cx: &mut Context<Self>) {
+        if self.page == Page::Pv
+            && page != Page::Pv
+            && let Some(webview) = &self.webview
+        {
+            webview.update(cx, |webview, _| webview.hide());
+        }
+        if page == Page::Pv {
+            self.ensure_webview(window, cx);
+            if let Some(webview) = &self.webview {
+                webview.update(cx, |webview, _| webview.show());
+            }
+        }
+        self.page = page;
+        cx.notify();
+    }
+
+    fn ensure_webview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.webview.is_some() || self.webview_error.is_some() {
+            return;
+        }
+        let builder = wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO);
+        match WebView::build(builder, window, cx) {
+            Ok(webview) => self.webview = Some(cx.new(|_| webview)),
+            Err(error) => self.webview_error = Some(format!("创建 WebView 失败：{error}")),
         }
     }
 
@@ -270,11 +306,8 @@ impl VSynthApp {
             row.hover(move |style| style.bg(accent.opacity(0.55)))
         };
 
-        row.on_click(move |_, _, cx| {
-            entity.update(cx, |this, cx| {
-                this.page = page;
-                cx.notify();
-            });
+        row.on_click(move |_, window, cx| {
+            entity.update(cx, |this, cx| this.set_page(page, window, cx));
         })
     }
 
@@ -310,7 +343,16 @@ impl VSynthApp {
             .into_any_element()
     }
 
-    fn render_main(&self, cx: &mut Context<Self>) -> impl IntoElement {
+    fn render_main(&self, cx: &mut Context<Self>) -> AnyElement {
+        if self.page == Page::Pv {
+            return v_flex()
+                .flex_1()
+                .min_w_0()
+                .h_full()
+                .child(self.render_page(cx))
+                .into_any_element();
+        }
+
         let theme = cx.theme();
         let danger = theme.danger;
         let radius = theme.radius;
@@ -337,7 +379,7 @@ impl VSynthApp {
             );
         }
 
-        main.child(self.render_page(cx))
+        main.child(self.render_page(cx)).into_any_element()
     }
 
     fn render_page(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -345,8 +387,52 @@ impl VSynthApp {
             Page::Dashboard => self.render_dashboard(cx).into_any_element(),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
+            Page::Pv => self.render_pv(cx),
             _ => self.render_placeholder(cx).into_any_element(),
         }
+    }
+
+    fn render_pv(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let danger = theme.danger;
+        let border = theme.border;
+        let radius = theme.radius;
+        let entity = cx.entity();
+
+        let body = if let Some(error) = &self.webview_error {
+            callout(error, danger, radius).into_any_element()
+        } else if let Some(webview) = &self.webview {
+            div()
+                .flex_1()
+                .min_h_0()
+                .w_full()
+                .rounded(radius)
+                .border_1()
+                .border_color(border)
+                .overflow_hidden()
+                .child(webview.clone())
+                .into_any_element()
+        } else {
+            h_flex()
+                .child(
+                    Button::new("pv-init")
+                        .label("打开文字 PV 编辑器")
+                        .primary()
+                        .on_click(move |_, window, cx| {
+                            entity.update(cx, |this, cx| this.ensure_webview(window, cx));
+                        }),
+                )
+                .into_any_element()
+        };
+
+        v_flex()
+            .size_full()
+            .p_6()
+            .gap_3()
+            .child(page_header(self.page, muted))
+            .child(body)
+            .into_any_element()
     }
 
     fn render_dashboard(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -369,11 +455,8 @@ impl VSynthApp {
                 let entity = entity.clone();
                 Button::new(SharedString::from(format!("quick-{}", page.id())))
                     .label(page.title())
-                    .on_click(move |_, _, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.page = page;
-                            cx.notify();
-                        });
+                    .on_click(move |_, window, cx| {
+                        entity.update(cx, |this, cx| this.set_page(page, window, cx));
                     })
                     .into_any_element()
             })
