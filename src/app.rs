@@ -595,15 +595,17 @@ impl VSynthApp {
     }
 
     fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let muted = theme.muted_foreground;
-        let border = theme.border;
+        let (muted, border) = {
+            let theme = cx.theme();
+            (theme.muted_foreground, theme.border)
+        };
         let entity = cx.entity();
         let theme_buttons = ThemePreference::ALL
             .into_iter()
             .map(|preference| self.render_theme_button(preference, false, cx))
             .collect::<Vec<_>>();
         let refresh_button = self.refresh_tools_button(cx);
+        let sponsor_theme = cx.theme();
 
         v_flex()
             .gap_4()
@@ -731,6 +733,33 @@ impl VSynthApp {
                 ),
             )
             .child(
+                GroupBox::new().outline().title("赞助").child(
+                    v_flex()
+                        .gap_3()
+                        .child(
+                            div()
+                                .max_w(px(560.))
+                                .text_sm()
+                                .text_color(muted)
+                                .child("软件的开发与运营几乎得靠你们赞助了。作者只是个学生，拿不出太多钱为爱发电，抱歉。有能力的希望可以赞助一下，记得备注 ID，会同步到感谢名单，谢谢！"),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_4()
+                                .children([
+                                    sponsor_card("img/sponsor.jpg", "微信", 180., 180., sponsor_theme),
+                                    sponsor_card("img/sponsor-alipay.jpg", "支付宝", 120., 180., sponsor_theme),
+                                ]),
+                        )
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("用对应应用扫码；二维码保持白底是为了摄像头识别。"),
+                        ),
+                ),
+            )
+            .child(
                 GroupBox::new().outline().title("关于").child(
                     v_flex()
                         .gap_1()
@@ -748,11 +777,18 @@ impl VSynthApp {
                         ))
                         .child(info_row("许可证", "GPL-3.0-only".to_string(), muted, border))
                         .child(info_row("作者", "QingMu39".to_string(), muted, border))
+                        .child(div().pt_2().text_xs().text_color(muted).child("第三方组件"))
+                        .child(bullet_line("LibreSVIP 2.9.0 · Apache-2.0"))
+                        .child(bullet_line("FFmpeg · LGPL / GPL（随平台不同）"))
+                        .child(bullet_line("yt-dlp · Unlicense"))
+                        .child(bullet_line("JIZURA v0.10.1 · MIT"))
+                        .child(bullet_line("ONNX Runtime / ort · MIT"))
+                        .child(bullet_line("gpui-kit 0.8 / GPUI · Apache-2.0"))
                         .child(
                             div()
                                 .text_xs()
                                 .text_color(muted)
-                                .child("界面基座 gpui-kit 0.8 / GPUI；第三方组件许可见 docs/THIRD-PARTY-NOTICES.md。"),
+                                .child("完整清单见 docs/THIRD-PARTY-NOTICES.md。"),
                         ),
                 ),
             )
@@ -760,8 +796,8 @@ impl VSynthApp {
                 GroupBox::new().outline().title("迁移状态").child(
                     v_flex()
                         .gap_2()
-                        .child(bullet_line("设置页已接入外观、路径、外部工具与关于"))
-                        .child(bullet_line("公告、赞助、检查更新尚未迁移"))
+                        .child(bullet_line("设置页已接入外观、路径、外部工具、赞助与关于"))
+                        .child(bullet_line("公告、检查更新尚未迁移"))
                         .child(h_flex().child(
                             Button::new("settings-back").label("返回总览").on_click(
                                 move |_, _, cx| {
@@ -1301,6 +1337,38 @@ fn callout(text: &str, color: Hsla, radius: Pixels) -> impl IntoElement {
         .text_color(color)
         .text_sm()
         .child(text.to_string())
+}
+
+fn sponsor_card(
+    src: &'static str,
+    caption: &'static str,
+    width: f32,
+    height: f32,
+    theme: &Theme,
+) -> impl IntoElement + use<> {
+    v_flex()
+        .items_center()
+        .gap_2()
+        .child(
+            div()
+                .p_3()
+                .rounded(theme.radius)
+                .bg(white())
+                .border_1()
+                .border_color(theme.border)
+                .child(
+                    img(src)
+                        .w(px(width))
+                        .h(px(height))
+                        .object_fit(ObjectFit::Contain),
+                ),
+        )
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(caption),
+        )
 }
 
 fn tool_row(
