@@ -85,11 +85,8 @@ impl VSynthApp {
         if self.webview.is_some() || self.webview_error.is_some() {
             return;
         }
-        let pending = self.config.pv_pending_lyrics.trim().to_string();
         let jizura_root = crate::jizura::asset_dir();
         let has_jizura = jizura_root.is_some();
-        let fill_lyrics =
-            has_jizura && !pending.is_empty() && pending != self.config.pv_sent_lyrics;
         let mut builder = match jizura_root {
             Some(root) => {
                 self.webview_source = Some("JIZURA · custom protocol".to_string());
@@ -107,24 +104,8 @@ impl VSynthApp {
         if has_jizura {
             builder = builder.with_initialization_script(crate::jizura::save_bridge_script());
         }
-        if fill_lyrics {
-            builder =
-                builder.with_initialization_script(crate::jizura::lyrics_init_script(&pending));
-        }
         match WebView::build(builder, window, cx) {
-            Ok(webview) => {
-                self.webview = Some(cx.new(|_| webview));
-                if fill_lyrics {
-                    self.webview_source = Some(format!(
-                        "{} · 已交接歌词",
-                        self.webview_source.as_deref().unwrap_or("JIZURA")
-                    ));
-                    self.config.pv_sent_lyrics = pending;
-                    if let Err(error) = self.config.save() {
-                        self.notice = Some(error);
-                    }
-                }
-            }
+            Ok(webview) => self.webview = Some(cx.new(|_| webview)),
             Err(error) => self.webview_error = Some(format!("创建 WebView 失败：{error}")),
         }
     }
@@ -575,19 +556,6 @@ impl VSynthApp {
                 ),
             )
             .child(
-                GroupBox::new().outline().title("迁移进度").child(
-                    v_flex()
-                        .gap_2()
-                        .child(bullet_line(
-                            "已完成：GPUI 外壳、导航、主题与配置、外部工具检测",
-                        ))
-                        .child(bullet_line(
-                            "下一步：路径编辑、设置分节、任务状态与页面业务",
-                        ))
-                        .child(bullet_line("待迁：视频预览、波形编辑、文字 PV、安装更新")),
-                ),
-            )
-            .child(
                 GroupBox::new()
                     .title("快速入口")
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
@@ -599,7 +567,6 @@ impl VSynthApp {
             let theme = cx.theme();
             (theme.muted_foreground, theme.border)
         };
-        let entity = cx.entity();
         let theme_buttons = ThemePreference::ALL
             .into_iter()
             .map(|preference| self.render_theme_button(preference, false, cx))
@@ -792,24 +759,6 @@ impl VSynthApp {
                         ),
                 ),
             )
-            .child(
-                GroupBox::new().outline().title("迁移状态").child(
-                    v_flex()
-                        .gap_2()
-                        .child(bullet_line("设置页已接入外观、路径、外部工具、赞助与关于"))
-                        .child(bullet_line("公告、检查更新尚未迁移"))
-                        .child(h_flex().child(
-                            Button::new("settings-back").label("返回总览").on_click(
-                                move |_, _, cx| {
-                                    entity.update(cx, |this, cx| {
-                                        this.page = Page::Dashboard;
-                                        cx.notify();
-                                    });
-                                },
-                            ),
-                        )),
-                ),
-            )
     }
 
     fn render_resources(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -957,16 +906,10 @@ impl VSynthApp {
         let entity = cx.entity();
 
         v_flex().gap_4().child(page_header(self.page, muted)).child(
-            GroupBox::new().outline().title("迁移状态").child(
+            GroupBox::new().outline().title("功能开发中").child(
                 v_flex()
                     .gap_2()
-                    .child(div().text_sm().child("页面已接入导航与外壳。"))
-                    .child(
-                        div()
-                            .text_sm()
-                            .text_color(muted)
-                            .child("React 版业务逻辑尚未迁移到这里。"),
-                    )
+                    .child(div().text_sm().child("此页面尚未实现。"))
                     .child(h_flex().child(
                         Button::new("placeholder-back").label("返回总览").on_click(
                             move |_, _, cx| {

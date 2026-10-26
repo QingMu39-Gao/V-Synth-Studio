@@ -1,8 +1,7 @@
-//! JIZURA 静态资源的开发期定位与 Wry custom protocol 服务。
+//! JIZURA 静态资源定位与 Wry custom protocol 服务。
 //!
-//! 打包后资源应放在可执行文件旁的 `assets/jizura/`；开发期回退到本仓旁边的
-//! `public/vendor/jizura/`。页面只通过 `jizura://localhost/` 访问，不暴露
-//! 任意文件路径。
+//! 资源放在程序根下的 `assets/jizura/`，页面只通过 `jizura://localhost/` 访问，
+//! 不暴露任意文件路径。上游版本与校验和见 `assets/jizura/UPSTREAM.md`。
 
 use std::borrow::Cow;
 use std::fs;
@@ -12,40 +11,6 @@ use wry::http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 
 pub const SCHEME: &str = "jizura";
 pub const START_URL: &str = "jizura://localhost/index.html";
-
-/// 把旧 `Pv.tsx` 的填词逻辑搬进页面初始化脚本。
-///
-/// JIZURA 的 `boot()` 末尾会用 `syncUI()` 覆盖歌词框，所以不能只写一次；这里每
-/// 250ms 重写，直到读回同一份内容并稳定 4 次（约 1 秒）。超时 75 秒后放弃。
-pub fn lyrics_init_script(text: &str) -> String {
-    let json = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
-    let mut script = String::from("(() => {\nconst text = ");
-    script.push_str(&json);
-    script.push_str(
-        r#";
-if (!text) return;
-let tries = 0;
-let stable = 0;
-const timer = setInterval(() => {
-  tries += 1;
-  if (tries > 300) { clearInterval(timer); return; }
-  const ta = document.getElementById('lyrics');
-  if (!ta || document.readyState !== 'complete') return;
-  const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
-  if (ta.value !== text) {
-    if (setter) setter.call(ta, text); else ta.value = text;
-    ta.dispatchEvent(new Event('input', { bubbles: true }));
-    stable = 0;
-  } else {
-    stable += 1;
-    if (stable >= 4) clearInterval(timer);
-  }
-}, 250);
-})();
-"#,
-    );
-    script
-}
 
 /// 接管 `J.saveFile`：JIZURA 的 MP4 / PNG ZIP / WAV 都会走这个出口。
 ///
@@ -105,15 +70,8 @@ pub fn save_bridge_script() -> &'static str {
 }
 
 pub fn asset_dir() -> Option<PathBuf> {
-    let root = crate::config::app_root();
-    [
-        root.join("assets").join("jizura"),
-        root.join("vendor").join("jizura"),
-        root.join("jizura"),
-        root.join("..").join("public").join("vendor").join("jizura"),
-    ]
-    .into_iter()
-    .find(|dir| dir.join("index.html").is_file())
+    let dir = crate::config::app_root().join("assets").join("jizura");
+    dir.join("index.html").is_file().then_some(dir)
 }
 
 pub fn serve(root: &Path, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {

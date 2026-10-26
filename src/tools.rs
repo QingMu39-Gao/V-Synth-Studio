@@ -1,7 +1,7 @@
 //! 随包外部工具与系统 python 的探测。
 //!
-//! 路径判据与旧后端一致：`tools/ffmpeg/bin/ffmpeg`、`tools/yt-dlp`，找不到再走
-//! PATH。这里不启动任何服务；探测只在后台线程跑一次，结果给总览页显示。
+//! 路径判据：`tools/ffmpeg/bin/ffmpeg`、`tools/yt-dlp`，找不到再走 PATH。
+//! 这里不启动任何服务；探测只在后台线程跑一次，结果给总览页显示。
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
