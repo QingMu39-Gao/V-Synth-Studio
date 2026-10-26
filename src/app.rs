@@ -4,12 +4,15 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
+use std::path::Path;
+
 use gpui_webview::WebView;
 
 use crate::config::{Config, ThemePreference};
 use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
+use crate::services::artifacts::{self, Artifact};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::tools::{Tool, ToolStatus};
 
@@ -35,6 +38,7 @@ pub struct VSynthApp {
     webview_source: Option<String>,
     job_center: Entity<JobCenter>,
     tool_job: Option<u64>,
+    component_job: Option<(&'static str, u64)>,
 }
 
 impl VSynthApp {
@@ -68,6 +72,7 @@ impl VSynthApp {
             webview_source: None,
             job_center,
             tool_job: None,
+            component_job: None,
         }
     }
 
@@ -216,6 +221,54 @@ impl VSynthApp {
         })
         .detach();
         cx.notify();
+    }
+
+    fn install_component(&mut self, artifact: Artifact, cx: &mut Context<Self>) {
+        if self
+            .component_job
+            .is_some_and(|(_, id)| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let root = crate::config::app_root();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(format!("安装 {}", artifact.name), move |ctx| {
+                crate::services::artifacts::install(&artifact, &root, &ctx)
+            });
+        self.component_job = Some((artifact.id, job.id));
+        let job_id = job.id;
+        let artifact_id = artifact.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.component_job == Some((artifact_id, job_id)) {
+                    this.component_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(())) => this.notice = None,
+                    Ok(JobOutcome::Failed(error)) => this.notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.notice = Some("组件安装已取消".to_string());
+                    }
+                    Err(_) => this.notice = Some("组件安装中断".to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_component(&mut self, cx: &mut Context<Self>) {
+        if let Some((_, id)) = self.component_job {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
     }
 
     pub fn watch_system_theme(&self, window: &mut Window, cx: &mut Context<Self>) {
@@ -536,76 +589,85 @@ impl VSynthApp {
             .gap_4()
             .child(page_header(self.page, muted))
             .child(
-                GroupBox::new().outline().title("运行环境").child(
-                    v_flex()
-                        .gap_1()
-                        .child(info_row(
-                            "版本",
-                            env!("CARGO_PKG_VERSION").to_string(),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row(
-                            "平台",
-                            format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row("配置", config_path_display(), muted, border))
-                        .child(info_row(
-                            "主题",
-                            self.config.theme.label().to_string(),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row(
-                            "界面框架",
-                            "gpui-kit 0.8".to_string(),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row("外部工具", tools_ready, muted, border)),
-                ),
+                GroupBox::new()
+                    .id("dashboard-runtime")
+                    .outline()
+                    .title("运行环境")
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(info_row(
+                                "版本",
+                                env!("CARGO_PKG_VERSION").to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row(
+                                "平台",
+                                format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row("配置", config_path_display(), muted, border))
+                            .child(info_row(
+                                "主题",
+                                self.config.theme.label().to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row(
+                                "界面框架",
+                                "gpui-kit 0.8".to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row("外部工具", tools_ready, muted, border)),
+                    ),
             )
             .child(
-                GroupBox::new().outline().title("外部工具").child(
-                    v_flex()
-                        .gap_2()
-                        .child(tool_row(
-                            "ffmpeg",
-                            self.tools.as_ref().map(|tools| &tools.ffmpeg),
-                            self.scanning_tools,
-                            theme,
-                        ))
-                        .child(tool_row(
-                            "yt-dlp",
-                            self.tools.as_ref().map(|tools| &tools.ytdlp),
-                            self.scanning_tools,
-                            theme,
-                        ))
-                        .child(tool_row(
-                            "python",
-                            self.tools.as_ref().map(|tools| &tools.python),
-                            self.scanning_tools,
-                            theme,
-                        ))
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .gap_3()
-                                .child(self.refresh_tools_button(cx))
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .child(format!("目录：{}", tools_dir_display())),
-                                ),
-                        ),
-                ),
+                GroupBox::new()
+                    .id("dashboard-tools")
+                    .outline()
+                    .title("外部工具")
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(tool_row(
+                                "ffmpeg",
+                                self.tools.as_ref().map(|tools| &tools.ffmpeg),
+                                self.scanning_tools,
+                                theme,
+                            ))
+                            .child(tool_row(
+                                "yt-dlp",
+                                self.tools.as_ref().map(|tools| &tools.ytdlp),
+                                self.scanning_tools,
+                                theme,
+                            ))
+                            .child(tool_row(
+                                "python",
+                                self.tools.as_ref().map(|tools| &tools.python),
+                                self.scanning_tools,
+                                theme,
+                            ))
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(self.refresh_tools_button(cx))
+                                    .child(
+                                        div()
+                                            .text_xs()
+                                            .text_color(muted)
+                                            .child(format!("目录：{}", tools_dir_display())),
+                                    ),
+                            ),
+                    ),
             )
             .child(jobs_element)
             .child(
                 GroupBox::new()
+                    .id("dashboard-quick")
                     .title("快速入口")
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
             )
@@ -622,12 +684,47 @@ impl VSynthApp {
             .collect::<Vec<_>>();
         let refresh_button = self.refresh_tools_button(cx);
         let sponsor_theme = cx.theme();
+        let entity = cx.entity();
+        let component_running = self
+            .component_job
+            .is_some_and(|(_, id)| self.job_center.read(cx).is_running(id));
+        let component_job = self.component_job;
+        let root = crate::config::app_root();
+        let component_theme = cx.theme();
+        let component_rows = if artifacts::ALL.is_empty() {
+            vec![
+                div()
+                    .text_sm()
+                    .text_color(muted)
+                    .child("当前平台暂无可用组件。")
+                    .into_any_element(),
+            ]
+        } else {
+            artifacts::ALL
+                .iter()
+                .map(|artifact| {
+                    let active = component_job.is_some_and(|(id, _)| id == artifact.id);
+                    component_row(
+                        artifact,
+                        &root,
+                        active,
+                        component_running,
+                        entity.clone(),
+                        component_theme,
+                    )
+                })
+                .collect::<Vec<_>>()
+        };
 
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted))
             .child(
-                GroupBox::new().outline().title("外观").child(
+                GroupBox::new()
+                    .id("settings-appearance")
+                    .outline()
+                    .title("外观")
+                    .child(
                     v_flex()
                         .gap_3()
                         .child(div().text_sm().child("主题"))
@@ -641,7 +738,11 @@ impl VSynthApp {
                 ),
             )
             .child(
-                GroupBox::new().outline().title("路径").child(
+                GroupBox::new()
+                    .id("settings-paths")
+                    .outline()
+                    .title("路径")
+                    .child(
                     v_flex()
                         .gap_3()
                         .child(path_field(
@@ -688,7 +789,11 @@ impl VSynthApp {
                 ),
             )
             .child(
-                GroupBox::new().outline().title("外部工具").child(
+                GroupBox::new()
+                    .id("settings-tools")
+                    .outline()
+                    .title("外部工具")
+                    .child(
                     v_flex()
                         .gap_2()
                         .child(tool_row(
@@ -730,7 +835,28 @@ impl VSynthApp {
                 ),
             )
             .child(
-                GroupBox::new().outline().title("配置").child(
+                GroupBox::new()
+                    .id("settings-components")
+                    .outline()
+                    .title("外部组件")
+                    .child(
+                    v_flex()
+                        .gap_2()
+                        .children(component_rows)
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child("安装包先校验 SHA-256，再解压到 tools/；缓存位于 data/cache/artifacts/。"),
+                        ),
+                ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("settings-config")
+                    .outline()
+                    .title("配置")
+                    .child(
                     v_flex()
                         .gap_1()
                         .child(info_row("文件", config_path_display(), muted, border))
@@ -742,14 +868,18 @@ impl VSynthApp {
                         ))
                         .child(info_row(
                             "语言",
-                            "简体中文（待移植 i18n）".to_string(),
+                            "简体中文".to_string(),
                             muted,
                             border,
                         )),
                 ),
             )
             .child(
-                GroupBox::new().outline().title("赞助").child(
+                GroupBox::new()
+                    .id("settings-sponsor")
+                    .outline()
+                    .title("赞助")
+                    .child(
                     v_flex()
                         .gap_3()
                         .child(
@@ -776,7 +906,11 @@ impl VSynthApp {
                 ),
             )
             .child(
-                GroupBox::new().outline().title("关于").child(
+                GroupBox::new()
+                    .id("settings-about")
+                    .outline()
+                    .title("关于")
+                    .child(
                     v_flex()
                         .gap_1()
                         .child(info_row(
@@ -794,7 +928,7 @@ impl VSynthApp {
                         .child(info_row("许可证", "GPL-3.0-only".to_string(), muted, border))
                         .child(info_row("作者", "QingMu39".to_string(), muted, border))
                         .child(div().pt_2().text_xs().text_color(muted).child("第三方组件"))
-                        .child(bullet_line("LibreSVIP 2.9.0 · Apache-2.0"))
+                        .child(bullet_line("LibreSVIP 2.9.2 · Apache-2.0"))
                         .child(bullet_line("FFmpeg · LGPL / GPL（随平台不同）"))
                         .child(bullet_line("yt-dlp · Unlicense"))
                         .child(bullet_line("JIZURA v0.10.1 · MIT"))
@@ -955,21 +1089,25 @@ impl VSynthApp {
         let entity = cx.entity();
 
         v_flex().gap_4().child(page_header(self.page, muted)).child(
-            GroupBox::new().outline().title("功能开发中").child(
-                v_flex()
-                    .gap_2()
-                    .child(div().text_sm().child("此页面尚未实现。"))
-                    .child(h_flex().child(
-                        Button::new("placeholder-back").label("返回总览").on_click(
-                            move |_, _, cx| {
-                                entity.update(cx, |this, cx| {
-                                    this.page = Page::Dashboard;
-                                    cx.notify();
-                                });
-                            },
-                        ),
-                    )),
-            ),
+            GroupBox::new()
+                .id("placeholder")
+                .outline()
+                .title("功能开发中")
+                .child(
+                    v_flex()
+                        .gap_2()
+                        .child(div().text_sm().child("此页面尚未实现。"))
+                        .child(h_flex().child(
+                            Button::new("placeholder-back").label("返回总览").on_click(
+                                move |_, _, cx| {
+                                    entity.update(cx, |this, cx| {
+                                        this.page = Page::Dashboard;
+                                        cx.notify();
+                                    });
+                                },
+                            ),
+                        )),
+                ),
         )
     }
 }
@@ -1373,6 +1511,7 @@ fn jobs_panel(jobs: &[JobSnapshot], center: Entity<JobCenter>, theme: &Theme) ->
         .map(|job| job_row(job, center.clone(), theme))
         .collect::<Vec<_>>();
     GroupBox::new()
+        .id("jobs-panel")
         .outline()
         .title("任务")
         .child(v_flex().gap_3().children(rows))
@@ -1459,6 +1598,94 @@ fn job_row(job: &JobSnapshot, center: Entity<JobCenter>, theme: &Theme) -> AnyEl
         .child(log_line)
         .child(bar)
         .child(footer)
+        .into_any_element()
+}
+
+fn component_row(
+    artifact: &Artifact,
+    root: &Path,
+    active: bool,
+    any_running: bool,
+    entity: Entity<VSynthApp>,
+    theme: &Theme,
+) -> AnyElement {
+    let muted = theme.muted_foreground;
+    let installed = artifact.is_installed(root);
+    let (status, color) = if active {
+        ("安装中", theme.primary)
+    } else if installed {
+        ("已安装", theme.success)
+    } else {
+        ("未安装", theme.danger)
+    };
+    let detail = if active {
+        "后台安装中，进度见总览 › 任务".to_string()
+    } else if installed {
+        format!(
+            "v{} · tools/{}/{}",
+            artifact.version, artifact.id, artifact.executable
+        )
+    } else {
+        format!(
+            "v{} · {:.1} MB · 下载源 GitHub",
+            artifact.version,
+            artifact.size as f64 / 1_000_000.0
+        )
+    };
+    let label = if active {
+        "取消安装"
+    } else if any_running {
+        "安装中…"
+    } else if installed {
+        "重新安装"
+    } else {
+        "下载并安装"
+    };
+    let artifact = *artifact;
+    let mut button =
+        Button::new(SharedString::from(format!("component-{}", artifact.id))).label(label);
+    if !active && !any_running && !installed {
+        button = button.primary();
+    }
+    let button = button.on_click(move |_, _, cx| {
+        entity.update(cx, |this, cx| {
+            if active {
+                this.cancel_component(cx);
+            } else if !any_running {
+                this.install_component(artifact, cx);
+            }
+        });
+    });
+
+    h_flex()
+        .justify_between()
+        .items_center()
+        .gap_4()
+        .py_2()
+        .border_b_1()
+        .border_color(theme.border)
+        .child(
+            v_flex()
+                .gap_1()
+                .child(div().text_sm().child(artifact.name))
+                .child(div().text_xs().text_color(muted).child(detail)),
+        )
+        .child(
+            h_flex()
+                .items_center()
+                .gap_2()
+                .child(
+                    div()
+                        .px_2()
+                        .py_1()
+                        .rounded(theme.radius)
+                        .bg(color.opacity(0.14))
+                        .text_color(color)
+                        .text_xs()
+                        .child(status),
+                )
+                .child(button),
+        )
         .into_any_element()
 }
 

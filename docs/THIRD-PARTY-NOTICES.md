@@ -45,7 +45,7 @@ feature ships.
 
 | Tool | License |
 |---|---|
-| LibreSVIP 2.9 | Apache-2.0 |
+| LibreSVIP 2.9.2 | Apache-2.0 |
 | FFmpeg | LGPL-2.1-or-later or GPL-2.0-or-later, depending on the build |
 | yt-dlp | Unlicense |
 | ONNX Runtime | MIT |

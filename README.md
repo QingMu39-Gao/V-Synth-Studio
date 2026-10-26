@@ -38,6 +38,12 @@ builds use the directory containing the executable.
 | `data/resources.json` | resource library content |
 | `docs/` | third-party notices and other project documents |
 
+## External components
+
+Settings → External components downloads pinned upstream archives, verifies their
+SHA-256, and installs them under `tools/`. Archives are cached in
+`data/cache/artifacts/`. Both directories are ignored by Git.
+
 ## Third-party assets
 
 JIZURA is vendored from its upstream repository at the commit recorded in

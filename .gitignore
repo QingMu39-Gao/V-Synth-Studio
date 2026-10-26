@@ -2,3 +2,5 @@
 .idea
 
 /data/config.json
+/data/cache/
+/tools/

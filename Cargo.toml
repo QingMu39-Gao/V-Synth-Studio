@@ -11,8 +11,11 @@ open = "5"
 rfd = "0.16"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+sha2 = "0.11"
+ureq = "3"
 urlencoding = "2"
 wry = { version = "0.53.3", package = "lb-wry" }
+zip = { version = "9", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 
 # Windows: GPUI's DirectComposition target must sit below native child windows,
 # otherwise the Wry/WebView2 child is painted behind the GPUI surface (white page).
