@@ -30,6 +30,7 @@ pub struct VSynthApp {
     resource_group: Option<String>,
     webview: Option<Entity<WebView>>,
     webview_error: Option<String>,
+    webview_source: Option<String>,
 }
 
 impl VSynthApp {
@@ -59,6 +60,7 @@ impl VSynthApp {
             resource_group: None,
             webview: None,
             webview_error: None,
+            webview_source: None,
         }
     }
 
@@ -83,7 +85,20 @@ impl VSynthApp {
         if self.webview.is_some() || self.webview_error.is_some() {
             return;
         }
-        let builder = wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO);
+        let builder = match crate::jizura::asset_dir() {
+            Some(root) => {
+                self.webview_source = Some("JIZURA · custom protocol".to_string());
+                wry::WebViewBuilder::new()
+                    .with_custom_protocol(crate::jizura::SCHEME.into(), move |_, request| {
+                        crate::jizura::serve(&root, request)
+                    })
+                    .with_url(crate::jizura::START_URL)
+            }
+            None => {
+                self.webview_source = Some("WebView 验证页（未找到 JIZURA 资源）".to_string());
+                wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO)
+            }
+        };
         match WebView::build(builder, window, cx) {
             Ok(webview) => self.webview = Some(cx.new(|_| webview)),
             Err(error) => self.webview_error = Some(format!("创建 WebView 失败：{error}")),
@@ -426,13 +441,15 @@ impl VSynthApp {
                 .into_any_element()
         };
 
-        v_flex()
+        let mut page = v_flex()
             .size_full()
             .p_6()
             .gap_3()
-            .child(page_header(self.page, muted))
-            .child(body)
-            .into_any_element()
+            .child(page_header(self.page, muted));
+        if let Some(source) = self.webview_source.clone() {
+            page = page.child(div().text_xs().text_color(muted).child(source));
+        }
+        page.child(body).into_any_element()
     }
 
     fn render_dashboard(&self, cx: &mut Context<Self>) -> impl IntoElement {

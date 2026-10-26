@@ -2,6 +2,7 @@
 
 mod app;
 mod config;
+mod jizura;
 mod pages;
 mod resources;
 mod tools;
