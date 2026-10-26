@@ -7,8 +7,10 @@ use gpui_kit::*;
 use gpui_webview::WebView;
 
 use crate::config::{Config, ThemePreference};
+use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
+use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::tools::{Tool, ToolStatus};
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
@@ -31,6 +33,8 @@ pub struct VSynthApp {
     webview: Option<Entity<WebView>>,
     webview_error: Option<String>,
     webview_source: Option<String>,
+    job_center: Entity<JobCenter>,
+    tool_job: Option<u64>,
 }
 
 impl VSynthApp {
@@ -40,6 +44,7 @@ impl VSynthApp {
         download_input: Entity<InputState>,
         ext_input: Entity<InputState>,
         resource_search: Entity<InputState>,
+        job_center: Entity<JobCenter>,
     ) -> Self {
         let (resources, resource_error) = match Resources::load() {
             Ok(resources) => (resources, None),
@@ -61,6 +66,8 @@ impl VSynthApp {
             webview: None,
             webview_error: None,
             webview_source: None,
+            job_center,
+            tool_job: None,
         }
     }
 
@@ -137,14 +144,30 @@ impl VSynthApp {
 
     fn refresh_tools_button(&self, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
+        let running = self
+            .tool_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let label = if running {
+            "取消检测"
+        } else if self.scanning_tools {
+            "检测中…"
+        } else {
+            "重新检测"
+        };
+        let tool_job = self.tool_job;
         Button::new("tools-refresh")
-            .label(if self.scanning_tools {
-                "检测中…"
-            } else {
-                "重新检测"
-            })
+            .label(label)
             .on_click(move |_, _, cx| {
-                entity.update(cx, |this, cx| this.refresh_tools(cx));
+                entity.update(cx, |this, cx| {
+                    if running {
+                        if let Some(id) = tool_job {
+                            this.job_center.read(cx).cancel(id);
+                        }
+                    } else {
+                        this.refresh_tools(cx);
+                    }
+                    cx.notify();
+                });
             })
             .into_any_element()
     }
@@ -155,17 +178,41 @@ impl VSynthApp {
         }
         self.scanning_tools = true;
         let root = crate::config::app_root();
+        let job = self.job_center.read(cx).start("检测外部工具", move |ctx| {
+            crate::tools::detect_with(
+                &root,
+                |fraction, message| {
+                    ctx.log(message);
+                    ctx.progress(fraction, message);
+                },
+                || ctx.is_canceled(),
+            )
+        });
+        self.tool_job = Some(job.id);
+        let job_id = job.id;
         cx.spawn(async move |this, cx| {
-            let status = cx
-                .background_spawn(async move { crate::tools::detect(&root) })
-                .await;
-            if let Some(this) = this.upgrade() {
-                this.update(cx, |this, cx| {
-                    this.tools = Some(status);
-                    this.scanning_tools = false;
-                    cx.notify();
-                });
-            }
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                this.scanning_tools = false;
+                if this.tool_job == Some(job_id) {
+                    this.tool_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(status)) => {
+                        this.tools = Some(status);
+                        this.notice = None;
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.notice = Some("环境检测已取消".to_string());
+                    }
+                    Err(_) => this.notice = Some("环境检测中断".to_string()),
+                }
+                cx.notify();
+            });
         })
         .detach();
         cx.notify();
@@ -458,18 +505,19 @@ impl VSynthApp {
     }
 
     fn render_dashboard(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let jobs = self.job_center.read(cx).snapshots().to_vec();
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
         let entity = cx.entity();
 
-        let tools_ready = self
-            .tools
-            .as_ref()
-            .map(ToolStatus::ready_count)
-            .map(|count| format!("{count}/3 就绪"))
-            .unwrap_or_else(|| "检测中…".to_string());
+        let tools_ready = match self.tools.as_ref() {
+            Some(tools) => format!("{}/3 就绪", tools.ready_count()),
+            None if self.scanning_tools => "检测中…".to_string(),
+            None => "未检测".to_string(),
+        };
 
+        let jobs_element = jobs_panel(&jobs, self.job_center.clone(), theme);
         let quick_buttons = Page::ALL
             .into_iter()
             .filter(|page| !matches!(page, Page::Dashboard | Page::Settings))
@@ -555,6 +603,7 @@ impl VSynthApp {
                         ),
                 ),
             )
+            .child(jobs_element)
             .child(
                 GroupBox::new()
                     .title("快速入口")
@@ -1312,6 +1361,105 @@ fn sponsor_card(
                 .text_color(theme.muted_foreground)
                 .child(caption),
         )
+}
+
+fn jobs_panel(jobs: &[JobSnapshot], center: Entity<JobCenter>, theme: &Theme) -> AnyElement {
+    if jobs.is_empty() {
+        return div().into_any_element();
+    }
+    let rows = jobs
+        .iter()
+        .take(3)
+        .map(|job| job_row(job, center.clone(), theme))
+        .collect::<Vec<_>>();
+    GroupBox::new()
+        .outline()
+        .title("任务")
+        .child(v_flex().gap_3().children(rows))
+        .into_any_element()
+}
+
+fn job_row(job: &JobSnapshot, center: Entity<JobCenter>, theme: &Theme) -> AnyElement {
+    let muted = theme.muted_foreground;
+    let border = theme.border;
+    let (status, color) = match job.status {
+        JobStatus::Running => ("进行中", theme.primary),
+        JobStatus::Succeeded => ("完成", theme.success),
+        JobStatus::Failed => ("失败", theme.danger),
+        JobStatus::Canceled => ("已取消", muted),
+    };
+    let bar = match job.progress {
+        Some(fraction) => div()
+            .h(px(4.))
+            .w_full()
+            .rounded(px(2.))
+            .bg(border)
+            .child(
+                div()
+                    .h_full()
+                    .w(relative(fraction.clamp(0.0, 1.0)))
+                    .rounded(px(2.))
+                    .bg(color),
+            )
+            .into_any_element(),
+        None => div().into_any_element(),
+    };
+    let percent = job
+        .progress
+        .map(|fraction| format!("{:.0}%", fraction * 100.0))
+        .unwrap_or_default();
+    let elapsed = job.started.elapsed().as_secs();
+    let detail = if percent.is_empty() {
+        format!("{elapsed}s")
+    } else {
+        format!("{percent} · {elapsed}s")
+    };
+    let log_line = match job.log.last().filter(|line| line.as_str() != job.message) {
+        Some(line) => div()
+            .text_xs()
+            .text_color(muted)
+            .child(line.clone())
+            .into_any_element(),
+        None => div().into_any_element(),
+    };
+    let mut footer = h_flex()
+        .items_center()
+        .justify_between()
+        .child(div().text_xs().text_color(muted).child(detail));
+    if job.status.is_running() {
+        let center = center.clone();
+        let id = job.id;
+        footer = footer.child(
+            Button::new(SharedString::from(format!("job-cancel-{id}")))
+                .label("取消")
+                .compact()
+                .on_click(move |_, _, cx| {
+                    center.update(cx, |center, cx| {
+                        center.cancel(id);
+                        cx.notify();
+                    });
+                }),
+        );
+    }
+
+    v_flex()
+        .gap_2()
+        .p_3()
+        .rounded(theme.radius)
+        .border_1()
+        .border_color(border)
+        .child(
+            h_flex()
+                .items_center()
+                .justify_between()
+                .child(div().text_sm().child(job.title.clone()))
+                .child(div().text_xs().text_color(color).child(status)),
+        )
+        .child(div().text_xs().text_color(muted).child(job.message.clone()))
+        .child(log_line)
+        .child(bar)
+        .child(footer)
+        .into_any_element()
 }
 
 fn tool_row(

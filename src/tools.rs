@@ -29,15 +29,28 @@ impl ToolStatus {
     }
 }
 
-pub fn detect(root: &Path) -> ToolStatus {
+pub fn detect_with<F, C>(root: &Path, mut progress: F, canceled: C) -> Result<ToolStatus, String>
+where
+    F: FnMut(Option<f32>, &str),
+    C: Fn() -> bool,
+{
+    progress(Some(0.05), "查找 Python");
+    if canceled() {
+        return Err("检测已取消".to_string());
+    }
     let python_path = find_binary("python", &[])
         .or_else(|| find_binary("python3", &[]))
         .or_else(|| find_binary("py", &[]));
+    progress(Some(0.2), "探测 Python");
     let python = match &python_path {
         Some(path) => probe(path, &["--version"], VersionStyle::Plain),
         None => Tool::default(),
     };
+    if canceled() {
+        return Err("检测已取消".to_string());
+    }
 
+    progress(Some(0.4), "探测 ffmpeg");
     let ffmpeg = match find_binary(
         "ffmpeg",
         &[
@@ -48,7 +61,11 @@ pub fn detect(root: &Path) -> ToolStatus {
         Some(path) => probe(&path, &["-version"], VersionStyle::Ffmpeg),
         None => Tool::default(),
     };
+    if canceled() {
+        return Err("检测已取消".to_string());
+    }
 
+    progress(Some(0.7), "探测 yt-dlp");
     let ytdlp = match find_binary("yt-dlp", &[root.join("tools")]) {
         Some(path) => probe(&path, &["--version"], VersionStyle::Plain),
         None => python_path
@@ -56,12 +73,16 @@ pub fn detect(root: &Path) -> ToolStatus {
             .and_then(probe_python_ytdlp)
             .unwrap_or_default(),
     };
+    if canceled() {
+        return Err("检测已取消".to_string());
+    }
 
-    ToolStatus {
+    progress(Some(1.0), "检测完成");
+    Ok(ToolStatus {
         ffmpeg,
         ytdlp,
         python,
-    }
+    })
 }
 
 fn probe_python_ytdlp(python: &Path) -> Option<Tool> {
@@ -174,6 +195,12 @@ mod tests {
             parse_version("2026.08.19\r\n", VersionStyle::Plain).as_deref(),
             Some("2026.08.19")
         );
+    }
+
+    #[test]
+    fn cancellation_is_checked_before_probing() {
+        let error = detect_with(std::env::temp_dir().as_path(), |_, _| {}, || true).unwrap_err();
+        assert_eq!(error, "检测已取消");
     }
 
     #[test]

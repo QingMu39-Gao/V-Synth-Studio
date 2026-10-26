@@ -5,8 +5,10 @@ mod app_assets;
 mod config;
 mod jizura;
 mod jizura_save;
+mod jobs;
 mod pages;
 mod resources;
+mod services;
 mod tools;
 
 use gpui_kit::component::TitleBar;
@@ -40,6 +42,7 @@ fn main() {
                     cx.new(|cx| InputState::new(window, cx).default_value(config.ext_dir.clone()));
                 let resource_search =
                     cx.new(|cx| InputState::new(window, cx).placeholder("搜索名称、描述、标签…"));
+                let job_center = cx.new(jobs::JobCenter::new);
                 let view = cx.new(|_| {
                     app::VSynthApp::new(
                         config.clone(),
@@ -47,6 +50,7 @@ fn main() {
                         download_input,
                         ext_input,
                         resource_search,
+                        job_center,
                     )
                 });
                 view.update(cx, |this, cx| {
