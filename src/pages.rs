@@ -2,6 +2,8 @@
 
 use gpui_kit::assets::IconName;
 
+use crate::i18n::Strings;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Page {
     Dashboard,
@@ -45,47 +47,47 @@ impl Page {
         }
     }
 
-    pub fn title(self) -> &'static str {
+    pub fn title(self, s: &Strings) -> &'static str {
         match self {
-            Self::Dashboard => "总览",
-            Self::Convert => "工程转换",
-            Self::Video => "视频解析",
-            Self::Svsep => "音轨分离",
-            Self::Midi => "人声转 MIDI",
-            Self::Audio => "音频工具",
-            Self::Lyrics => "网易云专栏",
-            Self::Pv => "文字 PV",
-            Self::Resources => "资源库",
-            Self::Settings => "设置",
+            Self::Dashboard => s.page_dashboard,
+            Self::Convert => s.page_convert,
+            Self::Video => s.page_video,
+            Self::Svsep => s.page_svsep,
+            Self::Midi => s.page_midi,
+            Self::Audio => s.page_audio,
+            Self::Lyrics => s.page_lyrics,
+            Self::Pv => s.page_pv,
+            Self::Resources => s.page_resources,
+            Self::Settings => s.page_settings,
         }
     }
 
-    pub fn subtitle(self) -> &'static str {
+    pub fn subtitle(self, s: &Strings) -> &'static str {
         match self {
-            Self::Dashboard => "环境检测与常用入口",
-            Self::Convert => "把工程转到另一个编辑器",
-            Self::Video => "B 站 / YouTube 等平台的 MV 下载",
-            Self::Svsep => "在线 MVSEP / 本地引擎，拆人声与伴奏",
-            Self::Midi => "干声扒谱：音符起止与音高，导出 .mid",
-            Self::Audio => "格式转换 / 裁剪 / 变调变速",
-            Self::Lyrics => "网易云搜词，导出 LRC · SRT，下载封面 / 歌曲",
-            Self::Pv => "把歌词做成动态歌词视频",
-            Self::Resources => "立绘、声库、插件、音源站（仅链接）",
-            Self::Settings => "外观、路径、外部工具",
+            Self::Dashboard => s.sub_dashboard,
+            Self::Convert => s.sub_convert,
+            Self::Video => s.sub_video,
+            Self::Svsep => s.sub_svsep,
+            Self::Midi => s.sub_midi,
+            Self::Audio => s.sub_audio,
+            Self::Lyrics => s.sub_lyrics,
+            Self::Pv => s.sub_pv,
+            Self::Resources => s.sub_resources,
+            Self::Settings => s.sub_settings,
         }
     }
 
-    pub fn group(self) -> &'static str {
+    pub fn group(self, s: &Strings) -> &'static str {
         match self {
-            Self::Dashboard | Self::Convert => "工作台",
+            Self::Dashboard | Self::Convert => s.group_workspace,
             Self::Video
             | Self::Svsep
             | Self::Midi
             | Self::Audio
             | Self::Lyrics
             | Self::Pv
-            | Self::Resources => "素材获取",
-            Self::Settings => "系统",
+            | Self::Resources => s.group_assets,
+            Self::Settings => s.group_system,
         }
     }
 

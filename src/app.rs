@@ -9,6 +9,7 @@ use std::path::Path;
 use gpui_webview::WebView;
 
 use crate::config::{Config, ThemePreference};
+use crate::i18n::{self, Language, Strings};
 use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
@@ -42,6 +43,10 @@ pub struct VSynthApp {
 }
 
 impl VSynthApp {
+    fn text(&self) -> &'static Strings {
+        i18n::strings(self.config.language)
+    }
+
     pub fn new(
         config: Config,
         output_input: Entity<InputState>,
@@ -99,9 +104,10 @@ impl VSynthApp {
         }
         let jizura_root = crate::jizura::asset_dir();
         let has_jizura = jizura_root.is_some();
+        let s = self.text();
         let mut builder = match jizura_root {
             Some(root) => {
-                self.webview_source = Some("JIZURA · custom protocol".to_string());
+                self.webview_source = Some(s.custom_protocol.to_string());
                 wry::WebViewBuilder::new()
                     .with_custom_protocol(crate::jizura::SCHEME.into(), move |_, request| {
                         crate::jizura::serve(&root, request)
@@ -109,7 +115,7 @@ impl VSynthApp {
                     .with_url(crate::jizura::START_URL)
             }
             None => {
-                self.webview_source = Some("WebView 验证页（未找到 JIZURA 资源）".to_string());
+                self.webview_source = Some(s.demo_fallback.to_string());
                 wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO)
             }
         };
@@ -118,7 +124,9 @@ impl VSynthApp {
         }
         match WebView::build(builder, window, cx) {
             Ok(webview) => self.webview = Some(cx.new(|_| webview)),
-            Err(error) => self.webview_error = Some(format!("创建 WebView 失败：{error}")),
+            Err(error) => {
+                self.webview_error = Some(format!("{}：{error}", s.webview_failed));
+            }
         }
     }
 
@@ -149,15 +157,16 @@ impl VSynthApp {
 
     fn refresh_tools_button(&self, cx: &mut Context<Self>) -> AnyElement {
         let entity = cx.entity();
+        let s = self.text();
         let running = self
             .tool_job
             .is_some_and(|id| self.job_center.read(cx).is_running(id));
         let label = if running {
-            "取消检测"
+            s.cancel
         } else if self.scanning_tools {
-            "检测中…"
+            s.checking
         } else {
-            "重新检测"
+            s.refresh_tools
         };
         let tool_job = self.tool_job;
         Button::new("tools-refresh")
@@ -183,16 +192,20 @@ impl VSynthApp {
         }
         self.scanning_tools = true;
         let root = crate::config::app_root();
-        let job = self.job_center.read(cx).start("检测外部工具", move |ctx| {
-            crate::tools::detect_with(
-                &root,
-                |fraction, message| {
-                    ctx.log(message);
-                    ctx.progress(fraction, message);
-                },
-                || ctx.is_canceled(),
-            )
-        });
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.detect_tools_job, move |ctx| {
+                crate::tools::detect_with(
+                    &root,
+                    |fraction, message| {
+                        ctx.log(message);
+                        ctx.progress(fraction, message);
+                    },
+                    || ctx.is_canceled(),
+                )
+            });
         self.tool_job = Some(job.id);
         let job_id = job.id;
         cx.spawn(async move |this, cx| {
@@ -212,9 +225,9 @@ impl VSynthApp {
                     }
                     Ok(JobOutcome::Failed(error)) => this.notice = Some(error),
                     Ok(JobOutcome::Canceled) => {
-                        this.notice = Some("环境检测已取消".to_string());
+                        this.notice = Some(this.text().check_canceled.to_string());
                     }
-                    Err(_) => this.notice = Some("环境检测中断".to_string()),
+                    Err(_) => this.notice = Some(this.text().check_interrupted.to_string()),
                 }
                 cx.notify();
             });
@@ -231,12 +244,10 @@ impl VSynthApp {
             return;
         }
         let root = crate::config::app_root();
-        let job = self
-            .job_center
-            .read(cx)
-            .start(format!("安装 {}", artifact.name), move |ctx| {
-                crate::services::artifacts::install(&artifact, &root, &ctx)
-            });
+        let title = format!("{} {}", self.text().install_job, artifact.name);
+        let job = self.job_center.read(cx).start(title, move |ctx| {
+            crate::services::artifacts::install(&artifact, &root, &ctx)
+        });
         self.component_job = Some((artifact.id, job.id));
         let job_id = job.id;
         let artifact_id = artifact.id;
@@ -253,9 +264,9 @@ impl VSynthApp {
                     Ok(JobOutcome::Done(())) => this.notice = None,
                     Ok(JobOutcome::Failed(error)) => this.notice = Some(error),
                     Ok(JobOutcome::Canceled) => {
-                        this.notice = Some("组件安装已取消".to_string());
+                        this.notice = Some(this.text().install_canceled.to_string());
                     }
-                    Err(_) => this.notice = Some("组件安装中断".to_string()),
+                    Err(_) => this.notice = Some(this.text().install_interrupted.to_string()),
                 }
                 cx.notify();
             });
@@ -289,6 +300,12 @@ impl VSynthApp {
     ) {
         apply_theme(preference, window, cx);
         self.config.theme = preference;
+        self.notice = self.config.save().err();
+        cx.notify();
+    }
+
+    fn set_language(&mut self, language: Language, cx: &mut Context<Self>) {
+        self.config.language = language;
         self.notice = self.config.save().err();
         cx.notify();
     }
@@ -338,12 +355,13 @@ impl VSynthApp {
         let accent = theme.sidebar_accent;
         let accent_foreground = theme.sidebar_accent_foreground;
         let radius = theme.radius;
+        let s = self.text();
 
         let mut items = Vec::new();
         let mut last_group = "";
         for page in Page::ALL {
-            if page.group() != last_group {
-                last_group = page.group();
+            if page.group(s) != last_group {
+                last_group = page.group(s);
                 items.push(
                     div()
                         .pt_3()
@@ -351,7 +369,7 @@ impl VSynthApp {
                         .px_2()
                         .text_xs()
                         .text_color(muted)
-                        .child(page.group())
+                        .child(page.group(s))
                         .into_any_element(),
                 );
             }
@@ -391,7 +409,7 @@ impl VSynthApp {
                     .gap_2()
                     .border_t_1()
                     .border_color(border)
-                    .child(div().text_xs().text_color(muted).child("主题"))
+                    .child(div().text_xs().text_color(muted).child(s.theme))
                     .child(h_flex().gap_1().children(theme_buttons)),
             )
     }
@@ -418,7 +436,7 @@ impl VSynthApp {
             .cursor_pointer()
             .text_color(foreground)
             .child(Icon::new(page.icon()).w(px(16.)).h(px(16.)))
-            .child(div().text_sm().child(page.title()));
+            .child(div().text_sm().child(page.title(self.text())));
 
         let row = if active {
             row.bg(accent).text_color(accent_foreground)
@@ -441,11 +459,7 @@ impl VSynthApp {
         let selected = self.config.theme == preference;
         let scope = if compact { "sidebar" } else { "page" };
         let id = SharedString::from(format!("theme-{scope}-{}", preference.key()));
-        let label = if compact {
-            preference.short_label()
-        } else {
-            preference.label()
-        };
+        let label = theme_label(preference, self.text());
 
         let mut button = Button::new(id).label(label);
         if compact {
@@ -537,7 +551,7 @@ impl VSynthApp {
             h_flex()
                 .child(
                     Button::new("pv-init")
-                        .label("打开文字 PV 编辑器")
+                        .label(self.text().open_editor)
                         .primary()
                         .on_click(move |_, window, cx| {
                             entity.update(cx, |this, cx| this.ensure_webview(window, cx));
@@ -546,11 +560,12 @@ impl VSynthApp {
                 .into_any_element()
         };
 
-        let mut page = v_flex()
-            .size_full()
-            .p_6()
-            .gap_3()
-            .child(page_header(self.page, muted));
+        let mut page =
+            v_flex()
+                .size_full()
+                .p_6()
+                .gap_3()
+                .child(page_header(self.page, muted, self.text()));
         if let Some(source) = self.webview_source.clone() {
             page = page.child(div().text_xs().text_color(muted).child(source));
         }
@@ -563,21 +578,22 @@ impl VSynthApp {
         let muted = theme.muted_foreground;
         let border = theme.border;
         let entity = cx.entity();
+        let s = self.text();
 
         let tools_ready = match self.tools.as_ref() {
-            Some(tools) => format!("{}/3 就绪", tools.ready_count()),
-            None if self.scanning_tools => "检测中…".to_string(),
-            None => "未检测".to_string(),
+            Some(tools) => format!("{}/3 {}", tools.ready_count(), s.ready),
+            None if self.scanning_tools => s.checking.to_string(),
+            None => s.unchecked.to_string(),
         };
 
-        let jobs_element = jobs_panel(&jobs, self.job_center.clone(), theme);
+        let jobs_element = jobs_panel(&jobs, self.job_center.clone(), theme, s);
         let quick_buttons = Page::ALL
             .into_iter()
             .filter(|page| !matches!(page, Page::Dashboard | Page::Settings))
             .map(|page| {
                 let entity = entity.clone();
                 Button::new(SharedString::from(format!("quick-{}", page.id())))
-                    .label(page.title())
+                    .label(page.title(self.text()))
                     .on_click(move |_, window, cx| {
                         entity.update(cx, |this, cx| this.set_page(page, window, cx));
                     })
@@ -587,48 +603,53 @@ impl VSynthApp {
 
         v_flex()
             .gap_4()
-            .child(page_header(self.page, muted))
+            .child(page_header(self.page, muted, self.text()))
             .child(
                 GroupBox::new()
                     .id("dashboard-runtime")
                     .outline()
-                    .title("运行环境")
+                    .title(s.runtime)
                     .child(
                         v_flex()
                             .gap_1()
                             .child(info_row(
-                                "版本",
+                                s.version,
                                 env!("CARGO_PKG_VERSION").to_string(),
                                 muted,
                                 border,
                             ))
                             .child(info_row(
-                                "平台",
+                                s.platform,
                                 format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH),
                                 muted,
                                 border,
                             ))
-                            .child(info_row("配置", config_path_display(), muted, border))
                             .child(info_row(
-                                "主题",
-                                self.config.theme.label().to_string(),
+                                s.config_file,
+                                config_path_display(),
                                 muted,
                                 border,
                             ))
                             .child(info_row(
-                                "界面框架",
+                                s.theme,
+                                theme_label(self.config.theme, s).to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row(
+                                s.framework,
                                 "gpui-kit 0.8".to_string(),
                                 muted,
                                 border,
                             ))
-                            .child(info_row("外部工具", tools_ready, muted, border)),
+                            .child(info_row(s.external_tools, tools_ready, muted, border)),
                     ),
             )
             .child(
                 GroupBox::new()
                     .id("dashboard-tools")
                     .outline()
-                    .title("外部工具")
+                    .title(s.external_tools)
                     .child(
                         v_flex()
                             .gap_2()
@@ -637,30 +658,32 @@ impl VSynthApp {
                                 self.tools.as_ref().map(|tools| &tools.ffmpeg),
                                 self.scanning_tools,
                                 theme,
+                                s,
                             ))
                             .child(tool_row(
                                 "yt-dlp",
                                 self.tools.as_ref().map(|tools| &tools.ytdlp),
                                 self.scanning_tools,
                                 theme,
+                                s,
                             ))
                             .child(tool_row(
                                 "python",
                                 self.tools.as_ref().map(|tools| &tools.python),
                                 self.scanning_tools,
                                 theme,
+                                s,
                             ))
                             .child(
                                 h_flex()
                                     .items_center()
                                     .gap_3()
                                     .child(self.refresh_tools_button(cx))
-                                    .child(
-                                        div()
-                                            .text_xs()
-                                            .text_color(muted)
-                                            .child(format!("目录：{}", tools_dir_display())),
-                                    ),
+                                    .child(div().text_xs().text_color(muted).child(format!(
+                                        "{}: {}",
+                                        s.tools_dir,
+                                        tools_dir_display()
+                                    ))),
                             ),
                     ),
             )
@@ -668,7 +691,7 @@ impl VSynthApp {
             .child(
                 GroupBox::new()
                     .id("dashboard-quick")
-                    .title("快速入口")
+                    .title(s.quick_entry)
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
             )
     }
@@ -678,9 +701,31 @@ impl VSynthApp {
             let theme = cx.theme();
             (theme.muted_foreground, theme.border)
         };
+        let s = self.text();
         let theme_buttons = ThemePreference::ALL
             .into_iter()
             .map(|preference| self.render_theme_button(preference, false, cx))
+            .collect::<Vec<_>>();
+        let language_buttons = Language::ALL
+            .iter()
+            .map(|language| {
+                let language = *language;
+                let selected = self.config.language == language;
+                let entity = cx.entity();
+                let mut button =
+                    Button::new(SharedString::from(format!("lang-{}", language.code())))
+                        .label(language.label());
+                button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| this.set_language(language, cx));
+                    })
+                    .into_any_element()
+            })
             .collect::<Vec<_>>();
         let refresh_button = self.refresh_tools_button(cx);
         let sponsor_theme = cx.theme();
@@ -696,7 +741,7 @@ impl VSynthApp {
                 div()
                     .text_sm()
                     .text_color(muted)
-                    .child("当前平台暂无可用组件。")
+                    .child(s.no_components)
                     .into_any_element(),
             ]
         } else {
@@ -711,6 +756,7 @@ impl VSynthApp {
                         component_running,
                         entity.clone(),
                         component_theme,
+                        s,
                     )
                 })
                 .collect::<Vec<_>>()
@@ -718,229 +764,220 @@ impl VSynthApp {
 
         v_flex()
             .gap_4()
-            .child(page_header(self.page, muted))
+            .child(page_header(self.page, muted, self.text()))
             .child(
                 GroupBox::new()
                     .id("settings-appearance")
                     .outline()
-                    .title("外观")
+                    .title(s.appearance)
                     .child(
-                    v_flex()
-                        .gap_3()
-                        .child(div().text_sm().child("主题"))
-                        .child(h_flex().gap_2().children(theme_buttons))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("选择后立即应用，并写入 data/config.json。"),
-                        ),
-                ),
+                        v_flex()
+                            .gap_3()
+                            .child(div().text_sm().child(s.theme))
+                            .child(h_flex().gap_2().children(theme_buttons))
+                            .child(div().text_xs().text_color(muted).child(s.theme_hint)),
+                    ),
             )
             .child(
                 GroupBox::new()
                     .id("settings-paths")
                     .outline()
-                    .title("路径")
+                    .title(s.paths)
                     .child(
-                    v_flex()
-                        .gap_3()
-                        .child(path_field(
-                            "输出目录",
-                            &self.output_input,
-                            "留空 = 系统下载目录",
-                            muted,
-                        ))
-                        .child(path_field(
-                            "下载目录",
-                            &self.download_input,
-                            "留空 = 系统下载目录",
-                            muted,
-                        ))
-                        .child(path_field(
-                            "扩展包目录",
-                            &self.ext_input,
-                            "留空 = data 目录；扩展包体积大，建议换到别的盘",
-                            muted,
-                        ))
-                        .child(info_row("工具目录", tools_dir_display(), muted, border))
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .gap_3()
-                                .child(
-                                    Button::new("save-paths")
-                                        .label("保存路径")
-                                        .primary()
-                                        .on_click({
-                                            let entity = cx.entity();
-                                            move |_, _, cx| {
-                                                entity.update(cx, |this, cx| this.save_paths(cx));
-                                            }
-                                        }),
-                                )
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .child("保存后写入 data/config.json。"),
-                                ),
-                        ),
-                ),
+                        v_flex()
+                            .gap_3()
+                            .child(path_field(
+                                s.output_dir,
+                                &self.output_input,
+                                s.output_hint,
+                                muted,
+                                s,
+                            ))
+                            .child(path_field(
+                                s.download_dir,
+                                &self.download_input,
+                                s.download_hint,
+                                muted,
+                                s,
+                            ))
+                            .child(path_field(s.ext_dir, &self.ext_input, s.ext_hint, muted, s))
+                            .child(info_row(s.tools_dir, tools_dir_display(), muted, border))
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(
+                                        Button::new("save-paths")
+                                            .label(s.save_paths)
+                                            .primary()
+                                            .on_click({
+                                                let entity = cx.entity();
+                                                move |_, _, cx| {
+                                                    entity
+                                                        .update(cx, |this, cx| this.save_paths(cx));
+                                                }
+                                            }),
+                                    )
+                                    .child(div().text_xs().text_color(muted).child(s.save_hint)),
+                            ),
+                    ),
             )
             .child(
                 GroupBox::new()
                     .id("settings-tools")
                     .outline()
-                    .title("外部工具")
+                    .title(s.external_tools)
                     .child(
-                    v_flex()
-                        .gap_2()
-                        .child(tool_row(
-                            "ffmpeg",
-                            self.tools.as_ref().map(|tools| &tools.ffmpeg),
-                            self.scanning_tools,
-                            cx.theme(),
-                        ))
-                        .child(tool_row(
-                            "yt-dlp",
-                            self.tools.as_ref().map(|tools| &tools.ytdlp),
-                            self.scanning_tools,
-                            cx.theme(),
-                        ))
-                        .child(tool_row(
-                            "python",
-                            self.tools.as_ref().map(|tools| &tools.python),
-                            self.scanning_tools,
-                            cx.theme(),
-                        ))
-                        .child(
-                            h_flex()
-                                .items_center()
-                                .gap_3()
-                                .child(refresh_button)
-                                .child(
-                                    div()
-                                        .text_xs()
-                                        .text_color(muted)
-                                        .child(format!("目录：{}", tools_dir_display())),
-                                ),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("缺少 ffmpeg / yt-dlp 时，音频与下载相关功能不可用；请重新解压程序包补齐 tools/。"),
-                        ),
-                ),
+                        v_flex()
+                            .gap_2()
+                            .child(tool_row(
+                                "ffmpeg",
+                                self.tools.as_ref().map(|tools| &tools.ffmpeg),
+                                self.scanning_tools,
+                                cx.theme(),
+                                s,
+                            ))
+                            .child(tool_row(
+                                "yt-dlp",
+                                self.tools.as_ref().map(|tools| &tools.ytdlp),
+                                self.scanning_tools,
+                                cx.theme(),
+                                s,
+                            ))
+                            .child(tool_row(
+                                "python",
+                                self.tools.as_ref().map(|tools| &tools.python),
+                                self.scanning_tools,
+                                cx.theme(),
+                                s,
+                            ))
+                            .child(h_flex().items_center().gap_3().child(refresh_button).child(
+                                div().text_xs().text_color(muted).child(format!(
+                                    "{}: {}",
+                                    s.tools_dir,
+                                    tools_dir_display()
+                                )),
+                            ))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.missing_tools_hint),
+                            ),
+                    ),
             )
             .child(
                 GroupBox::new()
                     .id("settings-components")
                     .outline()
-                    .title("外部组件")
+                    .title(s.components)
                     .child(
-                    v_flex()
-                        .gap_2()
-                        .children(component_rows)
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("安装包先校验 SHA-256，再解压到 tools/；缓存位于 data/cache/artifacts/。"),
-                        ),
-                ),
+                        v_flex()
+                            .gap_2()
+                            .children(component_rows)
+                            .child(div().text_xs().text_color(muted).child(s.component_hint)),
+                    ),
             )
             .child(
                 GroupBox::new()
                     .id("settings-config")
                     .outline()
-                    .title("配置")
+                    .title(s.config)
                     .child(
-                    v_flex()
-                        .gap_1()
-                        .child(info_row("文件", config_path_display(), muted, border))
-                        .child(info_row(
-                            "当前主题",
-                            self.config.theme.label().to_string(),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row(
-                            "语言",
-                            "简体中文".to_string(),
-                            muted,
-                            border,
-                        )),
-                ),
+                        v_flex()
+                            .gap_1()
+                            .child(info_row(s.file, config_path_display(), muted, border))
+                            .child(info_row(
+                                s.current_theme,
+                                theme_label(self.config.theme, s).to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .child(div().text_xs().text_color(muted).child(s.language))
+                                    .child(h_flex().gap_2().children(language_buttons)),
+                            ),
+                    ),
             )
             .child(
                 GroupBox::new()
                     .id("settings-sponsor")
                     .outline()
-                    .title("赞助")
+                    .title(s.sponsor)
                     .child(
-                    v_flex()
-                        .gap_3()
-                        .child(
-                            div()
-                                .max_w(px(560.))
-                                .text_sm()
-                                .text_color(muted)
-                                .child("软件的开发与运营几乎得靠你们赞助了。作者只是个学生，拿不出太多钱为爱发电，抱歉。有能力的希望可以赞助一下，记得备注 ID，会同步到感谢名单，谢谢！"),
-                        )
-                        .child(
-                            h_flex()
-                                .gap_4()
-                                .children([
-                                    sponsor_card("img/sponsor.jpg", "微信", 180., 180., sponsor_theme),
-                                    sponsor_card("img/sponsor-alipay.jpg", "支付宝", 120., 180., sponsor_theme),
-                                ]),
-                        )
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("用对应应用扫码；二维码保持白底是为了摄像头识别。"),
-                        ),
-                ),
+                        v_flex()
+                            .gap_3()
+                            .child(
+                                div()
+                                    .max_w(px(560.))
+                                    .text_sm()
+                                    .text_color(muted)
+                                    .child(s.sponsor_text),
+                            )
+                            .child(h_flex().gap_4().children([
+                                sponsor_card(
+                                    "img/sponsor.jpg",
+                                    s.wechat,
+                                    180.,
+                                    180.,
+                                    sponsor_theme,
+                                ),
+                                sponsor_card(
+                                    "img/sponsor-alipay.jpg",
+                                    s.alipay,
+                                    120.,
+                                    180.,
+                                    sponsor_theme,
+                                ),
+                            ]))
+                            .child(div().text_xs().text_color(muted).child(s.sponsor_hint)),
+                    ),
             )
             .child(
                 GroupBox::new()
                     .id("settings-about")
                     .outline()
-                    .title("关于")
+                    .title(s.about)
                     .child(
-                    v_flex()
-                        .gap_1()
-                        .child(info_row(
-                            "程序版本",
-                            env!("CARGO_PKG_VERSION").to_string(),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row(
-                            "运行环境",
-                            format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH),
-                            muted,
-                            border,
-                        ))
-                        .child(info_row("许可证", "GPL-3.0-only".to_string(), muted, border))
-                        .child(info_row("作者", "QingMu39".to_string(), muted, border))
-                        .child(div().pt_2().text_xs().text_color(muted).child("第三方组件"))
-                        .child(bullet_line("LibreSVIP 2.9.2 · Apache-2.0"))
-                        .child(bullet_line("FFmpeg · LGPL / GPL（随平台不同）"))
-                        .child(bullet_line("yt-dlp · Unlicense"))
-                        .child(bullet_line("JIZURA v0.10.1 · MIT"))
-                        .child(bullet_line("ONNX Runtime / ort · MIT"))
-                        .child(bullet_line("gpui-kit 0.8 / GPUI · Apache-2.0"))
-                        .child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child("完整清单见 docs/THIRD-PARTY-NOTICES.md。"),
-                        ),
-                ),
+                        v_flex()
+                            .gap_1()
+                            .child(info_row(
+                                s.version,
+                                env!("CARGO_PKG_VERSION").to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row(
+                                s.runtime,
+                                format!("{} / {}", std::env::consts::OS, std::env::consts::ARCH),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row(
+                                s.license,
+                                "GPL-3.0-only".to_string(),
+                                muted,
+                                border,
+                            ))
+                            .child(info_row(s.author, "QingMu39".to_string(), muted, border))
+                            .child(
+                                div()
+                                    .pt_2()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.third_party),
+                            )
+                            .child(bullet_line("LibreSVIP 2.9.2 · Apache-2.0"))
+                            .child(bullet_line("FFmpeg · LGPL / GPL（随平台不同）"))
+                            .child(bullet_line("yt-dlp · Unlicense"))
+                            .child(bullet_line("JIZURA v0.10.1 · MIT"))
+                            .child(bullet_line("ONNX Runtime / ort · MIT"))
+                            .child(bullet_line("gpui-kit 0.8 / GPUI · Apache-2.0"))
+                            .child(div().text_xs().text_color(muted).child(s.third_party_full)),
+                    ),
             )
     }
 
@@ -952,6 +989,7 @@ impl VSynthApp {
         let danger = theme.danger;
         let radius = theme.radius;
         let entity = cx.entity();
+        let s = self.text();
 
         let query = self.resource_search.read(cx).value().to_lowercase();
         let query = query.trim();
@@ -974,7 +1012,7 @@ impl VSynthApp {
         let total: usize = groups.iter().map(|(_, items)| items.len()).sum();
 
         let mut group_buttons = vec![resource_group_button(
-            "全部",
+            s.all,
             None,
             self.resource_group.is_none(),
             entity.clone(),
@@ -992,7 +1030,7 @@ impl VSynthApp {
         for (group, items) in &groups {
             let cards = items
                 .iter()
-                .map(|item| resource_card(item, &group.id, theme, entity.clone()))
+                .map(|item| resource_card(item, &group.id, theme, entity.clone(), s))
                 .collect::<Vec<_>>();
             sections.push(
                 v_flex()
@@ -1007,12 +1045,11 @@ impl VSynthApp {
                                     .font_weight(FontWeight::SEMIBOLD)
                                     .child(group.name.clone()),
                             )
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(format!("{} 条", items.len())),
-                            ),
+                            .child(div().text_xs().text_color(muted).child(format!(
+                                "{} {}",
+                                items.len(),
+                                s.item_count
+                            ))),
                     )
                     .child(
                         div()
@@ -1027,26 +1064,38 @@ impl VSynthApp {
 
         let count = if query.is_empty() && active_group.is_none() {
             format!(
-                "{} 条 / {} 个分组",
+                "{} {} / {} {}",
                 self.resources.item_count(),
-                self.resources.groups.len()
+                s.item_count,
+                self.resources.groups.len(),
+                s.group_count
             )
         } else {
-            format!("筛选出 {total} 条 / {} 个分组", groups.len())
+            format!(
+                "{} {} {} / {} {}",
+                s.filtered,
+                total,
+                s.item_count,
+                groups.len(),
+                s.group_count
+            )
         };
 
-        let mut page = v_flex().gap_4().child(page_header(self.page, muted)).child(
-            h_flex()
-                .items_center()
-                .gap_3()
-                .child(
-                    div()
-                        .flex_1()
-                        .min_w_0()
-                        .child(Input::new(&self.resource_search).w_full()),
-                )
-                .child(div().text_xs().text_color(muted).child(count)),
-        );
+        let mut page = v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, self.text()))
+            .child(
+                h_flex()
+                    .items_center()
+                    .gap_3()
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(Input::new(&self.resource_search).w_full()),
+                    )
+                    .child(div().text_xs().text_color(muted).child(count)),
+            );
 
         if let Some(error) = &self.resource_error {
             page = page.child(callout(error, danger, radius));
@@ -1059,7 +1108,7 @@ impl VSynthApp {
                 div()
                     .text_xs()
                     .text_color(muted)
-                    .child(format!("数据更新于 {}", self.resources.updated_at)),
+                    .child(format!("{} {}", s.updated_at, self.resources.updated_at)),
             );
         }
 
@@ -1076,7 +1125,7 @@ impl VSynthApp {
                     .rounded(radius)
                     .text_sm()
                     .text_color(muted)
-                    .child("没有匹配的资源。"),
+                    .child(s.no_match),
             );
         }
 
@@ -1087,28 +1136,32 @@ impl VSynthApp {
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let entity = cx.entity();
+        let s = self.text();
 
-        v_flex().gap_4().child(page_header(self.page, muted)).child(
-            GroupBox::new()
-                .id("placeholder")
-                .outline()
-                .title("功能开发中")
-                .child(
-                    v_flex()
-                        .gap_2()
-                        .child(div().text_sm().child("此页面尚未实现。"))
-                        .child(h_flex().child(
-                            Button::new("placeholder-back").label("返回总览").on_click(
-                                move |_, _, cx| {
-                                    entity.update(cx, |this, cx| {
-                                        this.page = Page::Dashboard;
-                                        cx.notify();
-                                    });
-                                },
-                            ),
-                        )),
-                ),
-        )
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, self.text()))
+            .child(
+                GroupBox::new()
+                    .id("placeholder")
+                    .outline()
+                    .title(s.under_development)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(div().text_sm().child(s.not_implemented))
+                            .child(h_flex().child(
+                                Button::new("placeholder-back").label(s.back).on_click(
+                                    move |_, _, cx| {
+                                        entity.update(cx, |this, cx| {
+                                            this.page = Page::Dashboard;
+                                            cx.notify();
+                                        });
+                                    },
+                                ),
+                            )),
+                    ),
+            )
     }
 }
 
@@ -1145,16 +1198,24 @@ pub fn apply_theme(preference: ThemePreference, window: &mut Window, cx: &mut Ap
     Theme::change(mode, Some(window), cx);
 }
 
-fn page_header(page: Page, muted: Hsla) -> impl IntoElement {
+fn page_header(page: Page, muted: Hsla, s: &Strings) -> impl IntoElement {
     v_flex()
         .gap_1()
         .child(
             div()
                 .text_2xl()
                 .font_weight(FontWeight::BOLD)
-                .child(page.title()),
+                .child(page.title(s)),
         )
-        .child(div().text_sm().text_color(muted).child(page.subtitle()))
+        .child(div().text_sm().text_color(muted).child(page.subtitle(s)))
+}
+
+fn theme_label(preference: ThemePreference, s: &Strings) -> &'static str {
+    match preference {
+        ThemePreference::System => s.theme_system,
+        ThemePreference::Light => s.theme_light,
+        ThemePreference::Dark => s.theme_dark,
+    }
 }
 
 fn info_row(label: &'static str, value: String, muted: Hsla, border: Hsla) -> impl IntoElement {
@@ -1192,6 +1253,7 @@ fn path_field(
     input: &Entity<InputState>,
     hint: &'static str,
     muted: Hsla,
+    s: &Strings,
 ) -> impl IntoElement {
     let browse_input = input.clone();
     let clear_input = input.clone();
@@ -1208,7 +1270,7 @@ fn path_field(
                 .child(div().flex_1().min_w_0().child(Input::new(input).w_full()))
                 .child(
                     Button::new(browse_id)
-                        .label("浏览…")
+                        .label(s.browse)
                         .on_click(move |_, window, cx| {
                             let current = browse_input.read(cx).value().to_string();
                             if let Some(path) = pick_folder(&current) {
@@ -1220,7 +1282,7 @@ fn path_field(
                 )
                 .child(
                     Button::new(clear_id)
-                        .label("清空")
+                        .label(s.clear)
                         .on_click(move |_, window, cx| {
                             clear_input.update(cx, |state, cx| {
                                 state.set_value("", window, cx);
@@ -1268,9 +1330,10 @@ fn resource_card(
     group_id: &str,
     theme: &Theme,
     entity: Entity<VSynthApp>,
+    s: &Strings,
 ) -> AnyElement {
     let name = if item.name.trim().is_empty() {
-        "未命名".to_string()
+        s.unnamed.to_string()
     } else {
         item.name.clone()
     };
@@ -1284,7 +1347,7 @@ fn resource_card(
         }
     ));
     let open = Button::new(id)
-        .label("打开")
+        .label(s.open)
         .primary()
         .compact()
         .on_click(move |_, _, cx| {
@@ -1300,7 +1363,7 @@ fn resource_card(
             .child(name),
     );
     if item.official {
-        head = head.child(pill("官方", theme.success, theme.radius));
+        head = head.child(pill(s.official, theme.success, theme.radius));
     }
     if let Some((label, color)) = resource_verdict(item, theme) {
         head = head.child(pill(label, color, theme.radius));
@@ -1375,7 +1438,7 @@ fn resource_card(
             div()
                 .text_xs()
                 .text_color(theme.muted_foreground)
-                .child(format!("校验：{checked_at}")),
+                .child(format!("{}: {checked_at}", s.checked)),
         );
     }
 
@@ -1501,31 +1564,36 @@ fn sponsor_card(
         )
 }
 
-fn jobs_panel(jobs: &[JobSnapshot], center: Entity<JobCenter>, theme: &Theme) -> AnyElement {
+fn jobs_panel(
+    jobs: &[JobSnapshot],
+    center: Entity<JobCenter>,
+    theme: &Theme,
+    s: &Strings,
+) -> AnyElement {
     if jobs.is_empty() {
         return div().into_any_element();
     }
     let rows = jobs
         .iter()
         .take(3)
-        .map(|job| job_row(job, center.clone(), theme))
+        .map(|job| job_row(job, center.clone(), theme, s))
         .collect::<Vec<_>>();
     GroupBox::new()
         .id("jobs-panel")
         .outline()
-        .title("任务")
+        .title(s.jobs)
         .child(v_flex().gap_3().children(rows))
         .into_any_element()
 }
 
-fn job_row(job: &JobSnapshot, center: Entity<JobCenter>, theme: &Theme) -> AnyElement {
+fn job_row(job: &JobSnapshot, center: Entity<JobCenter>, theme: &Theme, s: &Strings) -> AnyElement {
     let muted = theme.muted_foreground;
     let border = theme.border;
     let (status, color) = match job.status {
-        JobStatus::Running => ("进行中", theme.primary),
-        JobStatus::Succeeded => ("完成", theme.success),
-        JobStatus::Failed => ("失败", theme.danger),
-        JobStatus::Canceled => ("已取消", muted),
+        JobStatus::Running => (s.job_running, theme.primary),
+        JobStatus::Succeeded => (s.job_succeeded, theme.success),
+        JobStatus::Failed => (s.job_failed, theme.danger),
+        JobStatus::Canceled => (s.job_canceled, muted),
     };
     let bar = match job.progress {
         Some(fraction) => div()
@@ -1570,7 +1638,7 @@ fn job_row(job: &JobSnapshot, center: Entity<JobCenter>, theme: &Theme) -> AnyEl
         let id = job.id;
         footer = footer.child(
             Button::new(SharedString::from(format!("job-cancel-{id}")))
-                .label("取消")
+                .label(s.cancel)
                 .compact()
                 .on_click(move |_, _, cx| {
                     center.update(cx, |center, cx| {
@@ -1608,18 +1676,19 @@ fn component_row(
     any_running: bool,
     entity: Entity<VSynthApp>,
     theme: &Theme,
+    s: &Strings,
 ) -> AnyElement {
     let muted = theme.muted_foreground;
     let installed = artifact.is_installed(root);
     let (status, color) = if active {
-        ("安装中", theme.primary)
+        (s.installing, theme.primary)
     } else if installed {
-        ("已安装", theme.success)
+        (s.installed, theme.success)
     } else {
-        ("未安装", theme.danger)
+        (s.not_installed, theme.danger)
     };
     let detail = if active {
-        "后台安装中，进度见总览 › 任务".to_string()
+        s.install_running.to_string()
     } else if installed {
         format!(
             "v{} · tools/{}/{}",
@@ -1627,19 +1696,20 @@ fn component_row(
         )
     } else {
         format!(
-            "v{} · {:.1} MB · 下载源 GitHub",
+            "v{} · {:.1} MB · {}",
             artifact.version,
-            artifact.size as f64 / 1_000_000.0
+            artifact.size as f64 / 1_000_000.0,
+            s.download_source
         )
     };
     let label = if active {
-        "取消安装"
+        s.cancel_install
     } else if any_running {
-        "安装中…"
+        s.installing
     } else if installed {
-        "重新安装"
+        s.reinstall
     } else {
-        "下载并安装"
+        s.install
     };
     let artifact = *artifact;
     let mut button =
@@ -1694,24 +1764,21 @@ fn tool_row(
     tool: Option<&Tool>,
     scanning: bool,
     theme: &Theme,
+    s: &Strings,
 ) -> impl IntoElement {
     let muted = theme.muted_foreground;
     let (status, color, detail) = match tool {
         Some(tool) if tool.available => (
-            "可用",
+            s.available,
             theme.success,
             tool.version
                 .clone()
                 .or_else(|| tool.path.clone())
-                .unwrap_or_else(|| "已找到可执行文件".to_string()),
+                .unwrap_or_else(|| s.found_executable.to_string()),
         ),
-        Some(_) => (
-            "缺失",
-            theme.danger,
-            "未在 tools/ 或 PATH 中找到".to_string(),
-        ),
-        None if scanning => ("检测中", muted, "正在扫描 tools/ 与 PATH".to_string()),
-        None => ("未检测", muted, "等待重新检测".to_string()),
+        Some(_) => (s.missing, theme.danger, s.not_found.to_string()),
+        None if scanning => (s.scanning, muted, s.scanning_hint.to_string()),
+        None => (s.unchecked, muted, s.waiting_check.to_string()),
     };
 
     h_flex()

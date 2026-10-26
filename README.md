@@ -51,3 +51,9 @@ JIZURA is vendored from its upstream repository at the commit recorded in
 are stored next to the build.
 
 See [`docs/THIRD-PARTY-NOTICES.md`](docs/THIRD-PARTY-NOTICES.md) for the full list.
+
+## Languages
+
+The interface ships in Chinese, English and Japanese. The preference is stored
+in `data/config.json`. External component logs and resource content remain in
+their original language for now.

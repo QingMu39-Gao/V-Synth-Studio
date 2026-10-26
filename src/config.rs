@@ -5,6 +5,8 @@ use std::path::PathBuf;
 
 use serde::{Deserialize, Serialize};
 
+use crate::i18n::Language;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
 pub enum ThemePreference {
@@ -24,28 +26,14 @@ impl ThemePreference {
             Self::Dark => "dark",
         }
     }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::System => "跟随系统",
-            Self::Light => "明亮",
-            Self::Dark => "黑暗",
-        }
-    }
-
-    pub fn short_label(self) -> &'static str {
-        match self {
-            Self::System => "系统",
-            Self::Light => "明亮",
-            Self::Dark => "黑暗",
-        }
-    }
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Config {
     #[serde(default)]
     pub theme: ThemePreference,
+    #[serde(default)]
+    pub language: Language,
     #[serde(default)]
     pub output_dir: String,
     #[serde(default)]

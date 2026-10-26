@@ -3,6 +3,7 @@
 mod app;
 mod app_assets;
 mod config;
+mod i18n;
 mod jizura;
 mod jizura_save;
 mod jobs;
@@ -40,8 +41,10 @@ fn main() {
                 });
                 let ext_input =
                     cx.new(|cx| InputState::new(window, cx).default_value(config.ext_dir.clone()));
-                let resource_search =
-                    cx.new(|cx| InputState::new(window, cx).placeholder("搜索名称、描述、标签…"));
+                let resource_search = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .placeholder(i18n::strings(config.language).search_placeholder)
+                });
                 let job_center = cx.new(jobs::JobCenter::new);
                 let view = cx.new(|_| {
                     app::VSynthApp::new(
