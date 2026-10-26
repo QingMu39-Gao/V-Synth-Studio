@@ -10,6 +10,7 @@ open = "5"
 rfd = "0.16"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+urlencoding = "2"
 wry = { version = "0.53.3", package = "lb-wry" }
 
 # Windows: GPUI's DirectComposition target must sit below native child windows,

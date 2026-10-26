@@ -3,6 +3,7 @@
 mod app;
 mod config;
 mod jizura;
+mod jizura_save;
 mod pages;
 mod resources;
 mod tools;

@@ -87,8 +87,9 @@ impl VSynthApp {
         }
         let pending = self.config.pv_pending_lyrics.trim().to_string();
         let jizura_root = crate::jizura::asset_dir();
+        let has_jizura = jizura_root.is_some();
         let fill_lyrics =
-            jizura_root.is_some() && !pending.is_empty() && pending != self.config.pv_sent_lyrics;
+            has_jizura && !pending.is_empty() && pending != self.config.pv_sent_lyrics;
         let mut builder = match jizura_root {
             Some(root) => {
                 self.webview_source = Some("JIZURA · custom protocol".to_string());
@@ -103,6 +104,9 @@ impl VSynthApp {
                 wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO)
             }
         };
+        if has_jizura {
+            builder = builder.with_initialization_script(crate::jizura::save_bridge_script());
+        }
         if fill_lyrics {
             builder =
                 builder.with_initialization_script(crate::jizura::lyrics_init_script(&pending));
