@@ -54,6 +54,10 @@ pub struct Config {
     pub download_dir: String,
     #[serde(default, rename = "extDir")]
     pub ext_dir: String,
+    #[serde(default, rename = "pvPendingLyrics")]
+    pub pv_pending_lyrics: String,
+    #[serde(default, rename = "pvSentLyrics")]
+    pub pv_sent_lyrics: String,
     /// 旧版配置里的其它键（Cookie、页面设置、工具路径……）原样保留。
     #[serde(flatten)]
     pub extra: Map<String, Value>,
@@ -66,6 +70,8 @@ impl Default for Config {
             output_dir: String::new(),
             download_dir: String::new(),
             ext_dir: String::new(),
+            pv_pending_lyrics: String::new(),
+            pv_sent_lyrics: String::new(),
             extra: Map::new(),
         }
     }

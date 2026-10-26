@@ -85,7 +85,11 @@ impl VSynthApp {
         if self.webview.is_some() || self.webview_error.is_some() {
             return;
         }
-        let builder = match crate::jizura::asset_dir() {
+        let pending = self.config.pv_pending_lyrics.trim().to_string();
+        let jizura_root = crate::jizura::asset_dir();
+        let fill_lyrics =
+            jizura_root.is_some() && !pending.is_empty() && pending != self.config.pv_sent_lyrics;
+        let mut builder = match jizura_root {
             Some(root) => {
                 self.webview_source = Some("JIZURA · custom protocol".to_string());
                 wry::WebViewBuilder::new()
@@ -99,8 +103,24 @@ impl VSynthApp {
                 wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO)
             }
         };
+        if fill_lyrics {
+            builder =
+                builder.with_initialization_script(crate::jizura::lyrics_init_script(&pending));
+        }
         match WebView::build(builder, window, cx) {
-            Ok(webview) => self.webview = Some(cx.new(|_| webview)),
+            Ok(webview) => {
+                self.webview = Some(cx.new(|_| webview));
+                if fill_lyrics {
+                    self.webview_source = Some(format!(
+                        "{} · 已交接歌词",
+                        self.webview_source.as_deref().unwrap_or("JIZURA")
+                    ));
+                    self.config.pv_sent_lyrics = pending;
+                    if let Err(error) = self.config.save() {
+                        self.notice = Some(error);
+                    }
+                }
+            }
             Err(error) => self.webview_error = Some(format!("创建 WebView 失败：{error}")),
         }
     }
