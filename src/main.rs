@@ -3,6 +3,7 @@
 mod app;
 mod config;
 mod pages;
+mod resources;
 mod tools;
 
 use gpui_kit::component::TitleBar;
@@ -31,11 +32,20 @@ fn main() {
                 cx.new(|cx| InputState::new(window, cx).default_value(config.download_dir.clone()));
             let ext_input =
                 cx.new(|cx| InputState::new(window, cx).default_value(config.ext_dir.clone()));
+            let resource_search =
+                cx.new(|cx| InputState::new(window, cx).placeholder("搜索名称、描述、标签…"));
             let view = cx.new(|_| {
-                app::VSynthApp::new(config.clone(), output_input, download_input, ext_input)
+                app::VSynthApp::new(
+                    config.clone(),
+                    output_input,
+                    download_input,
+                    ext_input,
+                    resource_search,
+                )
             });
             view.update(cx, |this, cx| {
                 this.watch_system_theme(window, cx);
+                this.watch_resource_search(cx);
                 this.refresh_tools(cx);
             });
             view

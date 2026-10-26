@@ -1,11 +1,12 @@
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::group_box::{GroupBox, GroupBoxVariants as _};
-use gpui_kit::component::input::{Input, InputState};
+use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
 use crate::config::{Config, ThemePreference};
 use crate::pages::Page;
+use crate::resources::{Group, Item, Resources};
 use crate::tools::{Tool, ToolStatus};
 
 const SIDEBAR_WIDTH: f32 = 228.0;
@@ -19,6 +20,10 @@ pub struct VSynthApp {
     output_input: Entity<InputState>,
     download_input: Entity<InputState>,
     ext_input: Entity<InputState>,
+    resources: Resources,
+    resource_error: Option<String>,
+    resource_search: Entity<InputState>,
+    resource_group: Option<String>,
 }
 
 impl VSynthApp {
@@ -27,7 +32,12 @@ impl VSynthApp {
         output_input: Entity<InputState>,
         download_input: Entity<InputState>,
         ext_input: Entity<InputState>,
+        resource_search: Entity<InputState>,
     ) -> Self {
+        let (resources, resource_error) = match Resources::load() {
+            Ok(resources) => (resources, None),
+            Err(error) => (Resources::default(), Some(error)),
+        };
         Self {
             page: Page::Dashboard,
             config,
@@ -37,7 +47,28 @@ impl VSynthApp {
             output_input,
             download_input,
             ext_input,
+            resources,
+            resource_error,
+            resource_search,
+            resource_group: None,
         }
+    }
+
+    pub fn watch_resource_search(&self, cx: &mut Context<Self>) {
+        cx.subscribe(&self.resource_search, |_, _, event: &InputEvent, cx| {
+            if matches!(event, InputEvent::Change) {
+                cx.notify();
+            }
+        })
+        .detach();
+    }
+
+    fn open_resource(&mut self, url: &str, cx: &mut Context<Self>) {
+        match open::that(url) {
+            Ok(()) => self.notice = None,
+            Err(error) => self.notice = Some(format!("打开链接失败：{error}")),
+        }
+        cx.notify();
     }
 
     fn save_paths(&mut self, cx: &mut Context<Self>) {
@@ -313,6 +344,7 @@ impl VSynthApp {
         match self.page {
             Page::Dashboard => self.render_dashboard(cx).into_any_element(),
             Page::Settings => self.render_settings(cx).into_any_element(),
+            Page::Resources => self.render_resources(cx).into_any_element(),
             _ => self.render_placeholder(cx).into_any_element(),
         }
     }
@@ -620,6 +652,145 @@ impl VSynthApp {
             )
     }
 
+    fn render_resources(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let warning = theme.warning;
+        let danger = theme.danger;
+        let radius = theme.radius;
+        let entity = cx.entity();
+
+        let query = self.resource_search.read(cx).value().to_lowercase();
+        let query = query.trim();
+        let active_group = self.resource_group.as_deref();
+
+        let mut groups: Vec<(&Group, Vec<&Item>)> = Vec::new();
+        for group in &self.resources.groups {
+            if active_group.is_some_and(|id| group.id != id) {
+                continue;
+            }
+            let items = group
+                .items
+                .iter()
+                .filter(|item| resource_matches(item, query))
+                .collect::<Vec<_>>();
+            if !items.is_empty() {
+                groups.push((group, items));
+            }
+        }
+        let total: usize = groups.iter().map(|(_, items)| items.len()).sum();
+
+        let mut group_buttons = vec![resource_group_button(
+            "全部",
+            None,
+            self.resource_group.is_none(),
+            entity.clone(),
+        )];
+        for group in &self.resources.groups {
+            group_buttons.push(resource_group_button(
+                &group.name,
+                Some(group.id.clone()),
+                active_group == Some(group.id.as_str()),
+                entity.clone(),
+            ));
+        }
+
+        let mut sections = Vec::new();
+        for (group, items) in &groups {
+            let cards = items
+                .iter()
+                .map(|item| resource_card(item, &group.id, theme, entity.clone()))
+                .collect::<Vec<_>>();
+            sections.push(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(
+                                div()
+                                    .text_lg()
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .child(group.name.clone()),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(format!("{} 条", items.len())),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .text_sm()
+                            .text_color(muted)
+                            .child(group.description.clone()),
+                    )
+                    .child(h_flex().flex_wrap().gap_3().children(cards))
+                    .into_any_element(),
+            );
+        }
+
+        let count = if query.is_empty() && active_group.is_none() {
+            format!(
+                "{} 条 / {} 个分组",
+                self.resources.item_count(),
+                self.resources.groups.len()
+            )
+        } else {
+            format!("筛选出 {total} 条 / {} 个分组", groups.len())
+        };
+
+        let mut page = v_flex().gap_4().child(page_header(self.page, muted)).child(
+            h_flex()
+                .items_center()
+                .gap_3()
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .child(Input::new(&self.resource_search).w_full()),
+                )
+                .child(div().text_xs().text_color(muted).child(count)),
+        );
+
+        if let Some(error) = &self.resource_error {
+            page = page.child(callout(error, danger, radius));
+        } else if !self.resources.notice.is_empty() {
+            page = page.child(callout(&self.resources.notice, warning, radius));
+        }
+
+        if !self.resources.updated_at.is_empty() {
+            page = page.child(
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(format!("数据更新于 {}", self.resources.updated_at)),
+            );
+        }
+
+        page = page
+            .child(h_flex().flex_wrap().gap_2().children(group_buttons))
+            .child(v_flex().gap_5().children(sections));
+
+        if total == 0 {
+            page = page.child(
+                div()
+                    .p_6()
+                    .border_1()
+                    .border_color(border)
+                    .rounded(radius)
+                    .text_sm()
+                    .text_color(muted)
+                    .child("没有匹配的资源。"),
+            );
+        }
+
+        page
+    }
+
     fn render_placeholder(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let theme = cx.theme();
         let muted = theme.muted_foreground;
@@ -776,6 +947,236 @@ fn pick_folder(start: &str) -> Option<std::path::PathBuf> {
         dialog = dialog.set_directory(start);
     }
     dialog.pick_folder()
+}
+
+fn resource_group_button(
+    label: &str,
+    group: Option<String>,
+    selected: bool,
+    entity: Entity<VSynthApp>,
+) -> AnyElement {
+    let id = SharedString::from(format!("res-group-{}", group.as_deref().unwrap_or("all")));
+    let mut button = Button::new(id).label(label.to_string()).compact();
+    button = if selected {
+        button.primary()
+    } else {
+        button.ghost()
+    };
+    button
+        .on_click(move |_, _, cx| {
+            let group = group.clone();
+            entity.update(cx, |this, cx| {
+                this.resource_group = group;
+                cx.notify();
+            });
+        })
+        .into_any_element()
+}
+
+fn resource_card(
+    item: &Item,
+    group_id: &str,
+    theme: &Theme,
+    entity: Entity<VSynthApp>,
+) -> AnyElement {
+    let name = if item.name.trim().is_empty() {
+        "未命名".to_string()
+    } else {
+        item.name.clone()
+    };
+    let url = item.url.clone();
+    let id = SharedString::from(format!(
+        "res-open-{group_id}-{}",
+        if item.id.is_empty() {
+            item.name.as_str()
+        } else {
+            item.id.as_str()
+        }
+    ));
+    let open = Button::new(id)
+        .label("打开")
+        .primary()
+        .compact()
+        .on_click(move |_, _, cx| {
+            entity.update(cx, |this, cx| this.open_resource(&url, cx));
+        });
+
+    let mut head = h_flex().items_center().gap_2().child(
+        div()
+            .flex_1()
+            .min_w_0()
+            .text_sm()
+            .font_weight(FontWeight::SEMIBOLD)
+            .child(name),
+    );
+    if item.official {
+        head = head.child(pill("官方", theme.success, theme.radius));
+    }
+    if let Some((label, color)) = resource_verdict(item, theme) {
+        head = head.child(pill(label, color, theme.radius));
+    }
+
+    let tags = item
+        .tags
+        .iter()
+        .take(3)
+        .map(|tag| {
+            div()
+                .px_2()
+                .py_1()
+                .rounded(theme.radius)
+                .border_1()
+                .border_color(theme.border)
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(tag.clone())
+        })
+        .collect::<Vec<_>>();
+
+    let mut card = v_flex()
+        .w(px(340.))
+        .flex_none()
+        .gap_2()
+        .p_4()
+        .rounded(theme.radius)
+        .border_1()
+        .border_color(theme.border)
+        .bg(theme.secondary)
+        .child(head)
+        .child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(host_of(item)),
+        )
+        .child(h_flex().flex_wrap().gap_1().children(tags));
+
+    if !item.region.is_empty() || !item.cost.is_empty() {
+        card = card.child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(format!("{} · {}", item.region, item.cost)),
+        );
+    }
+    if !item.desc.is_empty() {
+        card = card.child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(truncate(&item.desc, 150)),
+        );
+    }
+    if !item.tip.is_empty() {
+        card = card.child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(truncate(&item.tip, 90)),
+        );
+    }
+    if let Some(checked_at) = item
+        .verified
+        .as_ref()
+        .map(|verified| verified.checked_at.as_str())
+        .filter(|checked_at| !checked_at.is_empty())
+    {
+        card = card.child(
+            div()
+                .text_xs()
+                .text_color(theme.muted_foreground)
+                .child(format!("校验：{checked_at}")),
+        );
+    }
+
+    card.child(h_flex().child(open)).into_any_element()
+}
+
+fn resource_matches(item: &Item, query: &str) -> bool {
+    if query.is_empty() {
+        return true;
+    }
+    let haystack = format!(
+        "{} {} {} {} {} {}",
+        item.name,
+        item.desc,
+        item.home,
+        item.cost,
+        item.region,
+        item.tags.join(" ")
+    )
+    .to_lowercase();
+    haystack.contains(query)
+}
+
+fn resource_verdict(item: &Item, theme: &Theme) -> Option<(&'static str, Hsla)> {
+    let verified = item.verified.as_ref()?;
+    let label = match verified.verdict.as_str() {
+        "ok" => "可达",
+        "dead" => "失效",
+        "warn" => "存疑",
+        _ => match verified.status {
+            Some(200 | 301 | 302 | 307 | 308) => "可达",
+            Some(404 | 410) => "失效",
+            Some(_) => "存疑",
+            None => return None,
+        },
+    };
+    let color = match label {
+        "可达" => theme.success,
+        "失效" => theme.danger,
+        _ => theme.warning,
+    };
+    Some((label, color))
+}
+
+fn host_of(item: &Item) -> String {
+    let home = item
+        .home
+        .trim()
+        .trim_start_matches("https://")
+        .trim_start_matches("http://")
+        .trim_end_matches('/');
+    if !home.is_empty() {
+        return home.to_string();
+    }
+    item.url
+        .split("://")
+        .nth(1)
+        .and_then(|rest| rest.split('/').next())
+        .unwrap_or("")
+        .to_string()
+}
+
+fn truncate(text: &str, limit: usize) -> String {
+    if text.chars().count() <= limit {
+        return text.to_string();
+    }
+    let mut out = text.chars().take(limit).collect::<String>();
+    out.push('…');
+    out
+}
+
+fn pill(text: &'static str, color: Hsla, radius: Pixels) -> impl IntoElement {
+    div()
+        .px_2()
+        .py_1()
+        .rounded(radius)
+        .bg(color.opacity(0.14))
+        .text_color(color)
+        .text_xs()
+        .child(text)
+}
+
+fn callout(text: &str, color: Hsla, radius: Pixels) -> impl IntoElement {
+    div()
+        .w_full()
+        .p_3()
+        .rounded(radius)
+        .bg(color.opacity(0.12))
+        .text_color(color)
+        .text_sm()
+        .child(text.to_string())
 }
 
 fn tool_row(
