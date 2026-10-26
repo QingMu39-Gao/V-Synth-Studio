@@ -12,6 +12,13 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 wry = { version = "0.53.3", package = "lb-wry" }
 
+# Windows: GPUI's DirectComposition target must sit below native child windows,
+# otherwise the Wry/WebView2 child is painted behind the GPUI surface (white page).
+# Only one line differs from gpui-pre-windows 0.3.9; drop this when upstream allows
+# choosing the target order.
+[patch.crates-io]
+gpui-pre-windows = { path = "vendor/gpui-pre-windows" }
+
 [profile.release]
 codegen-units = 1
 lto = true
