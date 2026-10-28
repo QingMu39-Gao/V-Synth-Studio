@@ -1,3 +1,4 @@
+use gpui_kit::component::Disableable as _;
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::group_box::{GroupBox, GroupBoxVariants as _};
 use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
@@ -23,6 +24,7 @@ use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
 use crate::services::lyrics::{self, SearchResult, SongDetail};
 use crate::services::media_server::MediaServer;
+use crate::services::svsep::{self, Stems};
 use crate::tools::{Tool, ToolStatus};
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
@@ -139,6 +141,11 @@ pub struct VSynthApp {
     lyrics_translation: String,
     lyrics_notice: Option<String>,
     lyrics_searched: bool,
+    svsep_input: Option<PathBuf>,
+    svsep_stems: Option<Stems>,
+    svsep_job: Option<u64>,
+    svsep_prepare_job: Option<u64>,
+    svsep_notice: Option<String>,
 }
 
 impl VSynthApp {
@@ -208,6 +215,11 @@ impl VSynthApp {
             lyrics_translation: String::new(),
             lyrics_notice: None,
             lyrics_searched: false,
+            svsep_input: None,
+            svsep_stems: None,
+            svsep_job: None,
+            svsep_prepare_job: None,
+            svsep_notice: None,
         }
     }
 
@@ -1057,6 +1069,127 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn pick_svsep_input(&mut self, cx: &mut Context<Self>) {
+        const FILTER: &[&str] = &[
+            "wav", "mp3", "flac", "m4a", "ogg", "aac", "opus", "mp4", "mkv", "mov", "webm", "avi",
+        ];
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Audio / Video", FILTER)
+            .pick_file()
+        else {
+            return;
+        };
+        self.svsep_input = Some(path);
+        self.svsep_stems = None;
+        self.svsep_notice = None;
+        cx.notify();
+    }
+
+    fn prepare_svsep(&mut self, cx: &mut Context<Self>) {
+        if self
+            .svsep_prepare_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.svsep_prepare, move |ctx| svsep::ensure_ready(&ctx));
+        self.svsep_prepare_job = Some(job.id);
+        self.svsep_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.svsep_prepare_job == Some(job_id) {
+                    this.svsep_prepare_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(())) => this.svsep_notice = None,
+                    Ok(JobOutcome::Failed(error)) => this.svsep_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.svsep_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.svsep_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn start_svsep(&mut self, cx: &mut Context<Self>) {
+        if self
+            .svsep_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(input) = self.svsep_input.clone() else {
+            return;
+        };
+        let output_dir = input
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let s = self.text();
+        let job = self.job_center.read(cx).start(s.svsep_run, move |ctx| {
+            svsep::separate(&input, &output_dir, &ctx)
+        });
+        self.svsep_job = Some(job.id);
+        self.svsep_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.svsep_job == Some(job_id) {
+                    this.svsep_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(stems)) => {
+                        this.svsep_stems = Some(stems);
+                        this.svsep_notice = Some(this.text().svsep_done.to_string());
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.svsep_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.svsep_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.svsep_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_svsep(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.svsep_job.or(self.svsep_prepare_job) {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
+    }
+
+    fn open_svsep_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(stems) = &self.svsep_stems else {
+            return;
+        };
+        let directory = stems.vocals.parent().unwrap_or_else(|| Path::new("."));
+        if let Err(error) = open::that(directory) {
+            self.svsep_notice = Some(format!("打开目录失败：{error}"));
+        }
+        cx.notify();
+    }
+
     fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
         let value = self.download_input.read(cx).value().trim().to_string();
         if value.is_empty() {
@@ -1307,6 +1440,7 @@ impl VSynthApp {
             Page::Video => self.render_video(cx),
             Page::Audio => self.render_audio(cx),
             Page::Lyrics => self.render_lyrics(cx),
+            Page::Svsep => self.render_svsep(cx),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
             Page::Pv => self.render_pv(cx),
@@ -1482,6 +1616,185 @@ impl VSynthApp {
                     .title(s.quick_entry)
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
             )
+    }
+
+    fn render_svsep(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let primary = theme.primary;
+        let entity = cx.entity();
+        let s = self.text();
+        let status = svsep::status();
+
+        let prepare_running = self
+            .svsep_prepare_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let run_running = self
+            .svsep_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let active_job = self.svsep_job.or(self.svsep_prepare_job);
+        let snapshot = active_job.and_then(|id| self.job_center.read(cx).snapshot(id));
+
+        let input_block = if let Some(input) = &self.svsep_input {
+            v_flex()
+                .gap_1()
+                .child(div().text_sm().child(input.display().to_string()))
+                .into_any_element()
+        } else {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.svsep_no_input)
+                .into_any_element()
+        };
+        let pick_entity = entity.clone();
+        let pick_button = Button::new("svsep-pick")
+            .label(s.svsep_pick)
+            .primary()
+            .on_click(move |_, _, cx| {
+                pick_entity.update(cx, |this, cx| this.pick_svsep_input(cx));
+            });
+
+        let prepare_entity = entity.clone();
+        let prepare_button = Button::new("svsep-prepare")
+            .label(if prepare_running {
+                s.svsep_preparing
+            } else {
+                s.svsep_prepare
+            })
+            .on_click(move |_, _, cx| {
+                prepare_entity.update(cx, |this, cx| this.prepare_svsep(cx));
+            });
+        let engine_status = if status.runtime_ready && status.model_ready {
+            s.svsep_runtime_ready
+        } else {
+            s.svsep_runtime_missing
+        };
+
+        let run_entity = entity.clone();
+        let cancel_entity = entity.clone();
+        let action_button = if run_running || prepare_running {
+            Button::new("svsep-cancel")
+                .label(s.svsep_cancel)
+                .on_click(move |_, _, cx| {
+                    cancel_entity.update(cx, |this, cx| this.cancel_svsep(cx));
+                })
+                .into_any_element()
+        } else if status.runtime_ready && status.model_ready {
+            Button::new("svsep-run")
+                .label(s.svsep_run)
+                .primary()
+                .disabled(self.svsep_input.is_none())
+                .on_click(move |_, _, cx| {
+                    run_entity.update(cx, |this, cx| this.start_svsep(cx));
+                })
+                .into_any_element()
+        } else {
+            prepare_button.into_any_element()
+        };
+
+        let stems_block = self.svsep_stems.as_ref().map(|stems| {
+            let open_entity = entity.clone();
+            v_flex()
+                .gap_1()
+                .child(div().text_sm().child(format!(
+                    "{}: {}",
+                    s.svsep_vocals,
+                    stems.vocals.display()
+                )))
+                .child(div().text_sm().child(format!(
+                    "{}: {}",
+                    s.svsep_instrumental,
+                    stems.instrumental.display()
+                )))
+                .child(
+                    Button::new("svsep-open-folder")
+                        .label(s.svsep_open_folder)
+                        .on_click(move |_, _, cx| {
+                            open_entity.update(cx, |this, cx| this.open_svsep_folder(cx));
+                        }),
+                )
+                .into_any_element()
+        });
+
+        let progress_block = if let Some(snapshot) = &snapshot {
+            if snapshot.status.is_running() {
+                v_flex()
+                    .gap_1()
+                    .child(div().text_xs().text_color(muted).child(s.svsep_running))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(snapshot.message.clone()),
+                    )
+                    .child(
+                        div().h(px(4.)).w_full().rounded(px(2.)).bg(border).child(
+                            div()
+                                .h_full()
+                                .w(relative(snapshot.progress.unwrap_or(0.0)))
+                                .rounded(px(2.))
+                                .bg(primary),
+                        ),
+                    )
+                    .into_any_element()
+            } else {
+                div().into_any_element()
+            }
+        } else {
+            div().into_any_element()
+        };
+        let notice = self.svsep_notice.as_ref().map(|notice| {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("svsep-engine")
+                    .outline()
+                    .title(s.svsep_engine)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(meta_text(
+                                s.svsep_model,
+                                "UVR-MDX-NET-Inst_HQ_3".to_string(),
+                                muted,
+                            ))
+                            .child(div().text_sm().child(engine_status))
+                            .child(div().text_xs().text_color(muted).child(s.svsep_hint)),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("svsep-input")
+                    .outline()
+                    .title(s.svsep_input)
+                    .child(v_flex().gap_2().child(input_block).child(pick_button)),
+            )
+            .child(
+                GroupBox::new()
+                    .id("svsep-actions")
+                    .outline()
+                    .title(s.svsep_run)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(action_button)
+                            .child(progress_block)
+                            .children(notice)
+                            .children(stems_block),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn render_video(&self, cx: &mut Context<Self>) -> AnyElement {
