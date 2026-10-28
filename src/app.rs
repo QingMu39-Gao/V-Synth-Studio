@@ -21,6 +21,7 @@ use crate::services::audio::{self, AudioFormat, AudioInfo, AudioOperation};
 use crate::services::bili::{self, Page as VideoPage, ParsedVideo};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
+use crate::services::media_server::MediaServer;
 use crate::tools::{Tool, ToolStatus};
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
@@ -117,6 +118,9 @@ pub struct VSynthApp {
     video_download_job: Option<u64>,
     video_notice: Option<String>,
     video_output: Option<PathBuf>,
+    video_webview: Option<Entity<WebView>>,
+    video_webview_error: Option<String>,
+    media_server: Option<MediaServer>,
 }
 
 impl VSynthApp {
@@ -184,6 +188,9 @@ impl VSynthApp {
             video_download_job: None,
             video_notice: None,
             video_output: None,
+            video_webview: None,
+            video_webview_error: None,
+            media_server: None,
         }
     }
 
@@ -193,6 +200,13 @@ impl VSynthApp {
             && let Some(webview) = &self.webview
         {
             webview.update(cx, |webview, _| webview.hide());
+        }
+        if self.page == Page::Video && page != Page::Video {
+            if let Some(webview) = &self.video_webview {
+                webview.update(cx, |webview, _| webview.hide());
+            }
+            self.video_webview = None;
+            self.media_server = None;
         }
         if page == Page::Pv {
             self.ensure_webview(window, cx);
@@ -896,6 +910,44 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn open_video_preview(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let Some(output) = self.video_output.clone() else {
+            return;
+        };
+        let title = self
+            .video_info
+            .as_ref()
+            .map(|info| info.title.clone())
+            .unwrap_or_else(|| "video".to_string());
+        self.video_webview = None;
+        self.media_server = None;
+        self.video_webview_error = None;
+        let s = self.text();
+        let result = MediaServer::start(output, title).and_then(|server| {
+            let url = server.url().to_string();
+            WebView::build(wry::WebViewBuilder::new().with_url(url), window, cx)
+                .map(|webview| (server, webview))
+                .map_err(|error| format!("{}：{error}", s.video_preview_error))
+        });
+        match result {
+            Ok((server, webview)) => {
+                self.media_server = Some(server);
+                self.video_webview = Some(cx.new(|_| webview));
+            }
+            Err(error) => self.video_webview_error = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn close_video_preview(&mut self, cx: &mut Context<Self>) {
+        if let Some(webview) = &self.video_webview {
+            webview.update(cx, |webview, _| webview.hide());
+        }
+        self.video_webview = None;
+        self.media_server = None;
+        cx.notify();
+    }
+
     fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
         let value = self.download_input.read(cx).value().trim().to_string();
         if value.is_empty() {
@@ -1101,7 +1153,7 @@ impl VSynthApp {
     }
 
     fn render_main(&self, cx: &mut Context<Self>) -> AnyElement {
-        if self.page == Page::Pv {
+        if self.page == Page::Pv || self.page == Page::Video && self.video_webview.is_some() {
             return v_flex()
                 .flex_1()
                 .min_w_0()
@@ -1327,8 +1379,49 @@ impl VSynthApp {
         let muted = theme.muted_foreground;
         let border = theme.border;
         let primary = theme.primary;
+        let danger = theme.danger;
         let entity = cx.entity();
         let s = self.text();
+
+        if let Some(webview) = &self.video_webview {
+            let close_entity = entity.clone();
+            return v_flex()
+                .size_full()
+                .p_6()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_2xl()
+                                .font_weight(FontWeight::BOLD)
+                                .child(s.video_preview),
+                        )
+                        .child(
+                            Button::new("video-preview-close")
+                                .label(s.video_preview_close)
+                                .on_click(move |_, _, cx| {
+                                    close_entity.update(cx, |this, cx| {
+                                        this.close_video_preview(cx);
+                                    });
+                                }),
+                        ),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .rounded(theme.radius)
+                        .border_1()
+                        .border_color(border)
+                        .overflow_hidden()
+                        .child(webview.clone()),
+                )
+                .into_any_element();
+        }
 
         let parsing = self
             .video_parse_job
@@ -1451,6 +1544,7 @@ impl VSynthApp {
             let output_entity = entity.clone();
             let output_block = self.video_output.as_ref().map(|output| {
                 let open_entity = output_entity.clone();
+                let preview_entity = output_entity.clone();
                 v_flex()
                     .gap_2()
                     .child(
@@ -1460,11 +1554,26 @@ impl VSynthApp {
                             .child(output.display().to_string()),
                     )
                     .child(
-                        Button::new("video-open-folder")
-                            .label(s.video_open_folder)
-                            .on_click(move |_, _, cx| {
-                                open_entity.update(cx, |this, cx| this.open_video_folder(cx));
-                            }),
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("video-preview")
+                                    .label(s.video_preview)
+                                    .primary()
+                                    .on_click(move |_, window, cx| {
+                                        preview_entity.update(cx, |this, cx| {
+                                            this.open_video_preview(window, cx);
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new("video-open-folder")
+                                    .label(s.video_open_folder)
+                                    .on_click(move |_, _, cx| {
+                                        open_entity
+                                            .update(cx, |this, cx| this.open_video_folder(cx));
+                                    }),
+                            ),
                     )
                     .into_any_element()
             });
@@ -1513,6 +1622,13 @@ impl VSynthApp {
                 .child(download_button)
                 .child(div().text_xs().text_color(muted).child(s.video_output_hint))
                 .children(output_block)
+                .children(self.video_webview_error.as_ref().map(|error| {
+                    div()
+                        .text_xs()
+                        .text_color(danger)
+                        .child(error.clone())
+                        .into_any_element()
+                }))
                 .into_any_element()
         } else {
             div()
