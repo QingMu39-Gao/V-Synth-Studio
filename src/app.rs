@@ -18,6 +18,7 @@ use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
 use crate::services::artifacts::{self, Artifact};
 use crate::services::audio::{self, AudioFormat, AudioInfo, AudioOperation};
+use crate::services::bili::{self, Page as VideoPage, ParsedVideo};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
 use crate::tools::{Tool, ToolStatus};
@@ -108,6 +109,14 @@ pub struct VSynthApp {
     audio_ratio: f32,
     audio_lufs: i32,
     waveform_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
+    video_url_input: Entity<InputState>,
+    video_info: Option<ParsedVideo>,
+    video_quality: Option<u32>,
+    video_parse_job: Option<u64>,
+    video_page_job: Option<u64>,
+    video_download_job: Option<u64>,
+    video_notice: Option<String>,
+    video_output: Option<PathBuf>,
 }
 
 impl VSynthApp {
@@ -121,6 +130,7 @@ impl VSynthApp {
         download_input: Entity<InputState>,
         ext_input: Entity<InputState>,
         resource_search: Entity<InputState>,
+        video_url_input: Entity<InputState>,
         job_center: Entity<JobCenter>,
     ) -> Self {
         let (resources, resource_error) = match Resources::load() {
@@ -166,6 +176,14 @@ impl VSynthApp {
             audio_ratio: 1.25,
             audio_lufs: -16,
             waveform_bounds: Rc::new(RefCell::new(None)),
+            video_url_input,
+            video_info: None,
+            video_quality: None,
+            video_parse_job: None,
+            video_page_job: None,
+            video_download_job: None,
+            video_notice: None,
+            video_output: None,
         }
     }
 
@@ -688,6 +706,205 @@ impl VSynthApp {
         }
     }
 
+    fn parse_video(&mut self, cx: &mut Context<Self>) {
+        if self
+            .video_parse_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+            || self
+                .video_download_job
+                .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let url = self.video_url_input.read(cx).value().trim().to_string();
+        if url.is_empty() {
+            self.video_notice = Some(self.text().video_url_hint.to_string());
+            cx.notify();
+            return;
+        }
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.video_parse, move |_| bili::parse(&url));
+        self.video_parse_job = Some(job.id);
+        self.video_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.video_parse_job == Some(job_id) {
+                    this.video_parse_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(video)) => {
+                        this.video_quality = video.qualities.first().map(|quality| quality.qn);
+                        this.video_info = Some(video);
+                        this.video_output = None;
+                        this.video_notice = None;
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.video_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.video_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.video_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn select_video_page(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(info) = &mut self.video_info else {
+            return;
+        };
+        if index >= info.pages.len() || info.page_index == index {
+            return;
+        }
+        if self
+            .video_page_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        info.page_index = index;
+        info.qualities.clear();
+        self.video_quality = None;
+        self.video_notice = None;
+        let bvid = info.bvid.clone();
+        let cid = info.pages[index].cid;
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.video_parsing, move |_| bili::qualities_for(&bvid, cid));
+        self.video_page_job = Some(job.id);
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.video_page_job == Some(job_id) {
+                    this.video_page_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(qualities)) => {
+                        if let Some(info) = &mut this.video_info {
+                            info.qualities = qualities;
+                        }
+                        this.video_quality = this
+                            .video_info
+                            .as_ref()
+                            .and_then(|info| info.qualities.first())
+                            .map(|quality| quality.qn);
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.video_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.video_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.video_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn download_video(&mut self, cx: &mut Context<Self>) {
+        if self
+            .video_download_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(info) = self.video_info.clone() else {
+            return;
+        };
+        let Some(quality) = self.video_quality else {
+            return;
+        };
+        let Some(page) = info.pages.get(info.page_index) else {
+            return;
+        };
+        let directory = self.download_directory(cx);
+        let name = video_file_name(&info, page, quality);
+        let output = unique_video_output(&directory, &name);
+        let job_output = output.clone();
+        let bvid = info.bvid.clone();
+        let cid = page.cid;
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.video_download, move |ctx| {
+                bili::download(&bvid, cid, quality, &job_output, &ctx)
+            });
+        self.video_download_job = Some(job.id);
+        self.video_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.video_download_job == Some(job_id) {
+                    this.video_download_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(())) => {
+                        this.video_output = Some(output.clone());
+                        this.video_notice =
+                            Some(format!("{}: {}", this.text().video_done, output.display()));
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.video_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.video_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.video_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_video_download(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.video_download_job {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
+    }
+
+    fn open_video_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(output) = &self.video_output else {
+            return;
+        };
+        let directory = output.parent().unwrap_or_else(|| Path::new("."));
+        if let Err(error) = open::that(directory) {
+            self.video_notice = Some(format!("打开目录失败：{error}"));
+        }
+        cx.notify();
+    }
+
+    fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
+        let value = self.download_input.read(cx).value().trim().to_string();
+        if value.is_empty() {
+            default_download_dir()
+        } else {
+            PathBuf::from(value)
+        }
+    }
+
     pub fn watch_system_theme(&self, window: &mut Window, cx: &mut Context<Self>) {
         cx.observe_window_appearance(window, |this, window, cx| {
             if this.config.theme == ThemePreference::System {
@@ -926,6 +1143,7 @@ impl VSynthApp {
         match self.page {
             Page::Dashboard => self.render_dashboard(cx).into_any_element(),
             Page::Convert => self.render_convert(cx),
+            Page::Video => self.render_video(cx),
             Page::Audio => self.render_audio(cx),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
@@ -1102,6 +1320,277 @@ impl VSynthApp {
                     .title(s.quick_entry)
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
             )
+    }
+
+    fn render_video(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let primary = theme.primary;
+        let entity = cx.entity();
+        let s = self.text();
+
+        let parsing = self
+            .video_parse_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+            || self
+                .video_page_job
+                .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let downloading = self
+            .video_download_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let download_snapshot = self
+            .video_download_job
+            .and_then(|id| self.job_center.read(cx).snapshot(id));
+
+        let parse_entity = entity.clone();
+        let parse_button = Button::new("video-parse")
+            .label(if parsing {
+                s.video_parsing
+            } else {
+                s.video_parse
+            })
+            .primary()
+            .on_click(move |_, _, cx| {
+                parse_entity.update(cx, |this, cx| this.parse_video(cx));
+            });
+
+        let info_block = if let Some(info) = &self.video_info {
+            let page = info.pages.get(info.page_index);
+            let page_buttons = if info.pages.len() > 1 {
+                info.pages
+                    .iter()
+                    .enumerate()
+                    .map(|(index, page)| {
+                        let selected = index == info.page_index;
+                        let entity = entity.clone();
+                        let mut button =
+                            Button::new(SharedString::from(format!("video-page-{index}")))
+                                .label(format!("P{}", page.page))
+                                .compact();
+                        button = if selected {
+                            button.primary()
+                        } else {
+                            button.ghost()
+                        };
+                        button
+                            .on_click(move |_, _, cx| {
+                                entity.update(cx, |this, cx| {
+                                    this.select_video_page(index, cx);
+                                });
+                            })
+                            .into_any_element()
+                    })
+                    .collect::<Vec<_>>()
+            } else {
+                Vec::new()
+            };
+            let quality_buttons = info
+                .qualities
+                .iter()
+                .map(|quality| {
+                    let selected = self.video_quality == Some(quality.qn);
+                    let entity = entity.clone();
+                    let qn = quality.qn;
+                    let label = if quality.label.is_empty() {
+                        qn.to_string()
+                    } else {
+                        format!("{} ({qn})", quality.label)
+                    };
+                    let mut button = Button::new(SharedString::from(format!("video-quality-{qn}")))
+                        .label(label)
+                        .compact();
+                    button = if selected {
+                        button.primary()
+                    } else {
+                        button.ghost()
+                    };
+                    button
+                        .on_click(move |_, _, cx| {
+                            entity.update(cx, |this, cx| {
+                                this.video_quality = Some(qn);
+                                cx.notify();
+                            });
+                        })
+                        .into_any_element()
+                })
+                .collect::<Vec<_>>();
+            let download_entity = entity.clone();
+            let cancel_entity = entity.clone();
+            let download_button = if downloading {
+                Button::new("video-cancel")
+                    .label(s.video_cancel)
+                    .on_click(move |_, _, cx| {
+                        cancel_entity.update(cx, |this, cx| this.cancel_video_download(cx));
+                    })
+                    .into_any_element()
+            } else {
+                Button::new("video-download")
+                    .label(s.video_download)
+                    .primary()
+                    .on_click(move |_, _, cx| {
+                        download_entity.update(cx, |this, cx| this.download_video(cx));
+                    })
+                    .into_any_element()
+            };
+            let page_name = page
+                .filter(|_| info.pages.len() > 1)
+                .map(|page| {
+                    if page.part.is_empty() {
+                        format!("P{} · {}", page.page, format_duration(page.duration as f64))
+                    } else {
+                        format!(
+                            "P{} · {} · {}",
+                            page.page,
+                            page.part,
+                            format_duration(page.duration as f64)
+                        )
+                    }
+                })
+                .unwrap_or_default();
+            let output_entity = entity.clone();
+            let output_block = self.video_output.as_ref().map(|output| {
+                let open_entity = output_entity.clone();
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(output.display().to_string()),
+                    )
+                    .child(
+                        Button::new("video-open-folder")
+                            .label(s.video_open_folder)
+                            .on_click(move |_, _, cx| {
+                                open_entity.update(cx, |this, cx| this.open_video_folder(cx));
+                            }),
+                    )
+                    .into_any_element()
+            });
+            v_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .text_lg()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(info.title.clone()),
+                )
+                .child(
+                    h_flex()
+                        .gap_4()
+                        .flex_wrap()
+                        .child(meta_text(s.video_owner, info.owner.clone(), muted))
+                        .child(meta_text(
+                            s.video_duration,
+                            format_duration(info.duration as f64),
+                            muted,
+                        ))
+                        .child(meta_text(
+                            s.video_pages,
+                            info.pages.len().to_string(),
+                            muted,
+                        )),
+                )
+                .children(if page_name.is_empty() {
+                    None
+                } else {
+                    Some(div().text_xs().text_color(muted).child(page_name))
+                })
+                .children(if page_buttons.is_empty() {
+                    None
+                } else {
+                    Some(
+                        h_flex()
+                            .gap_2()
+                            .flex_wrap()
+                            .children(page_buttons)
+                            .into_any_element(),
+                    )
+                })
+                .child(div().text_xs().text_color(muted).child(s.video_quality))
+                .child(h_flex().gap_2().flex_wrap().children(quality_buttons))
+                .child(download_button)
+                .child(div().text_xs().text_color(muted).child(s.video_output_hint))
+                .children(output_block)
+                .into_any_element()
+        } else {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.video_no_result)
+                .into_any_element()
+        };
+
+        let progress_block = if let Some(snapshot) = &download_snapshot {
+            if snapshot.status.is_running() {
+                v_flex()
+                    .gap_1()
+                    .child(div().text_xs().text_color(muted).child(s.video_downloading))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(snapshot.message.clone()),
+                    )
+                    .child(
+                        div().h(px(4.)).w_full().rounded(px(2.)).bg(border).child(
+                            div()
+                                .h_full()
+                                .w(relative(snapshot.progress.unwrap_or(0.0)))
+                                .rounded(px(2.))
+                                .bg(primary),
+                        ),
+                    )
+                    .into_any_element()
+            } else {
+                div().into_any_element()
+            }
+        } else {
+            div().into_any_element()
+        };
+        let notice = self.video_notice.as_ref().map(|notice| {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("video-url")
+                    .outline()
+                    .title(s.video_url)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(Input::new(&self.video_url_input).w_full())
+                            .child(
+                                h_flex().items_center().gap_3().child(parse_button).child(
+                                    div().text_xs().text_color(muted).child(s.video_url_hint),
+                                ),
+                            ),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("video-info")
+                    .outline()
+                    .title(s.video_info_title)
+                    .child(info_block),
+            )
+            .child(
+                GroupBox::new()
+                    .id("video-actions")
+                    .outline()
+                    .title(s.video_download)
+                    .child(v_flex().gap_2().child(progress_block).children(notice)),
+            )
+            .into_any_element()
     }
 
     fn render_audio(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -2388,6 +2877,65 @@ fn audio_output_path(input: &Path, operation: AudioOp, format: AudioFormat) -> P
         index += 1;
     }
     candidate
+}
+
+fn video_file_name(info: &ParsedVideo, page: &VideoPage, quality: u32) -> String {
+    let title = sanitize_filename(&info.title);
+    let page_suffix = if info.pages.len() > 1 {
+        format!("-P{}", page.page)
+    } else {
+        String::new()
+    };
+    format!("{title}{page_suffix}-{quality}.mp4")
+}
+
+fn sanitize_filename(title: &str) -> String {
+    let mut name = title
+        .chars()
+        .map(|character| {
+            if character.is_control() || "<>:\"/\\|?*".contains(character) {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect::<String>();
+    name = name.trim().trim_matches('.').trim().to_string();
+    if name.chars().count() > 80 {
+        name = name.chars().take(80).collect();
+    }
+    if name.is_empty() {
+        "video".to_string()
+    } else {
+        name
+    }
+}
+
+fn unique_video_output(directory: &Path, name: &str) -> PathBuf {
+    let path = Path::new(name);
+    let stem = path
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| "video".to_string());
+    let extension = path
+        .extension()
+        .map(|extension| extension.to_string_lossy().to_string())
+        .unwrap_or_else(|| "mp4".to_string());
+    let mut candidate = directory.join(name);
+    let mut index = 1;
+    while candidate.exists() {
+        candidate = directory.join(format!("{stem}-{index}.{extension}"));
+        index += 1;
+    }
+    candidate
+}
+
+fn default_download_dir() -> PathBuf {
+    let home = std::env::var_os("USERPROFILE")
+        .or_else(|| std::env::var_os("HOME"))
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    home.join("Downloads")
 }
 
 fn format_duration(seconds: f64) -> String {

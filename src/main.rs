@@ -46,6 +46,10 @@ fn main() {
                     InputState::new(window, cx)
                         .placeholder(i18n::strings(config.language).search_placeholder)
                 });
+                let video_url_input = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .placeholder(i18n::strings(config.language).video_url_placeholder)
+                });
                 let job_center = cx.new(jobs::JobCenter::new);
                 let view = cx.new(|_| {
                     app::VSynthApp::new(
@@ -54,6 +58,7 @@ fn main() {
                         download_input,
                         ext_input,
                         resource_search,
+                        video_url_input,
                         job_center,
                     )
                 });
