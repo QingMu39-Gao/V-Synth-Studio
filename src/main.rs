@@ -14,7 +14,7 @@ mod services;
 mod tools;
 
 use gpui_kit::component::TitleBar;
-use gpui_kit::component::input::InputState;
+use gpui_kit::component::input::{InputState, TextareaState};
 use gpui_kit::*;
 
 fn main() {
@@ -50,18 +50,22 @@ fn main() {
                     InputState::new(window, cx)
                         .placeholder(i18n::strings(config.language).video_url_placeholder)
                 });
-                let job_center = cx.new(jobs::JobCenter::new);
-                let view = cx.new(|_| {
-                    app::VSynthApp::new(
-                        config.clone(),
-                        output_input,
-                        download_input,
-                        ext_input,
-                        resource_search,
-                        video_url_input,
-                        job_center,
-                    )
+                let lyrics_query = cx.new(|cx| {
+                    InputState::new(window, cx)
+                        .placeholder(i18n::strings(config.language).lyrics_query_placeholder)
                 });
+                let lyrics_editor = cx.new(|cx| TextareaState::new(window, cx));
+                let job_center = cx.new(jobs::JobCenter::new);
+                let inputs = app::AppInputs {
+                    output: output_input,
+                    download: download_input,
+                    ext: ext_input,
+                    resource_search,
+                    video_url: video_url_input,
+                    lyrics_query,
+                    lyrics_editor,
+                };
+                let view = cx.new(|_| app::VSynthApp::new(config.clone(), inputs, job_center));
                 view.update(cx, |this, cx| {
                     this.watch_system_theme(window, cx);
                     this.watch_resource_search(cx);

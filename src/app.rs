@@ -1,6 +1,6 @@
 use gpui_kit::component::button::{Button, ButtonVariants as _};
 use gpui_kit::component::group_box::{GroupBox, GroupBoxVariants as _};
-use gpui_kit::component::input::{Input, InputEvent, InputState};
+use gpui_kit::component::input::{Input, InputEvent, InputState, Textarea, TextareaState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
@@ -21,12 +21,23 @@ use crate::services::audio::{self, AudioFormat, AudioInfo, AudioOperation};
 use crate::services::bili::{self, Page as VideoPage, ParsedVideo};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
+use crate::services::lyrics::{self, SearchResult, SongDetail};
 use crate::services::media_server::MediaServer;
 use crate::tools::{Tool, ToolStatus};
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
 
 const SIDEBAR_WIDTH: f32 = 228.0;
+
+pub struct AppInputs {
+    pub output: Entity<InputState>,
+    pub download: Entity<InputState>,
+    pub ext: Entity<InputState>,
+    pub resource_search: Entity<InputState>,
+    pub video_url: Entity<InputState>,
+    pub lyrics_query: Entity<InputState>,
+    pub lyrics_editor: Entity<TextareaState>,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum AudioOp {
@@ -121,6 +132,13 @@ pub struct VSynthApp {
     video_webview: Option<Entity<WebView>>,
     video_webview_error: Option<String>,
     media_server: Option<MediaServer>,
+    lyrics_query: Entity<InputState>,
+    lyrics_editor: Entity<TextareaState>,
+    lyrics_results: Vec<SearchResult>,
+    lyrics_song: Option<SongDetail>,
+    lyrics_translation: String,
+    lyrics_notice: Option<String>,
+    lyrics_searched: bool,
 }
 
 impl VSynthApp {
@@ -128,15 +146,7 @@ impl VSynthApp {
         i18n::strings(self.config.language)
     }
 
-    pub fn new(
-        config: Config,
-        output_input: Entity<InputState>,
-        download_input: Entity<InputState>,
-        ext_input: Entity<InputState>,
-        resource_search: Entity<InputState>,
-        video_url_input: Entity<InputState>,
-        job_center: Entity<JobCenter>,
-    ) -> Self {
+    pub fn new(config: Config, inputs: AppInputs, job_center: Entity<JobCenter>) -> Self {
         let (resources, resource_error) = match Resources::load() {
             Ok(resources) => (resources, None),
             Err(error) => (Resources::default(), Some(error)),
@@ -147,12 +157,12 @@ impl VSynthApp {
             notice: None,
             tools: None,
             scanning_tools: false,
-            output_input,
-            download_input,
-            ext_input,
+            output_input: inputs.output,
+            download_input: inputs.download,
+            ext_input: inputs.ext,
             resources,
             resource_error,
-            resource_search,
+            resource_search: inputs.resource_search,
             resource_group: None,
             webview: None,
             webview_error: None,
@@ -180,7 +190,7 @@ impl VSynthApp {
             audio_ratio: 1.25,
             audio_lufs: -16,
             waveform_bounds: Rc::new(RefCell::new(None)),
-            video_url_input,
+            video_url_input: inputs.video_url,
             video_info: None,
             video_quality: None,
             video_parse_job: None,
@@ -191,6 +201,13 @@ impl VSynthApp {
             video_webview: None,
             video_webview_error: None,
             media_server: None,
+            lyrics_query: inputs.lyrics_query,
+            lyrics_editor: inputs.lyrics_editor,
+            lyrics_results: Vec::new(),
+            lyrics_song: None,
+            lyrics_translation: String::new(),
+            lyrics_notice: None,
+            lyrics_searched: false,
         }
     }
 
@@ -948,6 +965,98 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn search_lyrics(&mut self, cx: &mut Context<Self>) {
+        let query = self.lyrics_query.read(cx).value().trim().to_string();
+        self.lyrics_searched = true;
+        match lyrics::search(&query, 10) {
+            Ok(results) => {
+                self.lyrics_results = results;
+                self.lyrics_notice = None;
+            }
+            Err(error) => {
+                self.lyrics_results.clear();
+                self.lyrics_notice = Some(error);
+            }
+        }
+        cx.notify();
+    }
+
+    fn select_lyrics_song(&mut self, id: u64, window: &mut Window, cx: &mut Context<Self>) {
+        let result = lyrics::detail(id).and_then(|song| {
+            let fetched = lyrics::lyrics(id)?;
+            Ok((song, fetched))
+        });
+        match result {
+            Ok((song, fetched)) => {
+                self.lyrics_song = Some(song);
+                self.lyrics_translation = fetched.translation;
+                self.lyrics_editor.update(cx, |editor, cx| {
+                    editor.set_value(fetched.lrc, window, cx);
+                });
+                self.lyrics_notice = None;
+            }
+            Err(error) => self.lyrics_notice = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn save_lyrics(&mut self, srt: bool, cx: &mut Context<Self>) {
+        let text = self.lyrics_editor.read(cx).value().to_string();
+        if text.trim().is_empty() {
+            self.lyrics_notice = Some(self.text().lyrics_no_lyrics.to_string());
+            cx.notify();
+            return;
+        }
+        let content = if srt { lyrics::lrc_to_srt(&text) } else { text };
+        let stem = self
+            .lyrics_song
+            .as_ref()
+            .map(|song| sanitize_filename(&song.name))
+            .unwrap_or_else(|| "lyrics".to_string());
+        let extension = if srt { "srt" } else { "lrc" };
+        let Some(path) = rfd::FileDialog::new()
+            .set_file_name(format!("{stem}.{extension}"))
+            .add_filter(extension.to_uppercase(), &[extension])
+            .save_file()
+        else {
+            return;
+        };
+        match std::fs::write(&path, content) {
+            Ok(()) => {
+                let message = if srt {
+                    self.text().lyrics_save_srt
+                } else {
+                    self.text().lyrics_save_lrc
+                };
+                self.lyrics_notice = Some(format!("{message}: {}", path.display()));
+            }
+            Err(error) => {
+                self.lyrics_notice = Some(format!("保存歌词失败：{error}"));
+            }
+        }
+        cx.notify();
+    }
+
+    fn download_lyrics_cover(&mut self, cx: &mut Context<Self>) {
+        let Some(song) = self.lyrics_song.clone() else {
+            self.lyrics_notice = Some(self.text().lyrics_no_song.to_string());
+            cx.notify();
+            return;
+        };
+        let directory = self.download_directory(cx);
+        match lyrics::download_cover(&song.cover_url, &directory, &song.name) {
+            Ok(path) => {
+                self.lyrics_notice = Some(format!(
+                    "{}: {}",
+                    self.text().lyrics_download_cover,
+                    path.display()
+                ));
+            }
+            Err(error) => self.lyrics_notice = Some(error),
+        }
+        cx.notify();
+    }
+
     fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
         let value = self.download_input.read(cx).value().trim().to_string();
         if value.is_empty() {
@@ -1197,6 +1306,7 @@ impl VSynthApp {
             Page::Convert => self.render_convert(cx),
             Page::Video => self.render_video(cx),
             Page::Audio => self.render_audio(cx),
+            Page::Lyrics => self.render_lyrics(cx),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
             Page::Pv => self.render_pv(cx),
@@ -1705,6 +1815,219 @@ impl VSynthApp {
                     .outline()
                     .title(s.video_download)
                     .child(v_flex().gap_2().child(progress_block).children(notice)),
+            )
+            .into_any_element()
+    }
+
+    fn render_lyrics(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let entity = cx.entity();
+        let s = self.text();
+
+        let search_entity = entity.clone();
+        let search_button = Button::new("lyrics-search")
+            .label(s.lyrics_search)
+            .primary()
+            .on_click(move |_, _, cx| {
+                search_entity.update(cx, |this, cx| this.search_lyrics(cx));
+            });
+
+        let mut rows = Vec::new();
+        for result in &self.lyrics_results {
+            let selected = self
+                .lyrics_song
+                .as_ref()
+                .is_some_and(|song| song.id == result.id);
+            let id = result.id;
+            let select_entity = entity.clone();
+            let mut button = Button::new(SharedString::from(format!("lyrics-select-{id}")))
+                .label(s.lyrics_select)
+                .compact();
+            button = if selected {
+                button.primary()
+            } else {
+                button.ghost()
+            };
+            rows.push(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .gap_4()
+                    .py_1()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .min_w_0()
+                            .child(div().text_sm().child(result.name.clone()))
+                            .child(div().text_xs().text_color(muted).child(format!(
+                                "{} · {} · {}",
+                                result.artists.join(", "),
+                                result.album,
+                                format_duration(result.duration_ms as f64 / 1000.0)
+                            ))),
+                    )
+                    .child(button.on_click(move |_, window, cx| {
+                        select_entity.update(cx, |this, cx| {
+                            this.select_lyrics_song(id, window, cx);
+                        });
+                    }))
+                    .into_any_element(),
+            );
+        }
+        if rows.is_empty() && self.lyrics_searched {
+            rows.push(
+                div()
+                    .text_sm()
+                    .text_color(muted)
+                    .child(s.lyrics_empty)
+                    .into_any_element(),
+            );
+        }
+
+        let song_block = if let Some(song) = &self.lyrics_song {
+            let cover_entity = entity.clone();
+            v_flex()
+                .gap_2()
+                .child(
+                    div()
+                        .text_lg()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(song.name.clone()),
+                )
+                .child(
+                    h_flex()
+                        .gap_4()
+                        .flex_wrap()
+                        .child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child(song.artists.join(", ")),
+                        )
+                        .child(div().text_xs().text_color(muted).child(format!(
+                            "{} · {}",
+                            song.album,
+                            format_duration(song.duration_ms as f64 / 1000.0)
+                        ))),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(format!("{}: {}", s.lyrics_cover, song.cover_url)),
+                )
+                .child(
+                    Button::new("lyrics-cover")
+                        .label(s.lyrics_download_cover)
+                        .on_click(move |_, _, cx| {
+                            cover_entity.update(cx, |this, cx| {
+                                this.download_lyrics_cover(cx);
+                            });
+                        }),
+                )
+                .into_any_element()
+        } else {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.lyrics_no_song)
+                .into_any_element()
+        };
+
+        let save_lrc_entity = entity.clone();
+        let save_srt_entity = entity.clone();
+        let save_buttons = h_flex()
+            .gap_2()
+            .child(
+                Button::new("lyrics-save-lrc")
+                    .label(s.lyrics_save_lrc)
+                    .primary()
+                    .on_click(move |_, _, cx| {
+                        save_lrc_entity.update(cx, |this, cx| this.save_lyrics(false, cx));
+                    }),
+            )
+            .child(
+                Button::new("lyrics-save-srt")
+                    .label(s.lyrics_save_srt)
+                    .on_click(move |_, _, cx| {
+                        save_srt_entity.update(cx, |this, cx| this.save_lyrics(true, cx));
+                    }),
+            );
+
+        let translation = if self.lyrics_translation.trim().is_empty() {
+            div().into_any_element()
+        } else {
+            v_flex()
+                .gap_1()
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(s.lyrics_translation),
+                )
+                .child(div().text_sm().child(self.lyrics_translation.clone()))
+                .into_any_element()
+        };
+        let notice = self.lyrics_notice.as_ref().map(|notice| {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("lyrics-search")
+                    .outline()
+                    .title(s.lyrics_search)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(Input::new(&self.lyrics_query).w_full())
+                            .child(
+                                h_flex()
+                                    .items_center()
+                                    .gap_3()
+                                    .child(search_button)
+                                    .child(div().text_xs().text_color(muted).child(s.lyrics_hint)),
+                            ),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("lyrics-results")
+                    .outline()
+                    .title(s.lyrics_results)
+                    .child(v_flex().gap_2().children(rows)),
+            )
+            .child(
+                GroupBox::new()
+                    .id("lyrics-song")
+                    .outline()
+                    .title(s.lyrics_song)
+                    .child(song_block),
+            )
+            .child(
+                GroupBox::new()
+                    .id("lyrics-editor")
+                    .outline()
+                    .title(s.lyrics_editor)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(Textarea::new(&self.lyrics_editor).h(px(320.)).w_full())
+                            .child(save_buttons)
+                            .child(translation)
+                            .children(notice),
+                    ),
             )
             .into_any_element()
     }
