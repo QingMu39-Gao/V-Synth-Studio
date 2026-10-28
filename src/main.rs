@@ -3,6 +3,7 @@
 mod app;
 mod app_assets;
 mod config;
+mod formats;
 mod i18n;
 mod jizura;
 mod jizura_save;

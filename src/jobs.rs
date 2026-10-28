@@ -50,6 +50,10 @@ impl JobCenter {
             .is_some_and(|snapshot| snapshot.status.is_running())
     }
 
+    pub fn snapshot(&self, id: u64) -> Option<JobSnapshot> {
+        self.jobs.snapshot(id)
+    }
+
     pub fn snapshots(&self) -> &[JobSnapshot] {
         &self.snapshots
     }

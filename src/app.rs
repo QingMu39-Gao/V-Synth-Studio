@@ -4,17 +4,19 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use gpui_webview::WebView;
 
 use crate::config::{Config, ThemePreference};
+use crate::formats::{self, Format};
 use crate::i18n::{self, Language, Strings};
 use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
 use crate::services::artifacts::{self, Artifact};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
+use crate::services::libresvip::{self, ProjectInfo};
 use crate::tools::{Tool, ToolStatus};
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
@@ -40,6 +42,12 @@ pub struct VSynthApp {
     job_center: Entity<JobCenter>,
     tool_job: Option<u64>,
     component_job: Option<(&'static str, u64)>,
+    convert_inputs: Vec<PathBuf>,
+    convert_format: &'static Format,
+    convert_preview: Option<(PathBuf, ProjectInfo)>,
+    convert_preview_job: Option<u64>,
+    convert_job: Option<u64>,
+    convert_notice: Option<String>,
 }
 
 impl VSynthApp {
@@ -78,6 +86,12 @@ impl VSynthApp {
             job_center,
             tool_job: None,
             component_job: None,
+            convert_inputs: Vec::new(),
+            convert_format: formats::DEFAULT,
+            convert_preview: None,
+            convert_preview_job: None,
+            convert_job: None,
+            convert_notice: None,
         }
     }
 
@@ -277,6 +291,175 @@ impl VSynthApp {
 
     fn cancel_component(&mut self, cx: &mut Context<Self>) {
         if let Some((_, id)) = self.component_job {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
+    }
+
+    fn add_convert_files(&mut self, cx: &mut Context<Self>) {
+        let Some(paths) = rfd::FileDialog::new()
+            .add_filter("Project files", formats::PICK_EXTENSIONS)
+            .pick_files()
+        else {
+            return;
+        };
+        for path in paths {
+            if path.is_file() && !self.convert_inputs.contains(&path) {
+                self.convert_inputs.push(path);
+            }
+        }
+        self.convert_preview = None;
+        self.convert_notice = None;
+        cx.notify();
+    }
+
+    fn clear_convert_files(&mut self, cx: &mut Context<Self>) {
+        self.convert_inputs.clear();
+        self.convert_preview = None;
+        self.convert_notice = None;
+        cx.notify();
+    }
+
+    fn remove_convert_file(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.convert_inputs.len() {
+            self.convert_inputs.remove(index);
+            self.convert_preview = None;
+            self.convert_notice = None;
+            cx.notify();
+        }
+    }
+
+    fn choose_convert_output_dir(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let current = self.output_input.read(cx).value().to_string();
+        let Some(path) = pick_folder(&current) else {
+            return;
+        };
+        let value = path.to_string_lossy().to_string();
+        self.output_input.update(cx, |state, cx| {
+            state.set_value(value.clone(), window, cx);
+        });
+        self.config.output_dir = value;
+        self.notice = self.config.save().err();
+        cx.notify();
+    }
+
+    fn inspect_convert(&mut self, cx: &mut Context<Self>) {
+        let Some(input) = self.convert_inputs.first().cloned() else {
+            return;
+        };
+        if self
+            .convert_preview_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let s = self.text();
+        let job_input = input.clone();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.convert_inspect, move |ctx| {
+                libresvip::inspect(&job_input, &ctx)
+            });
+        self.convert_preview_job = Some(job.id);
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.convert_preview_job == Some(job_id) {
+                    this.convert_preview_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(info)) => {
+                        this.convert_preview = Some((input.clone(), info));
+                        this.convert_notice = None;
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.convert_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.convert_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.convert_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn start_convert(&mut self, cx: &mut Context<Self>) {
+        if self.convert_inputs.is_empty()
+            || self
+                .convert_job
+                .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let inputs = self.convert_inputs.clone();
+        let format = *self.convert_format;
+        let output_dir = {
+            let value = self.output_input.read(cx).value().trim().to_string();
+            (!value.is_empty()).then(|| PathBuf::from(value))
+        };
+        let s = self.text();
+        let job = self.job_center.read(cx).start(s.page_convert, move |ctx| {
+            let total = inputs.len().max(1);
+            let mut outputs = Vec::new();
+            for (index, input) in inputs.iter().enumerate() {
+                if ctx.is_canceled() {
+                    return Err("已取消".to_string());
+                }
+                let output = unique_output(input, &format, output_dir.as_deref());
+                let base = index as f32 / total as f32;
+                let span = 1.0 / total as f32;
+                libresvip::convert_with(
+                    input,
+                    &output,
+                    |fraction, message| {
+                        ctx.progress(fraction.map(|value| base + value * span), message);
+                    },
+                    |line| ctx.log(line),
+                    || ctx.is_canceled(),
+                )?;
+                outputs.push(output);
+            }
+            Ok(outputs)
+        });
+        self.convert_job = Some(job.id);
+        self.convert_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.convert_job == Some(job_id) {
+                    this.convert_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(outputs)) => {
+                        this.convert_notice =
+                            Some(format!("{}: {}", this.text().convert_done, outputs.len()));
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.convert_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.convert_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.convert_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_convert(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.convert_job {
             self.job_center.read(cx).cancel(id);
             cx.notify();
         }
@@ -519,6 +702,7 @@ impl VSynthApp {
     fn render_page(&self, cx: &mut Context<Self>) -> AnyElement {
         match self.page {
             Page::Dashboard => self.render_dashboard(cx).into_any_element(),
+            Page::Convert => self.render_convert(cx),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
             Page::Pv => self.render_pv(cx),
@@ -694,6 +878,306 @@ impl VSynthApp {
                     .title(s.quick_entry)
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
             )
+    }
+
+    fn render_convert(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let entity = cx.entity();
+        let s = self.text();
+
+        let preview_running = self
+            .convert_preview_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let convert_running = self
+            .convert_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let convert_snapshot = self
+            .convert_job
+            .and_then(|id| self.job_center.read(cx).snapshot(id));
+
+        let mut file_rows = Vec::new();
+        for (index, path) in self.convert_inputs.iter().enumerate() {
+            let name = path
+                .file_name()
+                .map(|name| name.to_string_lossy().to_string())
+                .unwrap_or_else(|| path.display().to_string());
+            let detail = path.display().to_string();
+            let remove_entity = entity.clone();
+            file_rows.push(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .gap_4()
+                    .py_1()
+                    .border_b_1()
+                    .border_color(border)
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .min_w_0()
+                            .child(div().text_sm().child(name))
+                            .child(div().text_xs().text_color(muted).child(detail)),
+                    )
+                    .child(
+                        Button::new(SharedString::from(format!("convert-remove-{index}")))
+                            .label(s.convert_remove)
+                            .compact()
+                            .on_click(move |_, _, cx| {
+                                remove_entity.update(cx, |this, cx| {
+                                    this.remove_convert_file(index, cx);
+                                });
+                            }),
+                    )
+                    .into_any_element(),
+            );
+        }
+        if file_rows.is_empty() {
+            file_rows.push(
+                div()
+                    .text_sm()
+                    .text_color(muted)
+                    .child(s.convert_no_files)
+                    .into_any_element(),
+            );
+        }
+
+        let add_entity = entity.clone();
+        let clear_entity = entity.clone();
+        let file_actions = h_flex()
+            .gap_2()
+            .items_center()
+            .child(
+                Button::new("convert-add-files")
+                    .label(s.convert_add_files)
+                    .primary()
+                    .on_click(move |_, _, cx| {
+                        add_entity.update(cx, |this, cx| this.add_convert_files(cx));
+                    }),
+            )
+            .child(
+                Button::new("convert-clear-files")
+                    .label(s.convert_clear_files)
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        clear_entity.update(cx, |this, cx| this.clear_convert_files(cx));
+                    }),
+            );
+
+        let format_buttons = formats::ALL
+            .iter()
+            .map(|format| {
+                let selected = self.convert_format.id == format.id;
+                let format: &'static Format = format;
+                let entity = entity.clone();
+                let mut button =
+                    Button::new(SharedString::from(format!("convert-format-{}", format.id)))
+                        .label(format!("{} (*.{})", format.name, format.id))
+                        .compact();
+                button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.convert_format = format;
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
+        let output_value = self.output_input.read(cx).value().trim().to_string();
+        let output_detail = if output_value.is_empty() {
+            s.convert_same_dir.to_string()
+        } else {
+            output_value
+        };
+        let choose_entity = entity.clone();
+        let choose_button = Button::new("convert-output-dir")
+            .label(s.convert_choose_folder)
+            .on_click(move |_, window, cx| {
+                choose_entity.update(cx, |this, cx| {
+                    this.choose_convert_output_dir(window, cx);
+                });
+            });
+
+        let preview_entity = entity.clone();
+        let inspect_button = Button::new("convert-inspect")
+            .label(if preview_running {
+                s.convert_inspecting
+            } else {
+                s.convert_inspect
+            })
+            .ghost()
+            .on_click(move |_, _, cx| {
+                if !preview_running {
+                    preview_entity.update(cx, |this, cx| this.inspect_convert(cx));
+                }
+            });
+        let preview_block = match &self.convert_preview {
+            Some((path, info)) => {
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.display().to_string());
+                let bpm = info
+                    .bpm
+                    .map(|bpm| format!(" · {:.0} {}", bpm, s.convert_bpm))
+                    .unwrap_or_default();
+                let tracks = if info.track_names.is_empty() {
+                    String::new()
+                } else {
+                    format!(" · {}", info.track_names.join(", "))
+                };
+                v_flex()
+                    .gap_1()
+                    .child(div().text_sm().child(name))
+                    .child(div().text_xs().text_color(muted).child(format!(
+                        "{} {} · {} {}{}{}",
+                        info.tracks, s.convert_tracks, info.notes, s.convert_notes, bpm, tracks
+                    )))
+                    .into_any_element()
+            }
+            None => div().into_any_element(),
+        };
+
+        let progress_block = match &convert_snapshot {
+            Some(snapshot) if snapshot.status.is_running() => {
+                let percent = snapshot
+                    .progress
+                    .map(|fraction| format!("{:.0}%", fraction * 100.0))
+                    .unwrap_or_default();
+                v_flex()
+                    .gap_1()
+                    .child(div().text_xs().text_color(muted).child(s.convert_running))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(format!("{} {percent}", snapshot.message)),
+                    )
+                    .child(
+                        div().h(px(4.)).w_full().rounded(px(2.)).bg(border).child(
+                            div()
+                                .h_full()
+                                .w(relative(snapshot.progress.unwrap_or(0.0)))
+                                .rounded(px(2.))
+                                .bg(theme.primary),
+                        ),
+                    )
+                    .into_any_element()
+            }
+            _ => div().into_any_element(),
+        };
+
+        let start_entity = entity.clone();
+        let cancel_entity = entity.clone();
+        let action_button = if convert_running {
+            Button::new("convert-cancel")
+                .label(s.convert_cancel)
+                .on_click(move |_, _, cx| {
+                    cancel_entity.update(cx, |this, cx| this.cancel_convert(cx));
+                })
+                .into_any_element()
+        } else {
+            Button::new("convert-start")
+                .label(s.convert_start)
+                .primary()
+                .on_click(move |_, _, cx| {
+                    start_entity.update(cx, |this, cx| this.start_convert(cx));
+                })
+                .into_any_element()
+        };
+
+        let notice_color = theme.primary;
+        let notice = self.convert_notice.as_ref().map(|notice| {
+            div()
+                .text_sm()
+                .text_color(notice_color)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("convert-files")
+                    .outline()
+                    .title(s.convert_files)
+                    .child(v_flex().gap_2().children(file_rows).child(file_actions)),
+            )
+            .child(
+                GroupBox::new()
+                    .id("convert-formats")
+                    .outline()
+                    .title(s.convert_output_format)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(h_flex().gap_2().flex_wrap().children(format_buttons))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.convert_defaults_hint),
+                            ),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("convert-output")
+                    .outline()
+                    .title(s.convert_output_dir)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .gap_4()
+                                    .child(div().text_sm().text_color(muted).child(output_detail))
+                                    .child(choose_button),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.convert_output_hint),
+                            )
+                            .child(
+                                h_flex().items_center().gap_2().child(inspect_button).child(
+                                    div()
+                                        .text_xs()
+                                        .text_color(muted)
+                                        .child(s.convert_preview_hint),
+                                ),
+                            )
+                            .child(div().text_xs().text_color(muted).child(s.convert_preview))
+                            .child(preview_block),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("convert-actions")
+                    .outline()
+                    .title(s.page_convert)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(action_button)
+                            .child(progress_block)
+                            .children(notice),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -1208,6 +1692,24 @@ fn page_header(page: Page, muted: Hsla, s: &Strings) -> impl IntoElement {
                 .child(page.title(s)),
         )
         .child(div().text_sm().text_color(muted).child(page.subtitle(s)))
+}
+
+fn unique_output(input: &Path, format: &Format, output_dir: Option<&Path>) -> PathBuf {
+    let directory = output_dir
+        .map(Path::to_path_buf)
+        .or_else(|| input.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let stem = input
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| "output".to_string());
+    let mut candidate = directory.join(format!("{stem}.{}", format.id));
+    let mut index = 1;
+    while candidate.exists() {
+        candidate = directory.join(format!("{stem}-{index}.{}", format.id));
+        index += 1;
+    }
+    candidate
 }
 
 fn theme_label(preference: ThemePreference, s: &Strings) -> &'static str {
