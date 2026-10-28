@@ -4,7 +4,9 @@ use gpui_kit::component::input::{Input, InputEvent, InputState};
 use gpui_kit::component::{ActiveTheme as _, Icon, Theme, ThemeMode, TitleBar, h_flex, v_flex};
 use gpui_kit::*;
 
+use std::cell::RefCell;
 use std::path::{Path, PathBuf};
+use std::rc::Rc;
 
 use gpui_webview::WebView;
 
@@ -15,6 +17,7 @@ use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
 use crate::services::artifacts::{self, Artifact};
+use crate::services::audio::{self, AudioFormat, AudioInfo, AudioOperation};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
 use crate::tools::{Tool, ToolStatus};
@@ -22,6 +25,49 @@ use crate::tools::{Tool, ToolStatus};
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
 
 const SIDEBAR_WIDTH: f32 = 228.0;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum AudioOp {
+    Convert,
+    Extract,
+    Pitch,
+    Speed,
+    Trim,
+    Loudness,
+}
+
+impl AudioOp {
+    const ALL: [Self; 6] = [
+        Self::Convert,
+        Self::Extract,
+        Self::Pitch,
+        Self::Speed,
+        Self::Trim,
+        Self::Loudness,
+    ];
+
+    fn label(self, s: &Strings) -> &'static str {
+        match self {
+            Self::Convert => s.audio_convert,
+            Self::Extract => s.audio_extract,
+            Self::Pitch => s.audio_pitch,
+            Self::Speed => s.audio_speed,
+            Self::Trim => s.audio_trim,
+            Self::Loudness => s.audio_loudness,
+        }
+    }
+
+    fn suffix(self) -> &'static str {
+        match self {
+            Self::Convert => "converted",
+            Self::Extract => "audio",
+            Self::Pitch => "pitch",
+            Self::Speed => "speed",
+            Self::Trim => "trim",
+            Self::Loudness => "loudness",
+        }
+    }
+}
 
 pub struct VSynthApp {
     page: Page,
@@ -48,6 +94,20 @@ pub struct VSynthApp {
     convert_preview_job: Option<u64>,
     convert_job: Option<u64>,
     convert_notice: Option<String>,
+    audio_input: Option<PathBuf>,
+    audio_info: Option<AudioInfo>,
+    audio_peaks: Vec<f32>,
+    audio_selection: Option<(f32, f32)>,
+    audio_drag: Option<f32>,
+    audio_load_job: Option<u64>,
+    audio_run_job: Option<u64>,
+    audio_notice: Option<String>,
+    audio_operation: AudioOp,
+    audio_format: AudioFormat,
+    audio_semitones: i32,
+    audio_ratio: f32,
+    audio_lufs: i32,
+    waveform_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
 }
 
 impl VSynthApp {
@@ -92,6 +152,20 @@ impl VSynthApp {
             convert_preview_job: None,
             convert_job: None,
             convert_notice: None,
+            audio_input: None,
+            audio_info: None,
+            audio_peaks: Vec::new(),
+            audio_selection: None,
+            audio_drag: None,
+            audio_load_job: None,
+            audio_run_job: None,
+            audio_notice: None,
+            audio_operation: AudioOp::Convert,
+            audio_format: AudioFormat::Wav,
+            audio_semitones: 2,
+            audio_ratio: 1.25,
+            audio_lufs: -16,
+            waveform_bounds: Rc::new(RefCell::new(None)),
         }
     }
 
@@ -465,6 +539,155 @@ impl VSynthApp {
         }
     }
 
+    fn add_audio_file(&mut self, cx: &mut Context<Self>) {
+        const FILTER: &[&str] = &[
+            "wav", "mp3", "flac", "m4a", "ogg", "aac", "opus", "mp4", "mkv", "mov", "webm", "avi",
+        ];
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Audio / Video", FILTER)
+            .pick_file()
+        else {
+            return;
+        };
+        self.load_audio(path, cx);
+    }
+
+    fn load_audio(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if self
+            .audio_load_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        self.audio_input = Some(path.clone());
+        self.audio_info = None;
+        self.audio_peaks.clear();
+        self.audio_selection = None;
+        self.audio_drag = None;
+        self.audio_notice = None;
+        let s = self.text();
+        let job = self.job_center.read(cx).start(s.audio_reading, move |ctx| {
+            let info = audio::probe(&path)?;
+            let peaks = audio::waveform(&path, 700, &ctx)?;
+            Ok((info, peaks))
+        });
+        self.audio_load_job = Some(job.id);
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.audio_load_job == Some(job_id) {
+                    this.audio_load_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done((info, peaks))) => {
+                        this.audio_info = Some(info);
+                        this.audio_peaks = peaks;
+                        this.audio_notice = None;
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.audio_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.audio_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.audio_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn start_audio(&mut self, cx: &mut Context<Self>) {
+        if self
+            .audio_run_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(input) = self.audio_input.clone() else {
+            return;
+        };
+        let Some(info) = self.audio_info.clone() else {
+            return;
+        };
+        let operation = match self.audio_operation {
+            AudioOp::Convert => AudioOperation::Convert,
+            AudioOp::Extract => AudioOperation::Extract,
+            AudioOp::Pitch => AudioOperation::Pitch {
+                semitones: self.audio_semitones as f32,
+            },
+            AudioOp::Speed => AudioOperation::Speed {
+                ratio: self.audio_ratio,
+            },
+            AudioOp::Trim => {
+                let Some((start, end)) = self.audio_selection else {
+                    self.audio_notice = Some(self.text().audio_need_selection.to_string());
+                    cx.notify();
+                    return;
+                };
+                let (start, end) = (start.min(end), start.max(end));
+                if end - start < 0.005 || info.duration <= 0.0 {
+                    self.audio_notice = Some(self.text().audio_need_selection.to_string());
+                    cx.notify();
+                    return;
+                }
+                AudioOperation::Trim {
+                    start: start as f64 * info.duration,
+                    end: end as f64 * info.duration,
+                }
+            }
+            AudioOp::Loudness => AudioOperation::Loudness {
+                target_lufs: self.audio_lufs as f32,
+            },
+        };
+        let output = audio_output_path(&input, self.audio_operation, self.audio_format);
+        let job_output = output.clone();
+        let format = self.audio_format;
+        let s = self.text();
+        let job = self.job_center.read(cx).start(s.page_audio, move |ctx| {
+            audio::run(&input, &job_output, &operation, format, &ctx)
+        });
+        self.audio_run_job = Some(job.id);
+        self.audio_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.audio_run_job == Some(job_id) {
+                    this.audio_run_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(())) => {
+                        this.audio_notice =
+                            Some(format!("{}: {}", this.text().audio_done, output.display()));
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.audio_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.audio_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.audio_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_audio(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.audio_run_job {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
+    }
+
     pub fn watch_system_theme(&self, window: &mut Window, cx: &mut Context<Self>) {
         cx.observe_window_appearance(window, |this, window, cx| {
             if this.config.theme == ThemePreference::System {
@@ -703,6 +926,7 @@ impl VSynthApp {
         match self.page {
             Page::Dashboard => self.render_dashboard(cx).into_any_element(),
             Page::Convert => self.render_convert(cx),
+            Page::Audio => self.render_audio(cx),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
             Page::Pv => self.render_pv(cx),
@@ -878,6 +1102,444 @@ impl VSynthApp {
                     .title(s.quick_entry)
                     .child(h_flex().gap_2().flex_wrap().children(quick_buttons)),
             )
+    }
+
+    fn render_audio(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let primary = theme.primary;
+        let background = theme.background;
+        let entity = cx.entity();
+        let s = self.text();
+
+        let load_running = self
+            .audio_load_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let run_running = self
+            .audio_run_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let run_snapshot = self
+            .audio_run_job
+            .and_then(|id| self.job_center.read(cx).snapshot(id));
+
+        let input_block = match (&self.audio_input, &self.audio_info) {
+            (Some(path), Some(info)) => {
+                let name = path
+                    .file_name()
+                    .map(|name| name.to_string_lossy().to_string())
+                    .unwrap_or_else(|| path.display().to_string());
+                v_flex()
+                    .gap_2()
+                    .child(div().text_sm().child(name))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(path.display().to_string()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_4()
+                            .flex_wrap()
+                            .child(meta_text(
+                                s.audio_duration,
+                                format_duration(info.duration),
+                                muted,
+                            ))
+                            .child(meta_text(
+                                s.audio_sample_rate,
+                                format!("{} Hz", info.sample_rate),
+                                muted,
+                            ))
+                            .child(meta_text(
+                                s.audio_channels,
+                                info.channels.to_string(),
+                                muted,
+                            ))
+                            .child(meta_text(s.audio_codec, info.codec.clone(), muted)),
+                    )
+                    .into_any_element()
+            }
+            (Some(path), None) => v_flex()
+                .gap_1()
+                .child(div().text_sm().child(path.display().to_string()))
+                .child(div().text_xs().text_color(muted).child(s.audio_reading))
+                .into_any_element(),
+            (None, _) => div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.audio_no_file)
+                .into_any_element(),
+        };
+        let add_entity = entity.clone();
+        let add_button = Button::new("audio-add-file")
+            .label(s.audio_add_file)
+            .primary()
+            .on_click(move |_, _, cx| {
+                add_entity.update(cx, |this, cx| this.add_audio_file(cx));
+            });
+
+        let peaks = self.audio_peaks.clone();
+        let selection = self.audio_selection;
+        let bounds_slot = self.waveform_bounds.clone();
+        let waveform = canvas(
+            move |bounds, _, _| {
+                *bounds_slot.borrow_mut() = Some(bounds);
+            },
+            move |bounds, _, window, _| {
+                paint_waveform(
+                    bounds, &peaks, selection, primary, background, border, window,
+                );
+            },
+        )
+        .size_full();
+        let down_entity = entity.clone();
+        let down_bounds = self.waveform_bounds.clone();
+        let move_entity = entity.clone();
+        let move_bounds = self.waveform_bounds.clone();
+        let up_entity = entity.clone();
+        let waveform_box = div()
+            .id("audio-waveform")
+            .h(px(168.))
+            .w_full()
+            .rounded(theme.radius)
+            .overflow_hidden()
+            .child(waveform)
+            .on_mouse_down(MouseButton::Left, move |event, _, cx| {
+                if let Some(fraction) = waveform_fraction(&down_bounds, event.position) {
+                    down_entity.update(cx, |this, cx| {
+                        this.audio_drag = Some(fraction);
+                        this.audio_selection = Some((fraction, fraction));
+                        cx.notify();
+                    });
+                }
+            })
+            .on_mouse_move(move |event, _, cx| {
+                let Some(fraction) = waveform_fraction(&move_bounds, event.position) else {
+                    return;
+                };
+                move_entity.update(cx, |this, cx| {
+                    if let Some(anchor) = this.audio_drag {
+                        this.audio_selection = Some((anchor, fraction));
+                        cx.notify();
+                    }
+                });
+            })
+            .on_mouse_up(MouseButton::Left, move |_, _, cx| {
+                up_entity.update(cx, |this, cx| {
+                    this.audio_drag = None;
+                    cx.notify();
+                });
+            });
+
+        let operation_buttons = AudioOp::ALL
+            .iter()
+            .map(|operation| {
+                let operation = *operation;
+                let selected = self.audio_operation == operation;
+                let entity = entity.clone();
+                let mut button = Button::new(SharedString::from(format!(
+                    "audio-op-{}",
+                    operation.suffix()
+                )))
+                .label(operation.label(s))
+                .compact();
+                button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.audio_operation = operation;
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
+        let parameters: AnyElement = match self.audio_operation {
+            AudioOp::Pitch => {
+                let down_entity = entity.clone();
+                let up_entity = entity.clone();
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .child(div().text_xs().text_color(muted).child(s.audio_semitones))
+                    .child(
+                        Button::new("audio-pitch-down")
+                            .label("-")
+                            .compact()
+                            .on_click(move |_, _, cx| {
+                                down_entity.update(cx, |this, cx| {
+                                    this.audio_semitones = (this.audio_semitones - 1).max(-12);
+                                    cx.notify();
+                                });
+                            }),
+                    )
+                    .child(
+                        div()
+                            .min_w(px(48.))
+                            .text_center()
+                            .text_sm()
+                            .child(format!("{:+}", self.audio_semitones)),
+                    )
+                    .child(Button::new("audio-pitch-up").label("+").compact().on_click(
+                        move |_, _, cx| {
+                            up_entity.update(cx, |this, cx| {
+                                this.audio_semitones = (this.audio_semitones + 1).min(12);
+                                cx.notify();
+                            });
+                        },
+                    ))
+                    .into_any_element()
+            }
+            AudioOp::Speed => {
+                let buttons = [0.5f32, 0.75, 1.0, 1.25, 1.5, 2.0]
+                    .into_iter()
+                    .map(|ratio| {
+                        let selected = (self.audio_ratio - ratio).abs() < 0.001;
+                        let entity = entity.clone();
+                        let mut button = Button::new(SharedString::from(format!(
+                            "audio-speed-{}",
+                            (ratio * 100.0) as i32
+                        )))
+                        .label(format!("{ratio}x"))
+                        .compact();
+                        button = if selected {
+                            button.primary()
+                        } else {
+                            button.ghost()
+                        };
+                        button
+                            .on_click(move |_, _, cx| {
+                                entity.update(cx, |this, cx| {
+                                    this.audio_ratio = ratio;
+                                    cx.notify();
+                                });
+                            })
+                            .into_any_element()
+                    })
+                    .collect::<Vec<_>>();
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .flex_wrap()
+                    .child(div().text_xs().text_color(muted).child(s.audio_ratio))
+                    .children(buttons)
+                    .into_any_element()
+            }
+            AudioOp::Loudness => {
+                let buttons = [-14, -16, -23]
+                    .into_iter()
+                    .map(|target| {
+                        let selected = self.audio_lufs == target;
+                        let entity = entity.clone();
+                        let mut button =
+                            Button::new(SharedString::from(format!("audio-lufs-{target}")))
+                                .label(format!("{target} LUFS"))
+                                .compact();
+                        button = if selected {
+                            button.primary()
+                        } else {
+                            button.ghost()
+                        };
+                        button
+                            .on_click(move |_, _, cx| {
+                                entity.update(cx, |this, cx| {
+                                    this.audio_lufs = target;
+                                    cx.notify();
+                                });
+                            })
+                            .into_any_element()
+                    })
+                    .collect::<Vec<_>>();
+                h_flex()
+                    .gap_2()
+                    .items_center()
+                    .flex_wrap()
+                    .child(div().text_xs().text_color(muted).child(s.audio_target))
+                    .children(buttons)
+                    .into_any_element()
+            }
+            AudioOp::Trim => {
+                let text = match (self.audio_selection, self.audio_info.as_ref()) {
+                    (Some((start, end)), Some(info)) => {
+                        let (start, end) = (start.min(end), start.max(end));
+                        format!(
+                            "{}: {:.2}s – {:.2}s",
+                            s.audio_selection,
+                            start as f64 * info.duration,
+                            end as f64 * info.duration
+                        )
+                    }
+                    _ => s.audio_need_selection.to_string(),
+                };
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(text)
+                    .into_any_element()
+            }
+            AudioOp::Convert | AudioOp::Extract => div().into_any_element(),
+        };
+
+        let format_buttons = AudioFormat::ALL
+            .iter()
+            .map(|format| {
+                let format = *format;
+                let selected = self.audio_format == format;
+                let entity = entity.clone();
+                let mut button =
+                    Button::new(SharedString::from(format!("audio-format-{}", format.id())))
+                        .label(format.label())
+                        .compact();
+                button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.audio_format = format;
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
+        let run_entity = entity.clone();
+        let cancel_entity = entity.clone();
+        let action_button = if run_running {
+            Button::new("audio-cancel")
+                .label(s.audio_cancel)
+                .on_click(move |_, _, cx| {
+                    cancel_entity.update(cx, |this, cx| this.cancel_audio(cx));
+                })
+                .into_any_element()
+        } else {
+            Button::new("audio-run")
+                .label(s.audio_run)
+                .primary()
+                .on_click(move |_, _, cx| {
+                    run_entity.update(cx, |this, cx| this.start_audio(cx));
+                })
+                .into_any_element()
+        };
+
+        let progress_block = if load_running {
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child(s.audio_reading)
+                .into_any_element()
+        } else if let Some(snapshot) = &run_snapshot {
+            if snapshot.status.is_running() {
+                v_flex()
+                    .gap_1()
+                    .child(div().text_xs().text_color(muted).child(s.audio_running))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(snapshot.message.clone()),
+                    )
+                    .child(
+                        div().h(px(4.)).w_full().rounded(px(2.)).bg(border).child(
+                            div()
+                                .h_full()
+                                .w(relative(snapshot.progress.unwrap_or(0.0)))
+                                .rounded(px(2.))
+                                .bg(primary),
+                        ),
+                    )
+                    .into_any_element()
+            } else {
+                div().into_any_element()
+            }
+        } else {
+            div().into_any_element()
+        };
+        let notice = self.audio_notice.as_ref().map(|notice| {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("audio-file")
+                    .outline()
+                    .title(s.audio_input)
+                    .child(
+                        v_flex()
+                            .gap_3()
+                            .child(input_block)
+                            .child(h_flex().items_center().gap_2().child(add_button)),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("audio-waveform")
+                    .outline()
+                    .title(s.audio_waveform)
+                    .child(
+                        v_flex().gap_2().child(waveform_box).child(
+                            div()
+                                .text_xs()
+                                .text_color(muted)
+                                .child(s.audio_selection_hint),
+                        ),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("audio-operation")
+                    .outline()
+                    .title(s.audio_operation)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(h_flex().gap_2().flex_wrap().children(operation_buttons))
+                            .child(parameters),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("audio-format")
+                    .outline()
+                    .title(s.audio_format)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(h_flex().gap_2().flex_wrap().children(format_buttons))
+                            .child(div().text_xs().text_color(muted).child(s.audio_output_hint)),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("audio-actions")
+                    .outline()
+                    .title(s.page_audio)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(action_button)
+                            .child(progress_block)
+                            .children(notice),
+                    ),
+            )
+            .into_any_element()
     }
 
     fn render_convert(&self, cx: &mut Context<Self>) -> AnyElement {
@@ -1710,6 +2372,133 @@ fn unique_output(input: &Path, format: &Format, output_dir: Option<&Path>) -> Pa
         index += 1;
     }
     candidate
+}
+
+fn audio_output_path(input: &Path, operation: AudioOp, format: AudioFormat) -> PathBuf {
+    let directory = input.parent().unwrap_or_else(|| Path::new("."));
+    let stem = input
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| "audio".to_string());
+    let base = format!("{stem}_{}", operation.suffix());
+    let mut candidate = directory.join(format!("{base}.{}", format.id()));
+    let mut index = 1;
+    while candidate.exists() {
+        candidate = directory.join(format!("{base}-{index}.{}", format.id()));
+        index += 1;
+    }
+    candidate
+}
+
+fn format_duration(seconds: f64) -> String {
+    if !seconds.is_finite() || seconds <= 0.0 {
+        return "0:00".to_string();
+    }
+    let minutes = (seconds / 60.0).floor() as u64;
+    let rest = seconds - minutes as f64 * 60.0;
+    format!("{minutes}:{rest:04.1}")
+}
+
+fn meta_text(label: &'static str, value: String, muted: Hsla) -> impl IntoElement {
+    h_flex()
+        .gap_1()
+        .child(div().text_xs().text_color(muted).child(label))
+        .child(div().text_xs().child(value))
+}
+
+fn waveform_fraction(
+    bounds: &Rc<RefCell<Option<Bounds<Pixels>>>>,
+    position: Point<Pixels>,
+) -> Option<f32> {
+    let bounds = (*bounds.borrow())?;
+    let width = bounds.size.width.as_f32();
+    if width <= 0.0 {
+        return None;
+    }
+    Some(((position.x - bounds.origin.x).as_f32() / width).clamp(0.0, 1.0))
+}
+
+fn paint_waveform(
+    bounds: Bounds<Pixels>,
+    peaks: &[f32],
+    selection: Option<(f32, f32)>,
+    primary: Hsla,
+    background: Hsla,
+    border: Hsla,
+    window: &mut Window,
+) {
+    window.paint_quad(quad(
+        bounds,
+        px(4.),
+        background,
+        px(1.),
+        border,
+        Default::default(),
+    ));
+    if peaks.is_empty() {
+        return;
+    }
+    let width = bounds.size.width.as_f32();
+    let height = bounds.size.height.as_f32();
+    let bar_width = (width / peaks.len() as f32).max(1.0);
+    for (index, peak) in peaks.iter().enumerate() {
+        let peak = peak.clamp(0.0, 1.0);
+        if peak <= 0.001 {
+            continue;
+        }
+        let bar_height = (height * 0.88 * peak).max(1.0);
+        let x = bounds.origin.x.as_f32() + index as f32 / peaks.len() as f32 * width;
+        let y = bounds.origin.y.as_f32() + (height - bar_height) / 2.0;
+        let bar = Bounds {
+            origin: point(px(x), px(y)),
+            size: size(px(bar_width), px(bar_height)),
+        };
+        window.paint_quad(quad(
+            bar,
+            px(0.),
+            primary,
+            px(0.),
+            transparent_black(),
+            Default::default(),
+        ));
+    }
+    if let Some((start, end)) = selection {
+        let (start, end) = (
+            start.min(end).clamp(0.0, 1.0),
+            start.max(end).clamp(0.0, 1.0),
+        );
+        if end > start {
+            let overlay = Bounds {
+                origin: point(
+                    px(bounds.origin.x.as_f32() + start * width),
+                    bounds.origin.y,
+                ),
+                size: size(px((end - start) * width), bounds.size.height),
+            };
+            window.paint_quad(quad(
+                overlay,
+                px(0.),
+                primary.opacity(0.18),
+                px(0.),
+                transparent_black(),
+                Default::default(),
+            ));
+            for edge in [start, end] {
+                let line = Bounds {
+                    origin: point(px(bounds.origin.x.as_f32() + edge * width), bounds.origin.y),
+                    size: size(px(2.), bounds.size.height),
+                };
+                window.paint_quad(quad(
+                    line,
+                    px(0.),
+                    primary,
+                    px(0.),
+                    transparent_black(),
+                    Default::default(),
+                ));
+            }
+        }
+    }
 }
 
 fn theme_label(preference: ThemePreference, s: &Strings) -> &'static str {
