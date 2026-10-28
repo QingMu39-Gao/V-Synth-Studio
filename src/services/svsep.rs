@@ -96,6 +96,7 @@ pub fn separate(input: &Path, output_dir: &Path, ctx: &JobContext) -> Result<Ste
 
     ctx.progress(Some(0.8), "启动分离引擎");
     let mut child = quiet_command(&python)
+        .env("PYTHONUTF8", "1")
         .arg(&backend)
         .args(["--input", wav.to_string_lossy().as_ref()])
         .args(["--model", model.to_string_lossy().as_ref()])
