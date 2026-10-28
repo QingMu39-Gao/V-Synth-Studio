@@ -16,6 +16,12 @@ use crate::services::jobs::JobContext;
 const CACHE_DIR: &str = "data/cache/artifacts";
 
 #[derive(Debug, Clone, Copy)]
+pub enum ArtifactKind {
+    Zip { strip_prefix: &'static str },
+    Gzip,
+}
+
+#[derive(Debug, Clone, Copy)]
 pub struct Artifact {
     pub id: &'static str,
     pub name: &'static str,
@@ -24,7 +30,7 @@ pub struct Artifact {
     pub sha256: &'static str,
     pub size: u64,
     pub file_name: &'static str,
-    pub strip_prefix: &'static str,
+    pub kind: ArtifactKind,
     pub executable: &'static str,
 }
 
@@ -47,17 +53,32 @@ impl Artifact {
 }
 
 #[cfg(all(target_os = "windows", target_arch = "x86_64"))]
-pub const ALL: &[Artifact] = &[Artifact {
-    id: "libresvip",
-    name: "LibreSVIP CLI",
-    version: "2.9.2",
-    url: "https://github.com/SoulMelody/LibreSVIP/releases/download/v2.9.2/LibreSVIP-CLI-2.9.2.win-amd64.zip",
-    sha256: "eb4321274f58b4080ffd545b63f0ef9191b0da130664f6bb5de314b6440d9dcd",
-    size: 37_001_401,
-    file_name: "libresvip-cli-2.9.2-win-amd64.zip",
-    strip_prefix: "libresvip-cli/",
-    executable: "libresvip-cli.exe",
-}];
+pub const ALL: &[Artifact] = &[
+    Artifact {
+        id: "libresvip",
+        name: "LibreSVIP CLI",
+        version: "2.9.2",
+        url: "https://github.com/SoulMelody/LibreSVIP/releases/download/v2.9.2/LibreSVIP-CLI-2.9.2.win-amd64.zip",
+        sha256: "eb4321274f58b4080ffd545b63f0ef9191b0da130664f6bb5de314b6440d9dcd",
+        size: 37_001_401,
+        file_name: "libresvip-cli-2.9.2-win-amd64.zip",
+        kind: ArtifactKind::Zip {
+            strip_prefix: "libresvip-cli/",
+        },
+        executable: "libresvip-cli.exe",
+    },
+    Artifact {
+        id: "ffmpeg",
+        name: "FFmpeg",
+        version: "6.1.1",
+        url: "https://registry.npmmirror.com/-/binary/ffmpeg-static/b6.1.1/ffmpeg-win32-x64.gz",
+        sha256: "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77",
+        size: 29_581_307,
+        file_name: "ffmpeg-win32-x64-6.1.1.gz",
+        kind: ArtifactKind::Gzip,
+        executable: "bin/ffmpeg.exe",
+    },
+];
 
 #[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
 pub const ALL: &[Artifact] = &[];
@@ -128,13 +149,17 @@ where
     fs::create_dir_all(&staging)
         .map_err(|error| format!("创建临时目录失败（{}）：{error}", staging.display()))?;
 
-    if let Err(error) = extract_zip(
-        &archive,
-        &staging,
-        artifact.strip_prefix,
-        &mut progress,
-        &canceled,
-    ) {
+    if let Err(error) = match artifact.kind {
+        ArtifactKind::Zip { strip_prefix } => {
+            extract_zip(&archive, &staging, strip_prefix, &mut progress, &canceled)
+        }
+        ArtifactKind::Gzip => extract_gzip(
+            &archive,
+            &staging.join(artifact.executable),
+            &mut progress,
+            &canceled,
+        ),
+    } {
         let _ = fs::remove_dir_all(&staging);
         return Err(error);
     }
@@ -345,6 +370,46 @@ where
     Ok(())
 }
 
+fn extract_gzip<P, C>(
+    archive: &Path,
+    target: &Path,
+    progress: &mut P,
+    canceled: &C,
+) -> Result<(), String>
+where
+    P: FnMut(Option<f32>, &str),
+    C: Fn() -> bool,
+{
+    if let Some(parent) = target.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|error| format!("创建目录失败（{}）：{error}", parent.display()))?;
+    }
+    let file = File::open(archive)
+        .map_err(|error| format!("打开安装包失败（{}）：{error}", archive.display()))?;
+    let mut decoder = flate2::read::GzDecoder::new(file);
+    let mut output = File::create(target)
+        .map_err(|error| format!("创建文件失败（{}）：{error}", target.display()))?;
+    let mut buffer = [0u8; 64 * 1024];
+    loop {
+        if canceled() {
+            drop(output);
+            let _ = fs::remove_file(target);
+            return Err("已取消".to_string());
+        }
+        let read = decoder
+            .read(&mut buffer)
+            .map_err(|error| format!("解压失败（{}）：{error}", archive.display()))?;
+        if read == 0 {
+            break;
+        }
+        output
+            .write_all(&buffer[..read])
+            .map_err(|error| format!("写入文件失败（{}）：{error}", target.display()))?;
+    }
+    progress(Some(0.98), "解压组件");
+    Ok(())
+}
+
 fn verify_sha256(path: &Path, expected: &str) -> Result<bool, String> {
     let mut file = File::open(path)
         .map_err(|error| format!("读取安装包失败（{}）：{error}", path.display()))?;
@@ -425,7 +490,9 @@ mod tests {
             sha256: Box::leak(hash.into_boxed_str()),
             size: fs::metadata(&zip_path).unwrap().len(),
             file_name: "test-pkg-1.0.zip",
-            strip_prefix: "pkg/",
+            kind: ArtifactKind::Zip {
+                strip_prefix: "pkg/",
+            },
             executable: "hello.txt",
         };
 
@@ -439,6 +506,41 @@ mod tests {
         assert_eq!(
             fs::read_to_string(root.join("tools/test-pkg/sub/file.txt")).unwrap(),
             "world"
+        );
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn installs_from_cached_gzip() {
+        let root = temp_root("gzip");
+        let archive = root.join(CACHE_DIR).join("tool.gz");
+        fs::create_dir_all(archive.parent().expect("cache parent")).unwrap();
+        let data = b"standalone binary";
+        let mut encoder = flate2::write::GzEncoder::new(
+            File::create(&archive).unwrap(),
+            flate2::Compression::default(),
+        );
+        encoder.write_all(data).unwrap();
+        encoder.finish().unwrap();
+        let hash = hex(&Sha256::digest(fs::read(&archive).unwrap()));
+        let artifact = Artifact {
+            id: "gzip-pkg",
+            name: "Gzip Package",
+            version: "1.0",
+            url: "http://127.0.0.1:9/not-used",
+            sha256: Box::leak(hash.into_boxed_str()),
+            size: fs::metadata(&archive).unwrap().len(),
+            file_name: "tool.gz",
+            kind: ArtifactKind::Gzip,
+            executable: "bin/tool.bin",
+        };
+
+        install_with(&artifact, &root, |_, _| {}, |_| {}, || false).unwrap();
+
+        assert!(artifact.is_installed(&root));
+        assert_eq!(
+            fs::read(root.join("tools/gzip-pkg/bin/tool.bin")).unwrap(),
+            data
         );
         let _ = fs::remove_dir_all(root);
     }
@@ -491,7 +593,9 @@ mod tests {
             sha256: Box::leak(hash.into_boxed_str()),
             size: bytes.len() as u64,
             file_name: "pkg.zip",
-            strip_prefix: "pkg/",
+            kind: ArtifactKind::Zip {
+                strip_prefix: "pkg/",
+            },
             executable: "hello.txt",
         };
         install_with(&artifact, &root, |_, _| {}, |_| {}, || false).unwrap();
@@ -510,6 +614,25 @@ mod tests {
     #[ignore = "installs the real LibreSVIP archive into tools/"]
     fn installs_libresvip_into_repo_tools() {
         let artifact = ALL.first().expect("artifact");
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        install_with(
+            artifact,
+            &root,
+            |_, _| {},
+            |line| println!("{line}"),
+            || false,
+        )
+        .unwrap();
+        assert!(artifact.is_installed(&root));
+    }
+
+    #[test]
+    #[ignore = "installs the real ffmpeg archive into tools/"]
+    fn installs_ffmpeg_into_repo_tools() {
+        let artifact = ALL
+            .iter()
+            .find(|artifact| artifact.id == "ffmpeg")
+            .expect("ffmpeg artifact");
         let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         install_with(
             artifact,

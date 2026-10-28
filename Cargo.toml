@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 async-channel = "2"
+flate2 = "1"
 gpui-kit = "0.8.0"
 gpui-webview = "0.8.0"
 open = "5"
