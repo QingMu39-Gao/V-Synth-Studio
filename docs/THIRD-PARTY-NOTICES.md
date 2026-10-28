@@ -49,4 +49,17 @@ feature ships.
 | FFmpeg | LGPL-2.1-or-later or GPL-2.0-or-later, depending on the build |
 | yt-dlp | Unlicense |
 | ONNX Runtime | MIT |
-| Python runtime (source separation) | PSF-2.0 |
+| Python runtime (separation and transcription) | PSF-2.0 |
+
+## Downloaded models
+
+These model files are fetched by the user at runtime and are not included in
+the repository or installer.
+
+### GAME 1.0.3 large (ONNX)
+
+- Copyright (c) OpenVPI
+- License: CC BY-NC-SA 4.0 (non-commercial use only)
+- Upstream: <https://github.com/openvpi/GAME>
+- Asset: `GAME-1.0.3-large-onnx.zip` from the v1.0.3 release, SHA-256
+  `8a5480539fe7d995800dc0efe149b83a1cd4f4e4a36aa2a1f7665f1765dcac08`

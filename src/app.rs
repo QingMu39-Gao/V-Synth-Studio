@@ -24,6 +24,7 @@ use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
 use crate::services::lyrics::{self, SearchResult, SongDetail};
 use crate::services::media_server::MediaServer;
+use crate::services::midi::{self, Device as MidiDevice, Options as MidiOptions};
 use crate::services::svsep::{self, Stems};
 use crate::tools::{Tool, ToolStatus};
 
@@ -146,6 +147,13 @@ pub struct VSynthApp {
     svsep_job: Option<u64>,
     svsep_prepare_job: Option<u64>,
     svsep_notice: Option<String>,
+    midi_input: Option<PathBuf>,
+    midi_outputs: Option<midi::Outputs>,
+    midi_job: Option<u64>,
+    midi_prepare_job: Option<u64>,
+    midi_notice: Option<String>,
+    midi_steps: usize,
+    midi_device: MidiDevice,
 }
 
 impl VSynthApp {
@@ -220,6 +228,13 @@ impl VSynthApp {
             svsep_job: None,
             svsep_prepare_job: None,
             svsep_notice: None,
+            midi_input: None,
+            midi_outputs: None,
+            midi_job: None,
+            midi_prepare_job: None,
+            midi_notice: None,
+            midi_steps: 8,
+            midi_device: MidiDevice::Auto,
         }
     }
 
@@ -1190,6 +1205,143 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn pick_midi_input(&mut self, cx: &mut Context<Self>) {
+        const FILTER: &[&str] = &[
+            "wav", "mp3", "flac", "m4a", "ogg", "aac", "opus", "wma", "aiff", "ape", "mp4", "mkv",
+            "mov", "webm", "avi",
+        ];
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Audio / Video", FILTER)
+            .pick_file()
+        else {
+            return;
+        };
+        self.midi_input = Some(path);
+        self.midi_outputs = None;
+        self.midi_notice = None;
+        cx.notify();
+    }
+
+    fn prepare_midi(&mut self, cx: &mut Context<Self>) {
+        if self
+            .midi_prepare_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.midi_prepare, move |ctx| midi::ensure_ready(&ctx));
+        self.midi_prepare_job = Some(job.id);
+        self.midi_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.midi_prepare_job == Some(job_id) {
+                    this.midi_prepare_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(())) => this.midi_notice = None,
+                    Ok(JobOutcome::Failed(error)) => this.midi_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.midi_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.midi_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn start_midi(&mut self, cx: &mut Context<Self>) {
+        if self
+            .midi_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(input) = self.midi_input.clone() else {
+            return;
+        };
+        let output_dir = input
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| PathBuf::from("."));
+        let options = MidiOptions {
+            steps: self.midi_steps,
+            threads: 4,
+            device: self.midi_device,
+        };
+        let s = self.text();
+        let job = self.job_center.read(cx).start(s.midi_run, move |ctx| {
+            midi::transcribe(&input, &output_dir, &options, &ctx)
+        });
+        self.midi_job = Some(job.id);
+        self.midi_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.midi_job == Some(job_id) {
+                    this.midi_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(outputs)) => {
+                        this.midi_outputs = Some(outputs);
+                        this.midi_notice = Some(this.text().midi_done.to_string());
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.midi_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.midi_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.midi_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_midi(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.midi_job.or(self.midi_prepare_job) {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
+    }
+
+    fn open_midi_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(outputs) = &self.midi_outputs else {
+            return;
+        };
+        let directory = outputs.midi.parent().unwrap_or_else(|| Path::new("."));
+        if let Err(error) = open::that(directory) {
+            self.midi_notice = Some(format!("打开目录失败：{error}"));
+        }
+        cx.notify();
+    }
+
+    fn set_midi_steps(&mut self, steps: usize, cx: &mut Context<Self>) {
+        self.midi_steps = steps;
+        cx.notify();
+    }
+
+    fn set_midi_device(&mut self, device: MidiDevice, cx: &mut Context<Self>) {
+        self.midi_device = device;
+        cx.notify();
+    }
+
     fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
         let value = self.download_input.read(cx).value().trim().to_string();
         if value.is_empty() {
@@ -1441,10 +1593,10 @@ impl VSynthApp {
             Page::Audio => self.render_audio(cx),
             Page::Lyrics => self.render_lyrics(cx),
             Page::Svsep => self.render_svsep(cx),
+            Page::Midi => self.render_midi(cx),
             Page::Settings => self.render_settings(cx).into_any_element(),
             Page::Resources => self.render_resources(cx).into_any_element(),
             Page::Pv => self.render_pv(cx),
-            _ => self.render_placeholder(cx).into_any_element(),
         }
     }
 
@@ -1792,6 +1944,294 @@ impl VSynthApp {
                             .child(progress_block)
                             .children(notice)
                             .children(stems_block),
+                    ),
+            )
+            .into_any_element()
+    }
+
+    fn render_midi(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let primary = theme.primary;
+        let entity = cx.entity();
+        let s = self.text();
+        let status = midi::status();
+
+        let prepare_running = self
+            .midi_prepare_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let run_running = self
+            .midi_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let active_job = self.midi_job.or(self.midi_prepare_job);
+        let snapshot = active_job.and_then(|id| self.job_center.read(cx).snapshot(id));
+        let ready = status.runtime_ready && status.models_ready;
+
+        let input_block = if let Some(input) = &self.midi_input {
+            v_flex()
+                .gap_1()
+                .child(div().text_sm().child(input.display().to_string()))
+                .into_any_element()
+        } else {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.midi_no_input)
+                .into_any_element()
+        };
+        let pick_entity = entity.clone();
+        let pick_button = Button::new("midi-pick")
+            .label(s.midi_pick)
+            .primary()
+            .on_click(move |_, _, cx| {
+                pick_entity.update(cx, |this, cx| this.pick_midi_input(cx));
+            });
+
+        let prepare_entity = entity.clone();
+        let prepare_button = Button::new("midi-prepare")
+            .label(if prepare_running {
+                s.midi_preparing
+            } else {
+                s.midi_prepare
+            })
+            .on_click(move |_, _, cx| {
+                prepare_entity.update(cx, |this, cx| this.prepare_midi(cx));
+            });
+
+        let run_entity = entity.clone();
+        let cancel_entity = entity.clone();
+        let action_button = if run_running || prepare_running {
+            Button::new("midi-cancel")
+                .label(s.midi_cancel)
+                .on_click(move |_, _, cx| {
+                    cancel_entity.update(cx, |this, cx| this.cancel_midi(cx));
+                })
+                .into_any_element()
+        } else if ready {
+            Button::new("midi-run")
+                .label(s.midi_run)
+                .primary()
+                .disabled(self.midi_input.is_none())
+                .on_click(move |_, _, cx| {
+                    run_entity.update(cx, |this, cx| this.start_midi(cx));
+                })
+                .into_any_element()
+        } else {
+            prepare_button.into_any_element()
+        };
+
+        let step_buttons = [4usize, 8, 16, 32]
+            .into_iter()
+            .map(|steps| {
+                let entity = entity.clone();
+                let selected = self.midi_steps == steps;
+                let button = Button::new(SharedString::from(format!("midi-step-{steps}")))
+                    .label(steps.to_string())
+                    .compact();
+                let button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| this.set_midi_steps(steps, cx));
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
+        let device_buttons = [
+            (MidiDevice::Auto, s.midi_auto),
+            (MidiDevice::Cpu, s.midi_cpu),
+            (MidiDevice::Gpu, s.midi_gpu),
+        ]
+        .into_iter()
+        .map(|(device, label)| {
+            let entity = entity.clone();
+            let selected = self.midi_device == device;
+            let button = Button::new(SharedString::from(format!("midi-device-{}", device.key())))
+                .label(label)
+                .compact();
+            let button = if selected {
+                button.primary()
+            } else {
+                button.ghost()
+            };
+            button
+                .on_click(move |_, _, cx| {
+                    entity.update(cx, |this, cx| this.set_midi_device(device, cx));
+                })
+                .into_any_element()
+        })
+        .collect::<Vec<_>>();
+
+        let engine_status = if ready { s.midi_ready } else { s.midi_missing };
+
+        let outputs_block = self.midi_outputs.as_ref().map(|outputs| {
+            let open_entity = entity.clone();
+            let mut preview = v_flex().gap_1().child(
+                h_flex()
+                    .gap_2()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(div().w(px(64.)).child(s.midi_onset))
+                    .child(div().w(px(64.)).child(s.midi_duration))
+                    .child(div().w(px(96.)).child(s.midi_pitch)),
+            );
+            for note in outputs.preview.iter().take(40) {
+                preview = preview.child(
+                    h_flex()
+                        .gap_2()
+                        .text_sm()
+                        .child(div().w(px(64.)).child(format!("{:.2}s", note.onset)))
+                        .child(
+                            div()
+                                .w(px(64.))
+                                .child(format!("{:.2}s", note.offset - note.onset)),
+                        )
+                        .child(div().w(px(96.)).child(format!(
+                            "{} ({})",
+                            note_name(note.pitch),
+                            note.pitch.round() as i32
+                        ))),
+                );
+            }
+            v_flex()
+                .gap_2()
+                .child(div().text_sm().child(s.midi_outputs))
+                .child(div().text_sm().child(format!(
+                    "{}: {}/{}",
+                    s.midi_notes,
+                    outputs.preview.len(),
+                    outputs.notes
+                )))
+                .child(
+                    div()
+                        .text_sm()
+                        .child(format!("{}: {}", s.midi_backend, outputs.backend)),
+                )
+                .child(
+                    div()
+                        .text_sm()
+                        .child(format!("{}: {:.1}s", s.midi_seconds, outputs.seconds)),
+                )
+                .child(div().text_sm().child(outputs.midi.display().to_string()))
+                .child(div().text_sm().child(outputs.csv.display().to_string()))
+                .child(div().text_sm().child(outputs.json.display().to_string()))
+                .child(preview)
+                .child(
+                    Button::new("midi-open-folder")
+                        .label(s.midi_open_folder)
+                        .on_click(move |_, _, cx| {
+                            open_entity.update(cx, |this, cx| this.open_midi_folder(cx));
+                        }),
+                )
+                .into_any_element()
+        });
+
+        let progress_block = if let Some(snapshot) = &snapshot {
+            if snapshot.status.is_running() {
+                v_flex()
+                    .gap_1()
+                    .child(div().text_xs().text_color(muted).child(s.midi_running))
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(snapshot.message.clone()),
+                    )
+                    .child(
+                        div().h(px(4.)).w_full().rounded(px(2.)).bg(border).child(
+                            div()
+                                .h_full()
+                                .w(relative(snapshot.progress.unwrap_or(0.0)))
+                                .rounded(px(2.))
+                                .bg(primary),
+                        ),
+                    )
+                    .into_any_element()
+            } else {
+                div().into_any_element()
+            }
+        } else {
+            div().into_any_element()
+        };
+        let notice = self.midi_notice.as_ref().map(|notice| {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
+        v_flex()
+            .gap_4()
+            .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("midi-engine")
+                    .outline()
+                    .title(s.midi_engine)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(meta_text(
+                                s.midi_model,
+                                "GAME 1.0.3 large (ONNX)".to_string(),
+                                muted,
+                            ))
+                            .child(div().text_sm().child(engine_status))
+                            .child(div().text_xs().text_color(muted).child(s.midi_license))
+                            .child(div().text_xs().text_color(muted).child(s.midi_hint)),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("midi-input")
+                    .outline()
+                    .title(s.midi_input)
+                    .child(v_flex().gap_2().child(input_block).child(pick_button)),
+            )
+            .child(
+                GroupBox::new()
+                    .id("midi-options")
+                    .outline()
+                    .title(s.midi_options)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(div().text_sm().text_color(muted).child(s.midi_steps))
+                                    .children(step_buttons),
+                            )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(div().text_sm().text_color(muted).child(s.midi_device))
+                                    .children(device_buttons),
+                            )
+                            .child(div().text_xs().text_color(muted).child(s.midi_steps_hint))
+                            .child(div().text_xs().text_color(muted).child(s.midi_device_hint)),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("midi-actions")
+                    .outline()
+                    .title(s.midi_run)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(action_button)
+                            .child(progress_block)
+                            .children(notice)
+                            .children(outputs_block),
                     ),
             )
             .into_any_element()
@@ -3518,38 +3958,6 @@ impl VSynthApp {
 
         page
     }
-
-    fn render_placeholder(&self, cx: &mut Context<Self>) -> impl IntoElement {
-        let theme = cx.theme();
-        let muted = theme.muted_foreground;
-        let entity = cx.entity();
-        let s = self.text();
-
-        v_flex()
-            .gap_4()
-            .child(page_header(self.page, muted, self.text()))
-            .child(
-                GroupBox::new()
-                    .id("placeholder")
-                    .outline()
-                    .title(s.under_development)
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(div().text_sm().child(s.not_implemented))
-                            .child(h_flex().child(
-                                Button::new("placeholder-back").label(s.back).on_click(
-                                    move |_, _, cx| {
-                                        entity.update(cx, |this, cx| {
-                                            this.page = Page::Dashboard;
-                                            cx.notify();
-                                        });
-                                    },
-                                ),
-                            )),
-                    ),
-            )
-    }
 }
 
 impl Render for VSynthApp {
@@ -3807,6 +4215,15 @@ fn theme_label(preference: ThemePreference, s: &Strings) -> &'static str {
         ThemePreference::Light => s.theme_light,
         ThemePreference::Dark => s.theme_dark,
     }
+}
+
+fn note_name(pitch: f32) -> String {
+    const NAMES: [&str; 12] = [
+        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+    ];
+    let midi = pitch.round() as i32;
+    let name = NAMES[midi.rem_euclid(12) as usize];
+    format!("{name}{}", midi / 12 - 1)
 }
 
 fn info_row(label: &'static str, value: String, muted: Hsla, border: Hsla) -> impl IntoElement {

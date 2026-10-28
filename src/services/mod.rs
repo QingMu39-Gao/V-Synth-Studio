@@ -6,5 +6,6 @@ pub mod jobs;
 pub mod libresvip;
 pub mod lyrics;
 pub mod media_server;
+pub mod midi;
 pub mod python;
 pub mod svsep;
