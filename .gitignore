@@ -3,5 +3,7 @@
 
 /data/config.json
 /data/cache/
+/data/python/
 /data/svsep/
+/data/midi/
 /tools/

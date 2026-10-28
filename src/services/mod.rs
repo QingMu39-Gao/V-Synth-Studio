@@ -1,8 +1,10 @@
 pub mod artifacts;
 pub mod audio;
 pub mod bili;
+pub mod download;
 pub mod jobs;
 pub mod libresvip;
 pub mod lyrics;
 pub mod media_server;
+pub mod python;
 pub mod svsep;
