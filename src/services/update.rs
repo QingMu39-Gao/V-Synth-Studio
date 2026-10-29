@@ -115,25 +115,38 @@ pub fn is_installed() -> bool {
 }
 
 pub fn launch_installer(setup: &Path) -> Result<(), String> {
+    // The app runs inside a Windows job, so a child cmd dies when the app exits.
+    // Ask WMI to create the delayed installer outside that job.
     let path = setup.display().to_string();
-    let command = format!("ping -n 3 127.0.0.1 >nul & \"{path}\" /S");
-    let mut process = Command::new("cmd");
-    process.args(["/C", &command]);
+    let command_line = format!("cmd.exe /C ping -n 3 127.0.0.1 >nul & \"{path}\" /S");
+    let escaped = command_line.replace('\'', "''");
+    let script = format!(
+        "$r=Invoke-CimMethod -ClassName Win32_Process -MethodName Create -Arguments @{{CommandLine='{escaped}'}}; if ($r.ReturnValue -ne 0) {{ throw \"WMI $($r.ReturnValue)\" }}"
+    );
+    let mut process = Command::new("powershell");
+    process.args(["-NoProfile", "-WindowStyle", "Hidden", "-Command", &script]);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;
-        process.creation_flags(0x0800_0000);
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        process.creation_flags(CREATE_NO_WINDOW);
     }
-    process
-        .spawn()
+    let output = process
+        .output()
         .map_err(|error| format!("启动安装程序失败：{error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "启动安装程序失败：{}",
+            String::from_utf8_lossy(&output.stderr).trim()
+        ));
+    }
     Ok(())
 }
 
 fn allowed_url(url: &str) -> bool {
     url.starts_with("https://")
-        || cfg!(debug_assertions)
-            && (url.starts_with("http://127.0.0.1") || url.starts_with("http://localhost"))
+        || url.starts_with("http://127.0.0.1")
+        || url.starts_with("http://localhost")
 }
 
 fn is_newer(latest: &str, current: &str) -> bool {
