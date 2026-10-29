@@ -1525,6 +1525,45 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn open_directory(&mut self, directory: PathBuf, cx: &mut Context<Self>) {
+        let result = std::fs::create_dir_all(&directory).and_then(|_| open::that(&directory));
+        if let Err(error) = result {
+            self.notice = Some(format!("打开目录失败：{error}"));
+        }
+        cx.notify();
+    }
+
+    fn open_output_dir(&mut self, cx: &mut Context<Self>) {
+        let value = self.output_input.read(cx).value().trim().to_string();
+        if value.is_empty() {
+            return;
+        }
+        self.open_directory(PathBuf::from(value), cx);
+    }
+
+    fn open_download_dir(&mut self, cx: &mut Context<Self>) {
+        let directory = self.download_directory(cx);
+        self.open_directory(directory, cx);
+    }
+
+    fn open_ext_dir(&mut self, cx: &mut Context<Self>) {
+        let value = self.ext_input.read(cx).value().trim().to_string();
+        let directory = if value.is_empty() {
+            crate::config::extensions_root()
+        } else {
+            PathBuf::from(value)
+        };
+        self.open_directory(directory, cx);
+    }
+
+    fn open_tools_dir(&mut self, cx: &mut Context<Self>) {
+        self.open_directory(crate::config::tools_dir(), cx);
+    }
+
+    fn open_data_dir(&mut self, cx: &mut Context<Self>) {
+        self.open_directory(crate::config::data_dir(), cx);
+    }
+
     fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
         let value = self.download_input.read(cx).value().trim().to_string();
         if value.is_empty() {
@@ -2083,6 +2122,60 @@ impl VSynthApp {
         let entity = cx.entity();
         let s = self.text();
 
+        let svsep_status = svsep::status();
+        let midi_status = midi::status();
+        let ffmpeg_available = self
+            .tools
+            .as_ref()
+            .is_some_and(|tools| tools.ffmpeg.available);
+        let ytdlp_available = self
+            .tools
+            .as_ref()
+            .is_some_and(|tools| tools.ytdlp.available);
+        let tools_known = self.tools.is_some();
+        let packs_group = GroupBox::new()
+            .id("dashboard-packs")
+            .outline()
+            .title(s.packs)
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(pack_row(
+                        s.page_svsep,
+                        "UVR-MDX-NET-Inst_HQ_3".to_string(),
+                        svsep_status.runtime_ready && svsep_status.model_ready,
+                        Page::Svsep,
+                        entity.clone(),
+                        theme,
+                        s,
+                    ))
+                    .child(pack_row(
+                        s.page_midi,
+                        "GAME 1.0.3 large (ONNX)".to_string(),
+                        midi_status.runtime_ready && midi_status.models_ready,
+                        Page::Midi,
+                        entity.clone(),
+                        theme,
+                        s,
+                    )),
+            );
+        let mut findings = Vec::new();
+        if tools_known {
+            if !ffmpeg_available {
+                findings.push(env_check(s.env_ffmpeg_missing, theme.warning));
+            }
+            if !ytdlp_available {
+                findings.push(env_check(s.env_ytdlp_missing, theme.primary));
+            }
+        }
+        let checks_group = (!findings.is_empty()).then(|| {
+            GroupBox::new()
+                .id("dashboard-checks")
+                .outline()
+                .title(s.environment_checks)
+                .child(v_flex().gap_2().children(findings))
+        });
+
         let tools_ready = match self.tools.as_ref() {
             Some(tools) => format!("{}/3 {}", tools.ready_count(), s.ready),
             None if self.scanning_tools => s.checking.to_string(),
@@ -2192,6 +2285,8 @@ impl VSynthApp {
                     ),
             )
             .child(jobs_element)
+            .children(checks_group)
+            .child(packs_group)
             .child(
                 GroupBox::new()
                     .id("dashboard-quick")
@@ -3998,6 +4093,68 @@ impl VSynthApp {
         let refresh_button = self.refresh_tools_button(cx);
         let sponsor_theme = cx.theme();
         let entity = cx.entity();
+        let output_open = entity.clone();
+        let download_open = entity.clone();
+        let ext_open = entity.clone();
+        let tools_open = entity.clone();
+        let data_open = entity.clone();
+        let has_output = !self.output_input.read(cx).value().trim().is_empty();
+        let directories_group = GroupBox::new()
+            .id("settings-directories")
+            .outline()
+            .title(s.directories)
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(
+                        h_flex()
+                            .flex_wrap()
+                            .gap_2()
+                            .child(
+                                Button::new("open-output-dir")
+                                    .label(s.output_dir)
+                                    .compact()
+                                    .disabled(!has_output)
+                                    .on_click(move |_, _, cx| {
+                                        output_open.update(cx, |this, cx| this.open_output_dir(cx));
+                                    }),
+                            )
+                            .child(
+                                Button::new("open-download-dir")
+                                    .label(s.download_dir)
+                                    .compact()
+                                    .on_click(move |_, _, cx| {
+                                        download_open
+                                            .update(cx, |this, cx| this.open_download_dir(cx));
+                                    }),
+                            )
+                            .child(
+                                Button::new("open-ext-dir")
+                                    .label(s.ext_dir)
+                                    .compact()
+                                    .on_click(move |_, _, cx| {
+                                        ext_open.update(cx, |this, cx| this.open_ext_dir(cx));
+                                    }),
+                            )
+                            .child(
+                                Button::new("open-tools-dir")
+                                    .label(s.tools_dir)
+                                    .compact()
+                                    .on_click(move |_, _, cx| {
+                                        tools_open.update(cx, |this, cx| this.open_tools_dir(cx));
+                                    }),
+                            )
+                            .child(
+                                Button::new("open-data-dir")
+                                    .label(s.data_dir)
+                                    .compact()
+                                    .on_click(move |_, _, cx| {
+                                        data_open.update(cx, |this, cx| this.open_data_dir(cx));
+                                    }),
+                            ),
+                    )
+                    .child(div().text_xs().text_color(muted).child(s.directories_hint)),
+            );
         let component_running = self
             .component_job
             .is_some_and(|(_, id)| self.job_center.read(cx).is_running(id));
@@ -4090,6 +4247,7 @@ impl VSynthApp {
                             ),
                     ),
             )
+            .child(directories_group)
             .child(
                 GroupBox::new()
                     .id("settings-tools")
@@ -5218,6 +5376,55 @@ fn component_row(
                 .child(button),
         )
         .into_any_element()
+}
+
+fn pack_row(
+    label: &'static str,
+    detail: String,
+    ready: bool,
+    target: Page,
+    entity: Entity<VSynthApp>,
+    theme: &Theme,
+    s: &Strings,
+) -> impl IntoElement {
+    let color = if ready { theme.success } else { theme.danger };
+    h_flex()
+        .justify_between()
+        .items_center()
+        .gap_4()
+        .py_1()
+        .border_b_1()
+        .border_color(theme.border)
+        .child(
+            v_flex().gap_1().child(div().text_sm().child(label)).child(
+                div()
+                    .text_xs()
+                    .text_color(theme.muted_foreground)
+                    .child(detail),
+            ),
+        )
+        .child(
+            h_flex()
+                .items_center()
+                .gap_2()
+                .child(announce_badge(
+                    if ready { s.ready } else { s.missing },
+                    color,
+                    theme.radius,
+                ))
+                .child(
+                    Button::new(SharedString::from(format!("pack-open-{}", target.id())))
+                        .label(s.open_page)
+                        .compact()
+                        .on_click(move |_, window, cx| {
+                            entity.update(cx, |this, cx| this.set_page(target, window, cx));
+                        }),
+                ),
+        )
+}
+
+fn env_check(text: &'static str, color: Hsla) -> impl IntoElement {
+    div().text_sm().text_color(color).child(text)
 }
 
 fn tool_row(
