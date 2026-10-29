@@ -149,8 +149,16 @@ pub fn save_bridge_script() -> &'static str {
 }
 
 pub fn asset_dir() -> Option<PathBuf> {
-    let dir = crate::config::app_root().join("assets").join("jizura");
-    dir.join("index.html").is_file().then_some(dir)
+    let local = crate::config::app_root().join("assets").join("jizura");
+    if local.join("index.html").is_file() {
+        return Some(local);
+    }
+    // `cargo run --release` executes from target/release, where packaging has not
+    // copied assets yet; fall back to the checkout the binary was built from.
+    let checkout = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("assets")
+        .join("jizura");
+    checkout.join("index.html").is_file().then_some(checkout)
 }
 
 pub fn serve(root: &Path, request: Request<Vec<u8>>) -> Response<Cow<'static, [u8]>> {

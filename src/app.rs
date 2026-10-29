@@ -30,8 +30,6 @@ use crate::services::svsep::{self, Stems};
 use crate::services::update::{self, UpdateInfo};
 use crate::tools::ToolStatus;
 
-const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
-
 const SIDEBAR_WIDTH: f32 = 228.0;
 
 const ALL_DEPENDENCIES: [DependencyId; 6] = [
@@ -308,30 +306,23 @@ impl VSynthApp {
         if self.webview.is_some() || self.webview_error.is_some() {
             return;
         }
-        let jizura_root = crate::jizura::asset_dir();
-        let has_jizura = jizura_root.is_some();
         let s = self.text();
-        let (pv_sender, pv_receiver) = async_channel::unbounded::<String>();
-        let mut builder = match jizura_root {
-            Some(root) => {
-                self.webview_source = Some(s.custom_protocol.to_string());
-                wry::WebViewBuilder::new()
-                    .with_custom_protocol(crate::jizura::SCHEME.into(), move |_, request| {
-                        crate::jizura::serve(&root, request)
-                    })
-                    .with_url(crate::jizura::START_URL)
-            }
-            None => {
-                self.webview_source = Some(s.demo_fallback.to_string());
-                wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO)
-            }
+        let Some(root) = crate::jizura::asset_dir() else {
+            self.webview_source = None;
+            self.webview_error = Some(s.jizura_missing.to_string());
+            return;
         };
+        self.webview_source = Some(s.custom_protocol.to_string());
+        let (pv_sender, pv_receiver) = async_channel::unbounded::<String>();
+        let mut builder = wry::WebViewBuilder::new()
+            .with_custom_protocol(crate::jizura::SCHEME.into(), move |_, request| {
+                crate::jizura::serve(&root, request)
+            })
+            .with_url(crate::jizura::START_URL);
         builder = builder.with_ipc_handler(move |request| {
             let _ = pv_sender.try_send(request.body().clone());
         });
-        if has_jizura {
-            builder = builder.with_initialization_script(crate::jizura::save_bridge_script());
-        }
+        builder = builder.with_initialization_script(crate::jizura::save_bridge_script());
         match WebView::build(builder, window, cx) {
             Ok(webview) => {
                 self.webview = Some(cx.new(|_| webview));
