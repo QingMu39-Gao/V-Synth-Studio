@@ -3,6 +3,7 @@
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
 
 use serde_json::Value;
@@ -10,6 +11,56 @@ use serde_json::Value;
 use crate::services::jobs::JobContext;
 
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+
+const LOGIN_COOKIE_KEYS: [&str; 5] = [
+    "SESSDATA",
+    "bili_jct",
+    "DedeUserID",
+    "DedeUserID__ckMd5",
+    "sid",
+];
+
+static COOKIE: OnceLock<Mutex<Option<String>>> = OnceLock::new();
+
+pub fn set_cookie(cookie: Option<String>) {
+    let store = COOKIE.get_or_init(|| Mutex::new(None));
+    *store.lock().unwrap_or_else(|error| error.into_inner()) = cookie;
+}
+
+pub fn logged_in() -> bool {
+    COOKIE
+        .get()
+        .and_then(|store| {
+            store
+                .lock()
+                .unwrap_or_else(|error| error.into_inner())
+                .clone()
+        })
+        .is_some_and(|cookie| cookie.contains("SESSDATA="))
+}
+
+pub fn cookie_from_pairs<'a>(pairs: impl Iterator<Item = (&'a str, &'a str)>) -> Option<String> {
+    let mut parts: Vec<String> = Vec::new();
+    for (name, value) in pairs {
+        if !LOGIN_COOKIE_KEYS.contains(&name) {
+            continue;
+        }
+        let pair = format!("{name}={value}");
+        if !parts.contains(&pair) {
+            parts.push(pair);
+        }
+    }
+    (!parts.is_empty()).then(|| parts.join("; "))
+}
+
+fn cookie() -> Option<String> {
+    COOKIE.get().and_then(|store| {
+        store
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .clone()
+    })
+}
 
 #[derive(Debug, Clone)]
 pub struct Page {
@@ -342,10 +393,14 @@ where
     C: Fn() -> bool,
 {
     let agent = agent();
-    let response = agent
+    let mut request = agent
         .get(url)
         .header("User-Agent", USER_AGENT)
-        .header("Referer", "https://www.bilibili.com/")
+        .header("Referer", "https://www.bilibili.com/");
+    if let Some(cookie) = cookie() {
+        request = request.header("Cookie", cookie);
+    }
+    let response = request
         .call()
         .map_err(|error| format!("{label}失败：{error}"))?;
     let total = response
@@ -420,10 +475,14 @@ fn merge(inputs: &[&Path], output: &Path) -> Result<(), String> {
 }
 
 fn api_json(url: &str) -> Result<Value, String> {
-    let response = agent()
+    let mut request = agent()
         .get(url)
         .header("User-Agent", USER_AGENT)
-        .header("Referer", "https://www.bilibili.com/")
+        .header("Referer", "https://www.bilibili.com/");
+    if let Some(cookie) = cookie() {
+        request = request.header("Cookie", cookie);
+    }
+    let response = request
         .call()
         .map_err(|error| format!("B 站接口请求失败：{error}"))?;
     let text = response
@@ -557,6 +616,22 @@ fn quiet_command(program: &Path) -> Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn keeps_only_login_cookies_and_deduplicates() {
+        let cookie = cookie_from_pairs(
+            [
+                ("buvid3", "device"),
+                ("SESSDATA", "abc%2C123"),
+                ("SESSDATA", "abc%2C123"),
+                ("bili_jct", "token"),
+            ]
+            .into_iter(),
+        )
+        .unwrap();
+        assert_eq!(cookie, "SESSDATA=abc%2C123; bili_jct=token");
+        assert!(cookie_from_pairs([("buvid3", "x")].into_iter()).is_none());
+    }
 
     #[test]
     fn recognizes_bvid_aid_and_page() {

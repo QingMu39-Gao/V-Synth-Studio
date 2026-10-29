@@ -155,6 +155,9 @@ pub struct VSynthApp {
     video_output: Option<PathBuf>,
     video_webview: Option<Entity<WebView>>,
     video_webview_error: Option<String>,
+    bili_login_webview: Option<Entity<WebView>>,
+    bili_login_error: Option<String>,
+    bili_login_notice: Option<String>,
     media_server: Option<MediaServer>,
     lyrics_query: Entity<InputState>,
     lyrics_editor: Entity<TextareaState>,
@@ -252,6 +255,9 @@ impl VSynthApp {
             video_output: None,
             video_webview: None,
             video_webview_error: None,
+            bili_login_webview: None,
+            bili_login_error: None,
+            bili_login_notice: None,
             media_server: None,
             lyrics_query: inputs.lyrics_query,
             lyrics_editor: inputs.lyrics_editor,
@@ -296,7 +302,11 @@ impl VSynthApp {
             if let Some(webview) = &self.video_webview {
                 webview.update(cx, |webview, _| webview.hide());
             }
+            if let Some(webview) = &self.bili_login_webview {
+                webview.update(cx, |webview, _| webview.hide());
+            }
             self.video_webview = None;
+            self.bili_login_webview = None;
             self.media_server = None;
         }
         if page == Page::Pv {
@@ -1376,6 +1386,68 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn open_bili_login(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.bili_login_webview.is_some() {
+            return;
+        }
+        self.bili_login_error = None;
+        self.bili_login_notice = None;
+        let s = self.text();
+        match WebView::build(
+            wry::WebViewBuilder::new()
+                .with_url("https://passport.bilibili.com/login")
+                .with_incognito(true),
+            window,
+            cx,
+        ) {
+            Ok(webview) => self.bili_login_webview = Some(cx.new(|_| webview)),
+            Err(error) => {
+                self.bili_login_error = Some(format!("{}：{error}", s.video_preview_error));
+            }
+        }
+        cx.notify();
+    }
+
+    fn finish_bili_login(&mut self, cx: &mut Context<Self>) {
+        let Some(webview) = &self.bili_login_webview else {
+            return;
+        };
+        let cookies = webview.update(cx, |webview, _| webview.raw().cookies());
+        let cookie = cookies.ok().and_then(|cookies| {
+            bili::cookie_from_pairs(cookies.iter().map(|cookie| (cookie.name(), cookie.value())))
+        });
+        match cookie {
+            Some(cookie) => {
+                bili::set_cookie(Some(cookie));
+                self.bili_login_webview = None;
+                self.bili_login_error = None;
+                self.bili_login_notice = Some(self.text().bili_login_success.to_string());
+                if !self.video_url_input.read(cx).value().trim().is_empty() {
+                    self.parse_video(cx);
+                }
+            }
+            None => {
+                self.bili_login_error = Some(self.text().bili_login_failed.to_string());
+            }
+        }
+        cx.notify();
+    }
+
+    fn close_bili_login(&mut self, cx: &mut Context<Self>) {
+        if let Some(webview) = &self.bili_login_webview {
+            webview.update(cx, |webview, _| webview.hide());
+        }
+        self.bili_login_webview = None;
+        self.bili_login_error = None;
+        cx.notify();
+    }
+
+    fn logout_bili(&mut self, cx: &mut Context<Self>) {
+        bili::set_cookie(None);
+        self.bili_login_notice = Some(self.text().bili_logged_out.to_string());
+        cx.notify();
+    }
+
     fn search_lyrics(&mut self, cx: &mut Context<Self>) {
         let query = self.lyrics_query.read(cx).value().trim().to_string();
         self.lyrics_searched = true;
@@ -1980,7 +2052,10 @@ impl VSynthApp {
     }
 
     fn render_main(&self, cx: &mut Context<Self>) -> AnyElement {
-        if self.page == Page::Pv || self.page == Page::Video && self.video_webview.is_some() {
+        if self.page == Page::Pv
+            || self.page == Page::Video
+                && (self.video_webview.is_some() || self.bili_login_webview.is_some())
+        {
             return v_flex()
                 .flex_1()
                 .min_w_0()
@@ -3300,6 +3375,66 @@ impl VSynthApp {
                 .into_any_element();
         }
 
+        if let Some(webview) = &self.bili_login_webview {
+            let finish_entity = entity.clone();
+            let close_entity = entity.clone();
+            return v_flex()
+                .size_full()
+                .p_6()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_2xl()
+                                .font_weight(FontWeight::BOLD)
+                                .child(s.bili_login),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("bili-login-finish")
+                                        .label(s.bili_login_finish)
+                                        .primary()
+                                        .on_click(move |_, _, cx| {
+                                            finish_entity.update(cx, |this, cx| {
+                                                this.finish_bili_login(cx);
+                                            });
+                                        }),
+                                )
+                                .child(
+                                    Button::new("bili-login-close")
+                                        .label(s.bili_login_close)
+                                        .on_click(move |_, _, cx| {
+                                            close_entity.update(cx, |this, cx| {
+                                                this.close_bili_login(cx);
+                                            });
+                                        }),
+                                ),
+                        ),
+                )
+                .children(
+                    self.bili_login_error
+                        .as_ref()
+                        .map(|error| div().text_sm().text_color(danger).child(error.clone())),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .rounded(theme.radius)
+                        .border_1()
+                        .border_color(border)
+                        .overflow_hidden()
+                        .child(webview.clone()),
+                )
+                .into_any_element();
+        }
+
         let parsing = self
             .video_parse_job
             .is_some_and(|id| self.job_center.read(cx).is_running(id))
@@ -3643,6 +3778,30 @@ impl VSynthApp {
                 .into_any_element()
         });
 
+        let logged_in = bili::logged_in();
+        let login_entity = entity.clone();
+        let logout_entity = entity.clone();
+        let account_button = if logged_in {
+            Button::new("bili-logout")
+                .label(s.bili_logout)
+                .on_click(move |_, _, cx| {
+                    logout_entity.update(cx, |this, cx| this.logout_bili(cx));
+                })
+                .into_any_element()
+        } else {
+            Button::new("bili-login")
+                .label(s.bili_login)
+                .primary()
+                .on_click(move |_, window, cx| {
+                    login_entity.update(cx, |this, cx| this.open_bili_login(window, cx));
+                })
+                .into_any_element()
+        };
+        let account_notice = self
+            .bili_login_notice
+            .as_ref()
+            .map(|notice| div().text_xs().text_color(muted).child(notice.clone()));
+
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
@@ -3661,6 +3820,29 @@ impl VSynthApp {
                                     div().text_xs().text_color(muted).child(s.video_url_hint),
                                 ),
                             ),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("video-account")
+                    .outline()
+                    .title(s.bili_account)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .justify_between()
+                                    .items_center()
+                                    .child(div().text_sm().child(if logged_in {
+                                        s.bili_logged_in
+                                    } else {
+                                        s.bili_not_logged_in
+                                    }))
+                                    .child(account_button),
+                            )
+                            .child(div().text_xs().text_color(muted).child(s.bili_login_hint))
+                            .children(account_notice),
                     ),
             )
             .child(
