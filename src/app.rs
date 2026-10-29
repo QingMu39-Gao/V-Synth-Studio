@@ -168,6 +168,7 @@ pub struct VSynthApp {
     midi_notice: Option<String>,
     midi_steps: usize,
     midi_device: MidiDevice,
+    midi_language: i64,
     announcements: Option<Vec<Announcement>>,
     announce_error: Option<String>,
     announce_loading: bool,
@@ -263,6 +264,7 @@ impl VSynthApp {
             midi_notice: None,
             midi_steps: 8,
             midi_device: MidiDevice::Auto,
+            midi_language: 4,
             announcements: None,
             announce_error: None,
             announce_loading: false,
@@ -1593,6 +1595,7 @@ impl VSynthApp {
             steps: self.midi_steps,
             threads: 4,
             device: self.midi_device,
+            language: self.midi_language,
         };
         let s = self.text();
         let job = self.job_center.read(cx).start(s.midi_run, move |ctx| {
@@ -1653,6 +1656,11 @@ impl VSynthApp {
 
     fn set_midi_device(&mut self, device: MidiDevice, cx: &mut Context<Self>) {
         self.midi_device = device;
+        cx.notify();
+    }
+
+    fn set_midi_language(&mut self, language: i64, cx: &mut Context<Self>) {
+        self.midi_language = language;
         cx.notify();
     }
 
@@ -2941,10 +2949,47 @@ impl VSynthApp {
         })
         .collect::<Vec<_>>();
 
+        let language_buttons = [(4_i64, "中文"), (1, "English"), (2, "日本語"), (3, "粵語")]
+            .into_iter()
+            .map(|(language, label)| {
+                let entity = entity.clone();
+                let selected = self.midi_language == language;
+                let button = Button::new(SharedString::from(format!("midi-language-{language}")))
+                    .label(label)
+                    .compact();
+                let button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| this.set_midi_language(language, cx));
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+
         let engine_status = if ready { s.midi_ready } else { s.midi_missing };
 
         let outputs_block = self.midi_outputs.as_ref().map(|outputs| {
             let open_entity = entity.clone();
+            let roll_notes = outputs.preview.clone();
+            let roll_background = theme.background;
+            let roll = canvas(
+                |_, _, _| {},
+                move |bounds, _, window, _| {
+                    paint_piano_roll(
+                        bounds,
+                        &roll_notes,
+                        primary,
+                        roll_background,
+                        border,
+                        window,
+                    );
+                },
+            )
+            .size_full();
             let mut preview = v_flex().gap_1().child(
                 h_flex()
                     .gap_2()
@@ -2994,6 +3039,17 @@ impl VSynthApp {
                 .child(div().text_sm().child(outputs.midi.display().to_string()))
                 .child(div().text_sm().child(outputs.csv.display().to_string()))
                 .child(div().text_sm().child(outputs.json.display().to_string()))
+                .child(div().text_sm().child(s.midi_roll))
+                .child(
+                    div()
+                        .h(px(160.))
+                        .w_full()
+                        .rounded(theme.radius)
+                        .border_1()
+                        .border_color(border)
+                        .overflow_hidden()
+                        .child(roll),
+                )
                 .child(preview)
                 .child(
                     Button::new("midi-open-folder")
@@ -3091,7 +3147,20 @@ impl VSynthApp {
                                     .child(div().text_sm().text_color(muted).child(s.midi_device))
                                     .children(device_buttons),
                             )
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .items_center()
+                                    .child(div().text_sm().text_color(muted).child(s.midi_language))
+                                    .children(language_buttons),
+                            )
                             .child(div().text_xs().text_color(muted).child(s.midi_steps_hint))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.midi_language_hint),
+                            )
                             .child(div().text_xs().text_color(muted).child(s.midi_device_hint)),
                     ),
             )
@@ -5028,6 +5097,71 @@ fn waveform_fraction(
         return None;
     }
     Some(((position.x - bounds.origin.x).as_f32() / width).clamp(0.0, 1.0))
+}
+
+fn paint_piano_roll(
+    bounds: Bounds<Pixels>,
+    notes: &[midi::Note],
+    note_color: Hsla,
+    background: Hsla,
+    border: Hsla,
+    window: &mut Window,
+) {
+    window.paint_quad(quad(
+        bounds,
+        px(4.),
+        background,
+        px(1.),
+        border,
+        Default::default(),
+    ));
+    if notes.is_empty() {
+        return;
+    }
+    let width = bounds.size.width.as_f32();
+    let height = bounds.size.height.as_f32();
+    let lowest = notes
+        .iter()
+        .map(|note| note.pitch)
+        .fold(f32::INFINITY, f32::min)
+        .floor()
+        - 2.0;
+    let highest = notes
+        .iter()
+        .map(|note| note.pitch)
+        .fold(f32::NEG_INFINITY, f32::max)
+        .ceil()
+        + 2.0;
+    let span = (highest - lowest).max(1.0);
+    let end = notes
+        .iter()
+        .map(|note| note.offset)
+        .fold(0.0_f64, f64::max)
+        .max(0.001);
+    let row_height = (height / span * 0.8).max(2.0);
+    for note in notes {
+        let x = bounds.origin.x.as_f32() + (note.onset / end) as f32 * width;
+        let note_width = (((note.offset - note.onset) / end) as f32 * width).max(2.0);
+        let y = bounds.origin.y.as_f32() + height * (1.0 - (note.pitch - lowest) / span);
+        let bar = Bounds {
+            origin: point(
+                px(x),
+                px((y - row_height / 2.0).clamp(
+                    bounds.origin.y.as_f32(),
+                    bounds.origin.y.as_f32() + height - row_height,
+                )),
+            ),
+            size: size(px(note_width.min(width)), px(row_height)),
+        };
+        window.paint_quad(quad(
+            bar,
+            px(1.5),
+            note_color,
+            px(0.),
+            transparent_black(),
+            Default::default(),
+        ));
+    }
 }
 
 fn paint_waveform(

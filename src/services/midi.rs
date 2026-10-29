@@ -53,6 +53,7 @@ pub struct Options {
     pub steps: usize,
     pub threads: usize,
     pub device: Device,
+    pub language: i64,
 }
 
 impl Default for Options {
@@ -61,6 +62,7 @@ impl Default for Options {
             steps: DEFAULT_STEPS,
             threads: DEFAULT_THREADS,
             device: Device::Auto,
+            language: 4,
         }
     }
 }
@@ -184,6 +186,8 @@ pub fn transcribe(
         .arg(options.steps.to_string())
         .arg("--threads")
         .arg(options.threads.to_string())
+        .arg("--language")
+        .arg(options.language.to_string())
         .args(["--device", options.device.key()])
         .stdin(Stdio::null())
         .stdout(Stdio::piped())
@@ -674,6 +678,7 @@ mod tests {
                 steps: 2,
                 threads: 4,
                 device: Device::Cpu,
+                ..Options::default()
             };
             transcribe(&input, &job_output, &options, &ctx).map(|_| ())
         });
