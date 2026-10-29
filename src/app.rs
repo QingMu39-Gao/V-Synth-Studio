@@ -151,6 +151,7 @@ pub struct VSynthApp {
     video_parse_job: Option<u64>,
     video_page_job: Option<u64>,
     video_download_job: Option<u64>,
+    video_extras_job: Option<u64>,
     video_notice: Option<String>,
     video_output: Option<PathBuf>,
     video_webview: Option<Entity<WebView>>,
@@ -251,6 +252,7 @@ impl VSynthApp {
             video_parse_job: None,
             video_page_job: None,
             video_download_job: None,
+            video_extras_job: None,
             video_notice: None,
             video_output: None,
             video_webview: None,
@@ -1269,6 +1271,76 @@ impl VSynthApp {
                         this.video_output = Some(output.clone());
                         this.video_notice =
                             Some(format!("{}: {}", this.text().video_done, output.display()));
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.video_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.video_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.video_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn download_video_extras(&mut self, cx: &mut Context<Self>) {
+        if self
+            .video_extras_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(info) = self.video_info.clone() else {
+            return;
+        };
+        let Some(page) = info.pages.get(info.page_index) else {
+            return;
+        };
+        let (directory, stem) = match &self.video_output {
+            Some(output) => (
+                output
+                    .parent()
+                    .map(Path::to_path_buf)
+                    .unwrap_or_else(|| PathBuf::from(".")),
+                output
+                    .file_stem()
+                    .map(|stem| stem.to_string_lossy().to_string())
+                    .unwrap_or_else(|| video_stem(&info.title)),
+            ),
+            None => (self.download_directory(cx), video_stem(&info.title)),
+        };
+        let cid = page.cid;
+        let bvid = info.bvid.clone();
+        let s = self.text();
+        let job = self.job_center.read(cx).start(s.video_extras, move |ctx| {
+            bili::save_extras(&bvid, cid, &directory, &stem, &ctx)
+        });
+        self.video_extras_job = Some(job.id);
+        self.video_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.video_extras_job == Some(job_id) {
+                    this.video_extras_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(paths)) => {
+                        this.video_notice = Some(format!(
+                            "{}: {}",
+                            this.text().video_extras_done,
+                            paths
+                                .iter()
+                                .filter_map(|path| path.file_name())
+                                .map(|name| name.to_string_lossy().to_string())
+                                .collect::<Vec<_>>()
+                                .join("、")
+                        ));
                     }
                     Ok(JobOutcome::Failed(error)) => this.video_notice = Some(error),
                     Ok(JobOutcome::Canceled) => {
@@ -3444,6 +3516,9 @@ impl VSynthApp {
         let downloading = self
             .video_download_job
             .is_some_and(|id| self.job_center.read(cx).is_running(id));
+        let extras_running = self
+            .video_extras_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
         let download_snapshot = self
             .video_download_job
             .and_then(|id| self.job_center.read(cx).snapshot(id));
@@ -3554,6 +3629,17 @@ impl VSynthApp {
                 })
                 .unwrap_or_default();
             let output_entity = entity.clone();
+            let extras_entity = entity.clone();
+            let extras_button = Button::new("video-extras")
+                .label(if extras_running {
+                    s.video_extras_running
+                } else {
+                    s.video_extras
+                })
+                .disabled(extras_running)
+                .on_click(move |_, _, cx| {
+                    extras_entity.update(cx, |this, cx| this.download_video_extras(cx));
+                });
             let output_block = self.video_output.as_ref().map(|output| {
                 let open_entity = output_entity.clone();
                 let preview_entity = output_entity.clone();
@@ -3632,6 +3718,7 @@ impl VSynthApp {
                 .child(div().text_xs().text_color(muted).child(s.video_quality))
                 .child(h_flex().gap_2().flex_wrap().children(quality_buttons))
                 .child(download_button)
+                .child(extras_button)
                 .child(div().text_xs().text_color(muted).child(s.video_output_hint))
                 .children(output_block)
                 .children(self.video_webview_error.as_ref().map(|error| {

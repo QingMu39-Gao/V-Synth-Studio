@@ -11,6 +11,16 @@ use serde_json::Value;
 use crate::services::jobs::JobContext;
 
 const USER_AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36";
+const API_PLAYER_V2: &str = "https://api.bilibili.com/x/player/v2";
+const API_DANMAKU_XML: &str = "https://api.bilibili.com/x/v1/dm/list.so";
+
+#[derive(Debug, Clone)]
+pub struct Subtitle {
+    pub lan: String,
+    pub label: String,
+    pub url: String,
+    pub ai: bool,
+}
 
 const LOGIN_COOKIE_KEYS: [&str; 5] = [
     "SESSDATA",
@@ -200,6 +210,191 @@ pub fn qualities_for(bvid: &str, cid: u64) -> Result<Vec<Quality>, String> {
         ];
     }
     Ok(result)
+}
+
+pub fn subtitles(bvid: &str, cid: u64) -> Result<Vec<Subtitle>, String> {
+    let document = api_json(&format!("{API_PLAYER_V2}?bvid={bvid}&cid={cid}"))?;
+    let list = document["data"]["subtitle"]["subtitles"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default();
+    Ok(list
+        .iter()
+        .filter_map(|item| {
+            let raw_url = item["subtitle_url"].as_str().unwrap_or("");
+            if raw_url.is_empty() {
+                return None;
+            }
+            let url = if let Some(rest) = raw_url.strip_prefix("//") {
+                format!("https:{rest}")
+            } else {
+                raw_url.to_string()
+            };
+            Some(Subtitle {
+                lan: item["lan"].as_str().unwrap_or("").to_string(),
+                label: item["lan_doc"].as_str().unwrap_or("").to_string(),
+                url,
+                ai: item["ai_type"].as_i64() == Some(1) || item["type"].as_i64() == Some(1),
+            })
+        })
+        .collect())
+}
+
+pub fn save_extras(
+    bvid: &str,
+    cid: u64,
+    directory: &Path,
+    stem: &str,
+    ctx: &JobContext,
+) -> Result<Vec<PathBuf>, String> {
+    std::fs::create_dir_all(directory).map_err(|error| error.to_string())?;
+    let mut saved = Vec::new();
+    ctx.progress(Some(0.1), "下载弹幕");
+    match danmaku_xml(cid) {
+        Ok(xml) => {
+            let path = directory.join(format!("{stem}.danmaku.xml"));
+            match std::fs::write(&path, xml) {
+                Ok(()) => {
+                    ctx.log(format!("已保存弹幕：{}", path.display()));
+                    saved.push(path);
+                }
+                Err(error) => ctx.log(format!("⚠ 弹幕保存失败：{error}")),
+            }
+        }
+        Err(error) => ctx.log(format!("⚠ 弹幕下载失败：{error}")),
+    }
+    ctx.progress(Some(0.55), "下载字幕");
+    match subtitles(bvid, cid) {
+        Ok(list) => {
+            if list.is_empty() {
+                ctx.log("该视频没有官方字幕");
+            }
+            for subtitle in list {
+                let url = subtitle.url.clone();
+                match fetch_bytes(&url) {
+                    Ok(bytes) => {
+                        let text = String::from_utf8_lossy(&bytes);
+                        let tag = safe_tag(&subtitle.lan);
+                        let path = directory.join(format!("{stem}.{tag}.srt"));
+                        let srt = bcc_to_srt(&text);
+                        match std::fs::write(&path, srt) {
+                            Ok(()) => {
+                                let ai = if subtitle.ai { "（AI）" } else { "" };
+                                ctx.log(format!(
+                                    "已保存字幕：{}（{}{}）",
+                                    path.display(),
+                                    subtitle.label,
+                                    ai
+                                ));
+                                saved.push(path);
+                            }
+                            Err(error) => ctx.log(format!("⚠ 字幕保存失败：{error}")),
+                        }
+                    }
+                    Err(error) => ctx.log(format!("⚠ 字幕下载失败（{}）：{error}", subtitle.label)),
+                }
+            }
+        }
+        Err(error) => ctx.log(format!("⚠ 字幕列表获取失败：{error}")),
+    }
+    if saved.is_empty() {
+        return Err("没有可保存的弹幕或字幕".to_string());
+    }
+    ctx.progress(Some(1.0), "弹幕与字幕已保存");
+    Ok(saved)
+}
+
+fn danmaku_xml(cid: u64) -> Result<String, String> {
+    let bytes = fetch_bytes(&format!("{API_DANMAKU_XML}?oid={cid}"))?;
+    let text = String::from_utf8_lossy(&bytes).to_string();
+    if text.trim_start().starts_with('<') {
+        return Ok(text);
+    }
+    for mut reader in [
+        Box::new(flate2::read::DeflateDecoder::new(bytes.as_slice())) as Box<dyn Read>,
+        Box::new(flate2::read::ZlibDecoder::new(bytes.as_slice())) as Box<dyn Read>,
+        Box::new(flate2::read::GzDecoder::new(bytes.as_slice())) as Box<dyn Read>,
+    ] {
+        let mut output = String::new();
+        if reader.read_to_string(&mut output).is_ok() && output.trim_start().starts_with('<') {
+            return Ok(output);
+        }
+    }
+    Ok(text)
+}
+
+fn fetch_bytes(url: &str) -> Result<Vec<u8>, String> {
+    let mut request = agent()
+        .get(url)
+        .header("User-Agent", USER_AGENT)
+        .header("Referer", "https://www.bilibili.com/");
+    if let Some(cookie) = cookie() {
+        request = request.header("Cookie", cookie);
+    }
+    let response = request
+        .call()
+        .map_err(|error| format!("请求失败：{error}"))?;
+    let mut bytes = Vec::new();
+    response
+        .into_body()
+        .into_reader()
+        .read_to_end(&mut bytes)
+        .map_err(|error| format!("读取失败：{error}"))?;
+    Ok(bytes)
+}
+
+pub fn bcc_to_srt(json_text: &str) -> String {
+    let Ok(document) = serde_json::from_str::<Value>(json_text) else {
+        return json_text.to_string();
+    };
+    let Some(body) = document["body"].as_array() else {
+        return json_text.to_string();
+    };
+    body.iter()
+        .enumerate()
+        .map(|(index, item)| {
+            let from = item["from"].as_f64().unwrap_or(0.0);
+            let to = item["to"].as_f64().unwrap_or(0.0);
+            let content = item["content"].as_str().unwrap_or("");
+            format!(
+                "{}\n{} --> {}\n{}\n",
+                index + 1,
+                srt_time(from),
+                srt_time(to),
+                content
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn srt_time(seconds: f64) -> String {
+    let total_ms = (seconds.max(0.0) * 1000.0).round() as i64;
+    let ms = total_ms % 1000;
+    let total_s = total_ms.div_euclid(1000);
+    let s = total_s % 60;
+    let m = (total_s / 60) % 60;
+    let h = total_s / 3600;
+    format!("{h:02}:{m:02}:{s:02},{ms:03}")
+}
+
+fn safe_tag(lan: &str) -> String {
+    let tag: String = lan
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
+                character
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    let tag = tag.trim_matches('_');
+    if tag.is_empty() {
+        "unknown".to_string()
+    } else {
+        tag.to_string()
+    }
 }
 
 pub fn resolve(bvid: &str, cid: u64, qn: u32) -> Result<Streams, String> {
@@ -634,6 +829,17 @@ mod tests {
     }
 
     #[test]
+    fn converts_bcc_subtitles_and_sanitizes_tags() {
+        let srt = bcc_to_srt(r#"{"body":[{"from":0.5,"to":2.25,"content":"你好"}]}"#);
+        assert!(srt.contains("00:00:00,500 --> 00:00:02,250"));
+        assert!(srt.contains("你好"));
+        assert_eq!(safe_tag("zh-CN"), "zh-CN");
+        assert_eq!(safe_tag("../evil"), "evil");
+        assert_eq!(safe_tag(""), "unknown");
+        assert_eq!(srt_time(5.9997), "00:00:06,000");
+    }
+
+    #[test]
     fn recognizes_bvid_aid_and_page() {
         let target = parse_target("https://www.bilibili.com/video/BV1GJ411x7h7?p=2").unwrap();
         assert_eq!(target.bvid.as_deref(), Some("BV1GJ411x7h7"));
@@ -650,6 +856,37 @@ mod tests {
         assert!(!video.qualities.is_empty());
         assert_eq!(video.pages.len(), 1);
         assert!(video.pages[0].cid > 0);
+    }
+
+    #[test]
+    #[ignore = "requires network access to api.bilibili.com"]
+    fn saves_public_danmaku_and_subtitle_list() {
+        let video = parse("BV1GJ411x7h7").unwrap();
+        let cid = video.pages.first().expect("page").cid;
+        let dir = std::env::temp_dir().join(format!("vss-bili-extras-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let job_dir = dir.clone();
+        let (jobs, _events) = crate::services::jobs::Jobs::new();
+        let job = jobs.start("extras", move |ctx| {
+            save_extras(&video.bvid, cid, &job_dir, "test", &ctx)
+        });
+        let paths = match job.result.recv_blocking().unwrap() {
+            crate::services::jobs::JobOutcome::Done(paths) => paths,
+            other => panic!("{other:?}"),
+        };
+        assert!(
+            paths
+                .iter()
+                .any(|path| path.to_string_lossy().ends_with(".danmaku.xml")),
+            "expected danmaku xml in {paths:?}"
+        );
+        let danmaku = paths
+            .iter()
+            .find(|path| path.to_string_lossy().ends_with(".danmaku.xml"))
+            .unwrap();
+        let xml = std::fs::read_to_string(danmaku).unwrap();
+        assert!(xml.contains("<d ") || xml.contains("<i>"));
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
