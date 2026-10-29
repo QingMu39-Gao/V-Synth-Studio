@@ -167,6 +167,12 @@ pub struct VSynthApp {
     lyrics_translation: String,
     lyrics_notice: Option<String>,
     lyrics_searched: bool,
+    lyrics_login_webview: Option<Entity<WebView>>,
+    lyrics_login_error: Option<String>,
+    lyrics_login_notice: Option<String>,
+    lyrics_quality: lyrics::Quality,
+    lyrics_download_job: Option<u64>,
+    lyrics_output: Option<PathBuf>,
     svsep_input: Option<PathBuf>,
     svsep_stems: Option<Stems>,
     svsep_job: Option<u64>,
@@ -268,6 +274,12 @@ impl VSynthApp {
             lyrics_translation: String::new(),
             lyrics_notice: None,
             lyrics_searched: false,
+            lyrics_login_webview: None,
+            lyrics_login_error: None,
+            lyrics_login_notice: None,
+            lyrics_quality: lyrics::Quality::Auto,
+            lyrics_download_job: None,
+            lyrics_output: None,
             svsep_input: None,
             svsep_stems: None,
             svsep_job: None,
@@ -310,6 +322,12 @@ impl VSynthApp {
             self.video_webview = None;
             self.bili_login_webview = None;
             self.media_server = None;
+        }
+        if self.page == Page::Lyrics && page != Page::Lyrics {
+            if let Some(webview) = &self.lyrics_login_webview {
+                webview.update(cx, |webview, _| webview.hide());
+            }
+            self.lyrics_login_webview = None;
         }
         if page == Page::Pv {
             self.ensure_webview(window, cx);
@@ -1474,7 +1492,7 @@ impl VSynthApp {
         ) {
             Ok(webview) => self.bili_login_webview = Some(cx.new(|_| webview)),
             Err(error) => {
-                self.bili_login_error = Some(format!("{}：{error}", s.video_preview_error));
+                self.bili_login_error = Some(format!("{}：{error}", s.webview_open_failed));
             }
         }
         cx.notify();
@@ -1608,6 +1626,149 @@ impl VSynthApp {
                 ));
             }
             Err(error) => self.lyrics_notice = Some(error),
+        }
+        cx.notify();
+    }
+
+    fn open_lyrics_login(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        if self.lyrics_login_webview.is_some() {
+            return;
+        }
+        self.lyrics_login_error = None;
+        self.lyrics_login_notice = None;
+        let s = self.text();
+        match WebView::build(
+            wry::WebViewBuilder::new()
+                .with_url("https://music.163.com/login?targetUrl=/")
+                .with_incognito(true),
+            window,
+            cx,
+        ) {
+            Ok(webview) => self.lyrics_login_webview = Some(cx.new(|_| webview)),
+            Err(error) => {
+                self.lyrics_login_error = Some(format!("{}：{error}", s.webview_open_failed));
+            }
+        }
+        cx.notify();
+    }
+
+    fn finish_lyrics_login(&mut self, cx: &mut Context<Self>) {
+        let Some(webview) = &self.lyrics_login_webview else {
+            return;
+        };
+        let cookies = webview.update(cx, |webview, _| webview.raw().cookies());
+        let cookie = cookies.ok().and_then(|cookies| {
+            lyrics::cookie_from_pairs(cookies.iter().map(|cookie| (cookie.name(), cookie.value())))
+        });
+        match cookie {
+            Some(cookie) => {
+                lyrics::set_cookie(Some(cookie));
+                self.lyrics_login_webview = None;
+                self.lyrics_login_error = None;
+                self.lyrics_login_notice = Some(self.text().netease_login_success.to_string());
+            }
+            None => {
+                self.lyrics_login_error = Some(self.text().netease_login_failed.to_string());
+            }
+        }
+        cx.notify();
+    }
+
+    fn close_lyrics_login(&mut self, cx: &mut Context<Self>) {
+        if let Some(webview) = &self.lyrics_login_webview {
+            webview.update(cx, |webview, _| webview.hide());
+        }
+        self.lyrics_login_webview = None;
+        self.lyrics_login_error = None;
+        cx.notify();
+    }
+
+    fn logout_lyrics(&mut self, cx: &mut Context<Self>) {
+        lyrics::set_cookie(None);
+        self.lyrics_login_notice = Some(self.text().netease_logged_out.to_string());
+        cx.notify();
+    }
+
+    fn download_lyrics_song(&mut self, cx: &mut Context<Self>) {
+        if self
+            .lyrics_download_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(song) = self.lyrics_song.clone() else {
+            self.lyrics_notice = Some(self.text().lyrics_no_song.to_string());
+            cx.notify();
+            return;
+        };
+        let directory = self.download_directory(cx);
+        let stem = format!("{} - {}", song.name, song.artists.join(", "));
+        let quality = self.lyrics_quality;
+        let song_id = song.id;
+        let duration = song.duration_ms;
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.lyrics_download_song, move |ctx| {
+                lyrics::download(song_id, &directory, &stem, quality, duration, &ctx)
+            });
+        self.lyrics_download_job = Some(job.id);
+        self.lyrics_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.lyrics_download_job == Some(job_id) {
+                    this.lyrics_download_job = None;
+                }
+                let s = this.text();
+                match outcome {
+                    Ok(JobOutcome::Done(got)) => {
+                        let mut notice = format!(
+                            "{}: {}（{} / {} kbps）",
+                            s.lyrics_downloaded,
+                            got.path.display(),
+                            quality_level_label(s, &got.level),
+                            got.kbps
+                        );
+                        if got.downgraded {
+                            notice.push('；');
+                            notice.push_str(s.lyrics_download_downgraded);
+                        }
+                        this.lyrics_output = Some(got.path);
+                        this.lyrics_notice = Some(notice);
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.lyrics_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.lyrics_notice = Some(s.job_canceled.to_string());
+                    }
+                    Err(_) => this.lyrics_notice = Some(s.job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn cancel_lyrics_download(&mut self, cx: &mut Context<Self>) {
+        if let Some(id) = self.lyrics_download_job {
+            self.job_center.read(cx).cancel(id);
+            cx.notify();
+        }
+    }
+
+    fn open_lyrics_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(output) = &self.lyrics_output else {
+            return;
+        };
+        let directory = output.parent().unwrap_or_else(|| Path::new("."));
+        if let Err(error) = open::that(directory) {
+            self.lyrics_notice = Some(format!("打开目录失败：{error}"));
         }
         cx.notify();
     }
@@ -2127,6 +2288,7 @@ impl VSynthApp {
         if self.page == Page::Pv
             || self.page == Page::Video
                 && (self.video_webview.is_some() || self.bili_login_webview.is_some())
+            || self.page == Page::Lyrics && self.lyrics_login_webview.is_some()
         {
             return v_flex()
                 .flex_1()
@@ -3953,8 +4115,69 @@ impl VSynthApp {
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
+        let danger = theme.danger;
         let entity = cx.entity();
         let s = self.text();
+
+        if let Some(webview) = &self.lyrics_login_webview {
+            let finish_entity = entity.clone();
+            let close_entity = entity.clone();
+            return v_flex()
+                .size_full()
+                .p_6()
+                .gap_3()
+                .child(
+                    h_flex()
+                        .justify_between()
+                        .items_center()
+                        .child(
+                            div()
+                                .text_2xl()
+                                .font_weight(FontWeight::BOLD)
+                                .child(s.netease_login),
+                        )
+                        .child(
+                            h_flex()
+                                .gap_2()
+                                .child(
+                                    Button::new("lyrics-login-finish")
+                                        .label(s.netease_login_finish)
+                                        .primary()
+                                        .on_click(move |_, _, cx| {
+                                            finish_entity.update(cx, |this, cx| {
+                                                this.finish_lyrics_login(cx);
+                                            });
+                                        }),
+                                )
+                                .child(
+                                    Button::new("lyrics-login-close")
+                                        .label(s.netease_login_close)
+                                        .on_click(move |_, _, cx| {
+                                            close_entity.update(cx, |this, cx| {
+                                                this.close_lyrics_login(cx);
+                                            });
+                                        }),
+                                ),
+                        ),
+                )
+                .children(
+                    self.lyrics_login_error
+                        .as_ref()
+                        .map(|error| div().text_sm().text_color(danger).child(error.clone())),
+                )
+                .child(
+                    div()
+                        .flex_1()
+                        .min_h_0()
+                        .w_full()
+                        .rounded(theme.radius)
+                        .border_1()
+                        .border_color(border)
+                        .overflow_hidden()
+                        .child(webview.clone()),
+                )
+                .into_any_element();
+        }
 
         let search_entity = entity.clone();
         let search_button = Button::new("lyrics-search")
@@ -4020,6 +4243,68 @@ impl VSynthApp {
 
         let song_block = if let Some(song) = &self.lyrics_song {
             let cover_entity = entity.clone();
+            let download_entity = entity.clone();
+            let cancel_entity = entity.clone();
+            let downloading = self
+                .lyrics_download_job
+                .is_some_and(|id| self.job_center.read(cx).is_running(id));
+            let download_button = if downloading {
+                Button::new("lyrics-cancel-download")
+                    .label(s.video_cancel)
+                    .on_click(move |_, _, cx| {
+                        cancel_entity.update(cx, |this, cx| this.cancel_lyrics_download(cx));
+                    })
+                    .into_any_element()
+            } else {
+                Button::new("lyrics-download-song")
+                    .label(s.lyrics_download_song)
+                    .primary()
+                    .on_click(move |_, _, cx| {
+                        download_entity.update(cx, |this, cx| this.download_lyrics_song(cx));
+                    })
+                    .into_any_element()
+            };
+            let quality_buttons = [
+                (lyrics::Quality::Auto, s.lyrics_quality_auto),
+                (lyrics::Quality::Lossless, s.lyrics_quality_lossless),
+                (lyrics::Quality::Exhigh, s.lyrics_quality_exhigh),
+                (lyrics::Quality::Higher, s.lyrics_quality_higher),
+                (lyrics::Quality::Standard, s.lyrics_quality_standard),
+            ]
+            .into_iter()
+            .map(|(quality, label)| {
+                let selected = self.lyrics_quality == quality;
+                let entity = entity.clone();
+                let mut button = Button::new(SharedString::from(format!(
+                    "lyrics-quality-{}",
+                    quality_key(quality)
+                )))
+                .label(label)
+                .compact();
+                button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| {
+                            this.lyrics_quality = quality;
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
+            let folder_entity = entity.clone();
+            let folder_button = self.lyrics_output.is_some().then(|| {
+                Button::new("lyrics-open-folder")
+                    .label(s.lyrics_open_folder)
+                    .on_click(move |_, _, cx| {
+                        folder_entity.update(cx, |this, cx| this.open_lyrics_folder(cx));
+                    })
+                    .into_any_element()
+            });
             v_flex()
                 .gap_2()
                 .child(
@@ -4051,13 +4336,32 @@ impl VSynthApp {
                         .child(format!("{}: {}", s.lyrics_cover, song.cover_url)),
                 )
                 .child(
-                    Button::new("lyrics-cover")
-                        .label(s.lyrics_download_cover)
-                        .on_click(move |_, _, cx| {
-                            cover_entity.update(cx, |this, cx| {
-                                this.download_lyrics_cover(cx);
-                            });
-                        }),
+                    h_flex()
+                        .gap_2()
+                        .items_center()
+                        .child(div().text_sm().text_color(muted).child(s.lyrics_quality))
+                        .children(quality_buttons),
+                )
+                .child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(s.lyrics_quality_hint),
+                )
+                .child(
+                    h_flex()
+                        .gap_2()
+                        .child(
+                            Button::new("lyrics-cover")
+                                .label(s.lyrics_download_cover)
+                                .on_click(move |_, _, cx| {
+                                    cover_entity.update(cx, |this, cx| {
+                                        this.download_lyrics_cover(cx);
+                                    });
+                                }),
+                        )
+                        .child(download_button)
+                        .children(folder_button),
                 )
                 .into_any_element()
         } else {
@@ -4120,9 +4424,64 @@ impl VSynthApp {
                 .into_any_element()
         });
 
+        let logged_in = lyrics::logged_in();
+        let login_entity = entity.clone();
+        let logout_entity = entity.clone();
+        let account_button = if logged_in {
+            Button::new("lyrics-logout")
+                .label(s.netease_logout)
+                .on_click(move |_, _, cx| {
+                    logout_entity.update(cx, |this, cx| this.logout_lyrics(cx));
+                })
+                .into_any_element()
+        } else {
+            Button::new("lyrics-login")
+                .label(s.netease_login)
+                .primary()
+                .on_click(move |_, window, cx| {
+                    login_entity.update(cx, |this, cx| this.open_lyrics_login(window, cx));
+                })
+                .into_any_element()
+        };
+        let account_notice = self.lyrics_login_notice.as_ref().map(|notice| {
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        });
+
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
+            .child(
+                GroupBox::new()
+                    .id("lyrics-account")
+                    .outline()
+                    .title(s.netease_account)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .child(
+                                h_flex()
+                                    .gap_3()
+                                    .items_center()
+                                    .child(div().text_sm().child(if logged_in {
+                                        s.netease_logged_in
+                                    } else {
+                                        s.netease_not_logged_in
+                                    }))
+                                    .child(account_button),
+                            )
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.netease_login_hint),
+                            )
+                            .children(account_notice),
+                    ),
+            )
             .child(
                 GroupBox::new()
                     .id("lyrics-search")
@@ -5469,6 +5828,27 @@ fn video_file_name(info: &ParsedVideo, page: &VideoPage, quality: u32) -> String
         String::new()
     };
     format!("{title}{page_suffix}-{quality}.mp4")
+}
+
+fn quality_key(quality: lyrics::Quality) -> &'static str {
+    match quality {
+        lyrics::Quality::Auto => "auto",
+        lyrics::Quality::Lossless => "lossless",
+        lyrics::Quality::Exhigh => "exhigh",
+        lyrics::Quality::Higher => "higher",
+        lyrics::Quality::Standard => "standard",
+    }
+}
+
+fn quality_level_label(s: &Strings, level: &str) -> String {
+    match level {
+        "standard" => s.lyrics_quality_standard.to_string(),
+        "higher" => s.lyrics_quality_higher.to_string(),
+        "exhigh" => s.lyrics_quality_exhigh.to_string(),
+        "lossless" => s.lyrics_quality_lossless.to_string(),
+        "hires" => "Hi-Res".to_string(),
+        other => other.to_string(),
+    }
 }
 
 fn sanitize_filename(title: &str) -> String {
