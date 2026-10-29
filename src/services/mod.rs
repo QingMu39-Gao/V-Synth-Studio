@@ -2,6 +2,7 @@ pub mod announce;
 pub mod artifacts;
 pub mod audio;
 pub mod bili;
+pub mod dependencies;
 pub mod download;
 pub mod jobs;
 pub mod libresvip;

@@ -18,9 +18,9 @@ use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
 use crate::services::announce::{self, Announcement};
-use crate::services::artifacts::{self, Artifact};
 use crate::services::audio::{self, AudioFormat, AudioInfo, AudioOperation};
 use crate::services::bili::{self, Page as VideoPage, ParsedVideo};
+use crate::services::dependencies::{self, Id as DependencyId};
 use crate::services::jobs::{JobOutcome, JobSnapshot, JobStatus};
 use crate::services::libresvip::{self, ProjectInfo};
 use crate::services::lyrics::{self, SearchResult, SongDetail};
@@ -33,6 +33,15 @@ use crate::tools::{Tool, ToolStatus};
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
 
 const SIDEBAR_WIDTH: f32 = 228.0;
+
+const ALL_DEPENDENCIES: [DependencyId; 6] = [
+    DependencyId::LibreSvip,
+    DependencyId::Ffmpeg,
+    DependencyId::YtDlp,
+    DependencyId::Python,
+    DependencyId::UvrModel,
+    DependencyId::GameModel,
+];
 
 pub struct AppInputs {
     pub output: Entity<InputState>,
@@ -110,7 +119,7 @@ pub struct VSynthApp {
     pv_export_dir: Option<PathBuf>,
     job_center: Entity<JobCenter>,
     tool_job: Option<u64>,
-    component_job: Option<(&'static str, u64)>,
+    dependency_job: Option<(DependencyId, u64)>,
     convert_inputs: Vec<PathBuf>,
     convert_format: &'static Format,
     convert_preview: Option<(PathBuf, ProjectInfo)>,
@@ -205,7 +214,7 @@ impl VSynthApp {
             pv_export_dir: None,
             job_center,
             tool_job: None,
-            component_job: None,
+            dependency_job: None,
             convert_inputs: Vec::new(),
             convert_format: formats::DEFAULT,
             convert_preview: None,
@@ -596,32 +605,43 @@ impl VSynthApp {
         cx.notify();
     }
 
-    fn install_component(&mut self, artifact: Artifact, cx: &mut Context<Self>) {
+    fn install_dependency(&mut self, id: DependencyId, cx: &mut Context<Self>) {
         if self
-            .component_job
-            .is_some_and(|(_, id)| self.job_center.read(cx).is_running(id))
+            .dependency_job
+            .is_some_and(|(_, job)| self.job_center.read(cx).is_running(job))
         {
             return;
         }
-        let root = crate::config::app_root();
-        let title = format!("{} {}", self.text().install_job, artifact.name);
-        let job = self.job_center.read(cx).start(title, move |ctx| {
-            crate::services::artifacts::install(&artifact, &root, &ctx)
-        });
-        self.component_job = Some((artifact.id, job.id));
+        let title = format!(
+            "{} {}",
+            self.text().install_job,
+            dependencies::info(id).name
+        );
+        let job = self
+            .job_center
+            .read(cx)
+            .start(title, move |ctx| dependencies::install(id, &ctx));
+        self.dependency_job = Some((id, job.id));
         let job_id = job.id;
-        let artifact_id = artifact.id;
         cx.spawn(async move |this, cx| {
             let outcome = job.result.recv().await;
             let Some(this) = this.upgrade() else {
                 return;
             };
             this.update(cx, |this, cx| {
-                if this.component_job == Some((artifact_id, job_id)) {
-                    this.component_job = None;
+                if this.dependency_job == Some((id, job_id)) {
+                    this.dependency_job = None;
                 }
                 match outcome {
-                    Ok(JobOutcome::Done(())) => this.notice = None,
+                    Ok(JobOutcome::Done(())) => {
+                        this.notice = None;
+                        if matches!(
+                            id,
+                            DependencyId::LibreSvip | DependencyId::Ffmpeg | DependencyId::YtDlp
+                        ) {
+                            this.refresh_tools(cx);
+                        }
+                    }
                     Ok(JobOutcome::Failed(error)) => this.notice = Some(error),
                     Ok(JobOutcome::Canceled) => {
                         this.notice = Some(this.text().install_canceled.to_string());
@@ -635,11 +655,130 @@ impl VSynthApp {
         cx.notify();
     }
 
-    fn cancel_component(&mut self, cx: &mut Context<Self>) {
-        if let Some((_, id)) = self.component_job {
+    fn cancel_dependency(&mut self, cx: &mut Context<Self>) {
+        if let Some((_, id)) = self.dependency_job {
             self.job_center.read(cx).cancel(id);
             cx.notify();
         }
+    }
+
+    fn render_dependencies(
+        &self,
+        ids: &[DependencyId],
+        cx: &mut Context<Self>,
+        include_ready: bool,
+    ) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let entity = cx.entity();
+        let s = self.text();
+        let active = self.dependency_job;
+        let active_running =
+            active.is_some_and(|(_, job)| self.job_center.read(cx).is_running(job));
+        let snapshot = active.and_then(|(_, job)| self.job_center.read(cx).snapshot(job));
+        let mut rows = v_flex().gap_2();
+        let mut count = 0;
+        for &id in ids {
+            let info = dependencies::info(id);
+            let status = dependencies::status(id);
+            if status.ready && !include_ready {
+                continue;
+            }
+            count += 1;
+            let is_active = active_running && active.is_some_and(|(active_id, _)| active_id == id);
+            let row_entity = entity.clone();
+            let button = if is_active {
+                Button::new(SharedString::from(format!("dep-cancel-{}", info.name)))
+                    .label(s.cancel_install)
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        row_entity.update(cx, |this, cx| this.cancel_dependency(cx));
+                    })
+                    .into_any_element()
+            } else if !status.ready {
+                let install_entity = entity.clone();
+                Button::new(SharedString::from(format!("dep-install-{}", info.name)))
+                    .label(s.install)
+                    .primary()
+                    .compact()
+                    .disabled(active_running)
+                    .on_click(move |_, _, cx| {
+                        install_entity.update(cx, |this, cx| this.install_dependency(id, cx));
+                    })
+                    .into_any_element()
+            } else {
+                div().into_any_element()
+            };
+            let color = if status.ready {
+                theme.success
+            } else if is_active {
+                theme.primary
+            } else {
+                theme.danger
+            };
+            let status_label = if is_active {
+                s.installing
+            } else if status.ready {
+                s.installed
+            } else {
+                s.needs_download
+            };
+            let detail = if is_active {
+                snapshot
+                    .as_ref()
+                    .map(|snap| snap.message.clone())
+                    .unwrap_or_else(|| s.installing.to_string())
+            } else if status.ready {
+                format!(
+                    "{} · {}: {}",
+                    dependency_purpose(id, s),
+                    s.location,
+                    status.location.display()
+                )
+            } else {
+                format!(
+                    "{} · {}: {:.1} MB",
+                    dependency_purpose(id, s),
+                    s.download_size,
+                    info.size as f64 / 1_000_000.0
+                )
+            };
+            rows = rows.child(
+                h_flex()
+                    .justify_between()
+                    .items_center()
+                    .gap_4()
+                    .py_2()
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .child(
+                        v_flex()
+                            .gap_1()
+                            .child(div().text_sm().child(format!(
+                                "{} · {}",
+                                info.name,
+                                dependencies::version(id)
+                            )))
+                            .child(div().text_xs().text_color(muted).child(detail)),
+                    )
+                    .child(
+                        h_flex()
+                            .items_center()
+                            .gap_2()
+                            .child(announce_badge(status_label, color, theme.radius))
+                            .child(button),
+                    ),
+            );
+        }
+        if count == 0 {
+            return div().into_any_element();
+        }
+        GroupBox::new()
+            .id("dependencies")
+            .outline()
+            .title(s.dependencies)
+            .child(rows)
+            .into_any_element()
     }
 
     fn add_convert_files(&mut self, cx: &mut Context<Self>) {
@@ -2573,6 +2712,15 @@ impl VSynthApp {
     }
 
     fn render_svsep(&self, cx: &mut Context<Self>) -> AnyElement {
+        let dependency_panel = self.render_dependencies(
+            &[
+                DependencyId::Ffmpeg,
+                DependencyId::Python,
+                DependencyId::UvrModel,
+            ],
+            cx,
+            false,
+        );
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
@@ -2710,6 +2858,7 @@ impl VSynthApp {
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
+            .child(dependency_panel)
             .child(
                 GroupBox::new()
                     .id("svsep-engine")
@@ -2752,6 +2901,15 @@ impl VSynthApp {
     }
 
     fn render_midi(&self, cx: &mut Context<Self>) -> AnyElement {
+        let dependency_panel = self.render_dependencies(
+            &[
+                DependencyId::Ffmpeg,
+                DependencyId::Python,
+                DependencyId::GameModel,
+            ],
+            cx,
+            false,
+        );
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
@@ -2971,6 +3129,7 @@ impl VSynthApp {
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
+            .child(dependency_panel)
             .child(
                 GroupBox::new()
                     .id("midi-engine")
@@ -3040,6 +3199,8 @@ impl VSynthApp {
     }
 
     fn render_video(&self, cx: &mut Context<Self>) -> AnyElement {
+        let dependency_panel =
+            self.render_dependencies(&[DependencyId::Ffmpeg, DependencyId::YtDlp], cx, false);
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
@@ -3341,6 +3502,7 @@ impl VSynthApp {
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
+            .child(dependency_panel)
             .child(
                 GroupBox::new()
                     .id("video-url")
@@ -3598,6 +3760,7 @@ impl VSynthApp {
     }
 
     fn render_audio(&self, cx: &mut Context<Self>) -> AnyElement {
+        let dependency_panel = self.render_dependencies(&[DependencyId::Ffmpeg], cx, false);
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
@@ -3969,6 +4132,7 @@ impl VSynthApp {
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
+            .child(dependency_panel)
             .child(
                 GroupBox::new()
                     .id("audio-file")
@@ -4036,6 +4200,7 @@ impl VSynthApp {
     }
 
     fn render_convert(&self, cx: &mut Context<Self>) -> AnyElement {
+        let dependency_panel = self.render_dependencies(&[DependencyId::LibreSvip], cx, false);
         let theme = cx.theme();
         let muted = theme.muted_foreground;
         let border = theme.border;
@@ -4261,6 +4426,7 @@ impl VSynthApp {
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, s))
+            .child(dependency_panel)
             .child(
                 GroupBox::new()
                     .id("convert-files")
@@ -4338,6 +4504,7 @@ impl VSynthApp {
     fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let announcements = self.render_announcements(cx, usize::MAX);
         let updates = self.render_updates(cx);
+        let dependencies_panel = self.render_dependencies(&ALL_DEPENDENCIES, cx, true);
         let (muted, border) = {
             let theme = cx.theme();
             (theme.muted_foreground, theme.border)
@@ -4442,37 +4609,6 @@ impl VSynthApp {
                     )
                     .child(div().text_xs().text_color(muted).child(s.directories_hint)),
             );
-        let component_running = self
-            .component_job
-            .is_some_and(|(_, id)| self.job_center.read(cx).is_running(id));
-        let component_job = self.component_job;
-        let root = crate::config::app_root();
-        let component_theme = cx.theme();
-        let component_rows = if artifacts::ALL.is_empty() {
-            vec![
-                div()
-                    .text_sm()
-                    .text_color(muted)
-                    .child(s.no_components)
-                    .into_any_element(),
-            ]
-        } else {
-            artifacts::ALL
-                .iter()
-                .map(|artifact| {
-                    let active = component_job.is_some_and(|(id, _)| id == artifact.id);
-                    component_row(
-                        artifact,
-                        &root,
-                        active,
-                        component_running,
-                        entity.clone(),
-                        component_theme,
-                        s,
-                    )
-                })
-                .collect::<Vec<_>>()
-        };
 
         v_flex()
             .gap_4()
@@ -4581,18 +4717,7 @@ impl VSynthApp {
             )
             .child(announcements)
             .child(updates)
-            .child(
-                GroupBox::new()
-                    .id("settings-components")
-                    .outline()
-                    .title(s.components)
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .children(component_rows)
-                            .child(div().text_xs().text_color(muted).child(s.component_hint)),
-                    ),
-            )
+            .child(dependencies_panel)
             .child(
                 GroupBox::new()
                     .id("settings-config")
@@ -4993,6 +5118,17 @@ fn format_duration(seconds: f64) -> String {
     let minutes = (seconds / 60.0).floor() as u64;
     let rest = seconds - minutes as f64 * 60.0;
     format!("{minutes}:{rest:04.1}")
+}
+
+fn dependency_purpose(id: DependencyId, s: &Strings) -> &'static str {
+    match id {
+        DependencyId::LibreSvip => s.dep_libresvip,
+        DependencyId::Ffmpeg => s.dep_ffmpeg,
+        DependencyId::YtDlp => s.dep_ytdlp,
+        DependencyId::Python => s.dep_python,
+        DependencyId::UvrModel => s.dep_uvr,
+        DependencyId::GameModel => s.dep_game,
+    }
 }
 
 fn announce_badge(label: &'static str, color: Hsla, radius: Pixels) -> impl IntoElement {
@@ -5573,96 +5709,6 @@ fn job_row(job: &JobSnapshot, center: Entity<JobCenter>, theme: &Theme, s: &Stri
         .child(log_line)
         .child(bar)
         .child(footer)
-        .into_any_element()
-}
-
-fn component_row(
-    artifact: &Artifact,
-    root: &Path,
-    active: bool,
-    any_running: bool,
-    entity: Entity<VSynthApp>,
-    theme: &Theme,
-    s: &Strings,
-) -> AnyElement {
-    let muted = theme.muted_foreground;
-    let installed = artifact.is_installed(root);
-    let (status, color) = if active {
-        (s.installing, theme.primary)
-    } else if installed {
-        (s.installed, theme.success)
-    } else {
-        (s.not_installed, theme.danger)
-    };
-    let detail = if active {
-        s.install_running.to_string()
-    } else if installed {
-        format!(
-            "v{} · tools/{}/{}",
-            artifact.version, artifact.id, artifact.executable
-        )
-    } else {
-        format!(
-            "v{} · {:.1} MB · {}",
-            artifact.version,
-            artifact.size as f64 / 1_000_000.0,
-            s.download_source
-        )
-    };
-    let label = if active {
-        s.cancel_install
-    } else if any_running {
-        s.installing
-    } else if installed {
-        s.reinstall
-    } else {
-        s.install
-    };
-    let artifact = *artifact;
-    let mut button =
-        Button::new(SharedString::from(format!("component-{}", artifact.id))).label(label);
-    if !active && !any_running && !installed {
-        button = button.primary();
-    }
-    let button = button.on_click(move |_, _, cx| {
-        entity.update(cx, |this, cx| {
-            if active {
-                this.cancel_component(cx);
-            } else if !any_running {
-                this.install_component(artifact, cx);
-            }
-        });
-    });
-
-    h_flex()
-        .justify_between()
-        .items_center()
-        .gap_4()
-        .py_2()
-        .border_b_1()
-        .border_color(theme.border)
-        .child(
-            v_flex()
-                .gap_1()
-                .child(div().text_sm().child(artifact.name))
-                .child(div().text_xs().text_color(muted).child(detail)),
-        )
-        .child(
-            h_flex()
-                .items_center()
-                .gap_2()
-                .child(
-                    div()
-                        .px_2()
-                        .py_1()
-                        .rounded(theme.radius)
-                        .bg(color.opacity(0.14))
-                        .text_color(color)
-                        .text_xs()
-                        .child(status),
-                )
-                .child(button),
-        )
         .into_any_element()
 }
 

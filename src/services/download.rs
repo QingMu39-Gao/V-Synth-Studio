@@ -13,7 +13,7 @@ use zip::ZipArchive;
 use crate::services::jobs::JobContext;
 
 const USER_AGENT: &str = "V-Synth-Studio";
-const PARALLEL_MIN: u64 = 32 * 1024 * 1024;
+const PARALLEL_MIN: u64 = 16 * 1024 * 1024;
 const PARALLEL_PARTS: usize = 8;
 
 #[allow(clippy::too_many_arguments)]
@@ -27,19 +27,63 @@ pub fn fetch(
     ctx: &JobContext,
     label: &str,
 ) -> Result<(), String> {
+    fetch_with(
+        url,
+        dest,
+        sha256,
+        size_hint,
+        base,
+        span,
+        |fraction, message| ctx.progress(fraction, message),
+        |line| ctx.log(line),
+        || ctx.is_canceled(),
+        label,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn fetch_with<P, L, C>(
+    url: &str,
+    dest: &Path,
+    sha256: &str,
+    size_hint: u64,
+    base: f32,
+    span: f32,
+    mut progress: P,
+    mut log: L,
+    canceled: C,
+    label: &str,
+) -> Result<(), String>
+where
+    P: FnMut(Option<f32>, String),
+    L: FnMut(String),
+    C: Fn() -> bool,
+{
     if dest.is_file() {
         if verify_sha256(dest, sha256)? {
             return Ok(());
         }
         let _ = fs::remove_file(dest);
     }
-    if size_hint >= PARALLEL_MIN && fetch_ranges(url, dest, sha256, base, span, ctx, label)? {
+    if size_hint >= PARALLEL_MIN
+        && fetch_ranges(
+            url,
+            dest,
+            sha256,
+            base,
+            span,
+            &mut progress,
+            &mut log,
+            &canceled,
+            label,
+        )?
+    {
         return Ok(());
     }
     let part = dest.with_extension("part");
     let _ = fs::remove_file(&part);
-    ctx.log(format!("下载 {label}"));
-    ctx.progress(Some(base), format!("下载 {label}"));
+    log(format!("下载 {label}"));
+    progress(Some(base), format!("下载 {label}"));
     let response = agent()
         .get(url)
         .header("User-Agent", USER_AGENT)
@@ -57,7 +101,7 @@ pub fn fetch(
     let mut reported = 0u64;
     let mut buffer = [0u8; 256 * 1024];
     loop {
-        if ctx.is_canceled() {
+        if canceled() {
             drop(file);
             let _ = fs::remove_file(&part);
             return Err("已取消".to_string());
@@ -79,7 +123,7 @@ pub fn fetch(
             } else {
                 base
             };
-            ctx.progress(
+            progress(
                 Some(fraction.clamp(0.0, 0.99)),
                 format!(
                     "下载 {label} {:.1} / {:.1} MB",
@@ -113,15 +157,23 @@ fn agent() -> ureq::Agent {
     )
 }
 
-fn fetch_ranges(
+#[allow(clippy::too_many_arguments)]
+fn fetch_ranges<P, L, C>(
     url: &str,
     dest: &Path,
     sha256: &str,
     base: f32,
     span: f32,
-    ctx: &JobContext,
+    progress: &mut P,
+    log: &mut L,
+    canceled: &C,
     label: &str,
-) -> Result<bool, String> {
+) -> Result<bool, String>
+where
+    P: FnMut(Option<f32>, String),
+    L: FnMut(String),
+    C: Fn() -> bool,
+{
     let Some(total) = probe_range_total(url)? else {
         return Ok(false);
     };
@@ -182,9 +234,9 @@ fn fetch_ranges(
             Ok(())
         }));
     }
-    ctx.log(format!("并行下载 {label}（{} 段）", handles.len()));
+    log(format!("并行下载 {label}（{} 段）", handles.len()));
     loop {
-        if ctx.is_canceled() {
+        if canceled() {
             abort.store(true, Ordering::Relaxed);
             for handle in handles {
                 let _ = handle.join();
@@ -196,7 +248,7 @@ fn fetch_ranges(
         }
         let done = downloaded.load(Ordering::Relaxed).min(total);
         let fraction = base + span * (done as f32 / total as f32);
-        ctx.progress(
+        progress(
             Some(fraction.clamp(0.0, 0.99)),
             format!(
                 "下载 {label} {:.1} / {:.1} MB",

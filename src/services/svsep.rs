@@ -196,6 +196,16 @@ pub fn separate(input: &Path, output_dir: &Path, ctx: &JobContext) -> Result<Ste
     })
 }
 
+pub fn ensure_model_only(ctx: &JobContext) -> Result<(), String> {
+    let base = base_dir();
+    fs::create_dir_all(base.join("cache")).map_err(|error| error.to_string())?;
+    ensure_model(&base, ctx)
+}
+
+pub fn model_file() -> PathBuf {
+    model_path(&base_dir())
+}
+
 fn ensure_model(base: &Path, ctx: &JobContext) -> Result<(), String> {
     let path = model_path(base);
     if path.is_file() {

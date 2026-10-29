@@ -6,7 +6,6 @@
 use std::fs::{self, File};
 use std::io::{self, Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::time::Duration;
 
 use sha2::{Digest, Sha256};
 use zip::ZipArchive;
@@ -19,6 +18,7 @@ const CACHE_DIR: &str = "data/cache/artifacts";
 pub enum ArtifactKind {
     Zip { strip_prefix: &'static str },
     Gzip,
+    File,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -78,6 +78,17 @@ pub const ALL: &[Artifact] = &[
         kind: ArtifactKind::Gzip,
         executable: "bin/ffmpeg.exe",
     },
+    Artifact {
+        id: "ytdlp",
+        name: "yt-dlp",
+        version: "2026.10.26",
+        url: "https://gh-proxy.com/https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe",
+        sha256: "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
+        size: 23_575_744,
+        file_name: "yt-dlp-2026.10.26.exe",
+        kind: ArtifactKind::File,
+        executable: "yt-dlp.exe",
+    },
 ];
 
 #[cfg(not(all(target_os = "windows", target_arch = "x86_64")))]
@@ -130,11 +141,18 @@ where
             return Err("已取消".to_string());
         }
         progress(Some(0.02), "连接下载源");
-        download(artifact, &archive, &mut progress, &mut log, &canceled)?;
-        if !verify_sha256(&archive, artifact.sha256)? {
-            let _ = fs::remove_file(&archive);
-            return Err(format!("{} 下载包 SHA-256 不匹配", artifact.name));
-        }
+        crate::services::download::fetch_with(
+            artifact.url,
+            &archive,
+            artifact.sha256,
+            artifact.size,
+            0.02,
+            0.78,
+            |fraction, message| progress(fraction, &message),
+            &mut log,
+            &canceled,
+            artifact.name,
+        )?;
     }
 
     if canceled() {
@@ -159,6 +177,12 @@ where
             &mut progress,
             &canceled,
         ),
+        ArtifactKind::File => {
+            progress(Some(0.9), "安装组件");
+            fs::copy(&archive, staging.join(artifact.executable))
+                .map(|_| ())
+                .map_err(|error| format!("安装组件失败：{error}"))
+        }
     } {
         let _ = fs::remove_dir_all(&staging);
         return Err(error);
@@ -184,121 +208,6 @@ where
 
     progress(Some(1.0), "安装完成");
     log(format!("已安装到 {}", target.display()));
-    Ok(())
-}
-
-fn download<P, L, C>(
-    artifact: &Artifact,
-    dest: &Path,
-    progress: &mut P,
-    log: &mut L,
-    canceled: &C,
-) -> Result<(), String>
-where
-    P: FnMut(Option<f32>, &str),
-    L: FnMut(String),
-    C: Fn() -> bool,
-{
-    log(format!("下载 {} {}", artifact.name, artifact.version));
-    let mut last_error = String::new();
-    for attempt in 1..=3 {
-        if canceled() {
-            return Err("已取消".to_string());
-        }
-        match download_once(artifact, dest, progress, canceled) {
-            Ok(()) => return Ok(()),
-            Err(error) => {
-                log(format!("下载失败（第 {attempt} 次）：{error}"));
-                last_error = error;
-                if attempt < 3 {
-                    std::thread::sleep(Duration::from_secs(1));
-                }
-            }
-        }
-    }
-    let _ = fs::remove_file(dest.with_extension("part"));
-    Err(last_error)
-}
-
-fn download_once<P, C>(
-    artifact: &Artifact,
-    dest: &Path,
-    progress: &mut P,
-    canceled: &C,
-) -> Result<(), String>
-where
-    P: FnMut(Option<f32>, &str),
-    C: Fn() -> bool,
-{
-    let part = dest.with_extension("part");
-    let _ = fs::remove_file(&part);
-
-    let response = ureq::Agent::new_with_config(
-        ureq::Agent::config_builder()
-            .timeout_connect(Some(Duration::from_secs(15)))
-            .timeout_recv_body(Some(Duration::from_secs(1800)))
-            .build(),
-    )
-    .get(artifact.url)
-    .header("User-Agent", "V-Synth-Studio")
-    .call()
-    .map_err(|error| format!("下载 {} 失败：{error}", artifact.name))?;
-    let total = response
-        .body()
-        .content_length()
-        .filter(|length| *length > 0)
-        .unwrap_or(artifact.size);
-    let mut reader = response.into_body().into_reader();
-    let mut file = File::create(&part)
-        .map_err(|error| format!("创建下载文件失败（{}）：{error}", part.display()))?;
-    let mut hasher = Sha256::new();
-    let mut downloaded = 0u64;
-    let mut reported = 0u64;
-    let mut buffer = [0u8; 256 * 1024];
-
-    loop {
-        if canceled() {
-            drop(file);
-            let _ = fs::remove_file(&part);
-            return Err("已取消".to_string());
-        }
-        let read = reader
-            .read(&mut buffer)
-            .map_err(|error| format!("读取下载流失败：{error}"))?;
-        if read == 0 {
-            break;
-        }
-        file.write_all(&buffer[..read])
-            .map_err(|error| format!("写入下载文件失败：{error}"))?;
-        hasher.update(&buffer[..read]);
-        downloaded += read as u64;
-        if downloaded - reported >= 1024 * 1024 || downloaded == total {
-            reported = downloaded;
-            let fraction = 0.05 + 0.72 * (downloaded as f32 / total as f32);
-            progress(
-                Some(fraction.clamp(0.0, 0.8)),
-                &format!(
-                    "下载 {:.1} / {:.1} MB",
-                    downloaded as f64 / 1_000_000.0,
-                    total as f64 / 1_000_000.0
-                ),
-            );
-        }
-    }
-    file.sync_all()
-        .map_err(|error| format!("写入下载文件失败：{error}"))?;
-    drop(file);
-
-    let actual = hex(&hasher.finalize());
-    if !actual.eq_ignore_ascii_case(artifact.sha256) {
-        let _ = fs::remove_file(&part);
-        return Err(format!(
-            "{} 下载包 SHA-256 不匹配（期望 {}，实际 {}）",
-            artifact.name, artifact.sha256, actual
-        ));
-    }
-    fs::rename(&part, dest)
-        .map_err(|error| format!("保存下载文件失败（{}）：{error}", dest.display()))?;
     Ok(())
 }
 

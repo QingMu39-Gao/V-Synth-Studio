@@ -289,6 +289,10 @@ pub fn transcribe(
     Ok(outputs)
 }
 
+pub fn ensure_models_only(ctx: &JobContext) -> Result<(), String> {
+    ensure_models(ctx)
+}
+
 fn ensure_models(ctx: &JobContext) -> Result<(), String> {
     let base = base_dir();
     let models = model_dir();
@@ -410,7 +414,7 @@ fn base_dir() -> PathBuf {
     crate::config::extensions_root().join("midi")
 }
 
-fn model_dir() -> PathBuf {
+pub fn model_dir() -> PathBuf {
     base_dir().join("models")
 }
 

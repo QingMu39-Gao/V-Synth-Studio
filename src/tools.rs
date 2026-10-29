@@ -66,7 +66,10 @@ where
     }
 
     progress(Some(0.7), "探测 yt-dlp");
-    let ytdlp = match find_binary("yt-dlp", &[root.join("tools")]) {
+    let ytdlp = match find_binary(
+        "yt-dlp",
+        &[root.join("tools"), root.join("tools").join("ytdlp")],
+    ) {
         Some(path) => probe(&path, &["--version"], VersionStyle::Plain),
         None => python_path
             .as_deref()
