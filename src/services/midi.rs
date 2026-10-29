@@ -407,7 +407,7 @@ fn write_outputs(output_dir: &Path, stem: &str, report: &Report) -> Result<Outpu
 }
 
 fn base_dir() -> PathBuf {
-    crate::config::app_root().join("data").join("midi")
+    crate::config::extensions_root().join("midi")
 }
 
 fn model_dir() -> PathBuf {

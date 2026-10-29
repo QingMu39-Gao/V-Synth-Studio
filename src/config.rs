@@ -2,10 +2,13 @@
 
 use std::fs;
 use std::path::PathBuf;
+use std::sync::OnceLock;
 
 use serde::{Deserialize, Serialize};
 
 use crate::i18n::Language;
+
+static EXTENSIONS_ROOT: OnceLock<PathBuf> = OnceLock::new();
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "lowercase")]
@@ -92,6 +95,23 @@ pub fn tools_dir() -> PathBuf {
     app_root().join("tools")
 }
 
+pub fn set_extensions_root(ext_dir: &str) {
+    let _ = EXTENSIONS_ROOT.set(extensions_root_for(ext_dir));
+}
+
+pub fn extensions_root() -> PathBuf {
+    EXTENSIONS_ROOT.get().cloned().unwrap_or_else(data_dir)
+}
+
+fn extensions_root_for(ext_dir: &str) -> PathBuf {
+    let trimmed = ext_dir.trim();
+    if trimmed.is_empty() {
+        data_dir()
+    } else {
+        PathBuf::from(trimmed)
+    }
+}
+
 pub fn config_path() -> PathBuf {
     data_dir().join("config.json")
 }
@@ -112,6 +132,15 @@ fn root() -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn extension_root_uses_the_configured_folder_or_data() {
+        assert_eq!(extensions_root_for(""), data_dir());
+        assert_eq!(
+            extensions_root_for(" D:\\Packs "),
+            PathBuf::from("D:\\Packs")
+        );
+    }
 
     #[test]
     fn seen_announcements_are_deduplicated_and_capped() {

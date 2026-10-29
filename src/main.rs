@@ -19,6 +19,7 @@ use gpui_kit::*;
 
 fn main() {
     let config = config::Config::load();
+    config::set_extensions_root(&config.ext_dir);
     let initial_theme = config.theme;
 
     application()

@@ -16,7 +16,7 @@ const ORT_URL: &str = "https://mirrors.aliyun.com/pypi/packages/3c/d8/68b63dc86b
 const ORT_SHA: &str = "17ed7382d2c58d4b7354fb2b301ff30b9bf308a1c7eac9546449cd122d21cae5";
 
 pub fn base_dir() -> PathBuf {
-    crate::config::app_root().join("data").join("python")
+    crate::config::extensions_root().join("python")
 }
 
 pub fn runtime_dir() -> PathBuf {

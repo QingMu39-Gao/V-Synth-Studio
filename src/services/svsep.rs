@@ -217,7 +217,7 @@ fn ensure_model(base: &Path, ctx: &JobContext) -> Result<(), String> {
 }
 
 fn base_dir() -> PathBuf {
-    crate::config::app_root().join("data").join("svsep")
+    crate::config::extensions_root().join("svsep")
 }
 
 fn model_path(base: &Path) -> PathBuf {
