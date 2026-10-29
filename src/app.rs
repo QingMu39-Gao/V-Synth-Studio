@@ -1564,6 +1564,10 @@ impl VSynthApp {
         self.open_directory(crate::config::data_dir(), cx);
     }
 
+    fn open_logs_dir(&mut self, cx: &mut Context<Self>) {
+        self.open_directory(crate::config::logs_dir(), cx);
+    }
+
     fn download_directory(&self, cx: &mut Context<Self>) -> PathBuf {
         let value = self.download_input.read(cx).value().trim().to_string();
         if value.is_empty() {
@@ -4098,6 +4102,7 @@ impl VSynthApp {
         let ext_open = entity.clone();
         let tools_open = entity.clone();
         let data_open = entity.clone();
+        let logs_open = entity.clone();
         let has_output = !self.output_input.read(cx).value().trim().is_empty();
         let directories_group = GroupBox::new()
             .id("settings-directories")
@@ -4150,6 +4155,14 @@ impl VSynthApp {
                                     .compact()
                                     .on_click(move |_, _, cx| {
                                         data_open.update(cx, |this, cx| this.open_data_dir(cx));
+                                    }),
+                            )
+                            .child(
+                                Button::new("open-logs-dir")
+                                    .label(s.logs_dir)
+                                    .compact()
+                                    .on_click(move |_, _, cx| {
+                                        logs_open.update(cx, |this, cx| this.open_logs_dir(cx));
                                     }),
                             ),
                     )

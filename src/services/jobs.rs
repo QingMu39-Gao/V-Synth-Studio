@@ -99,12 +99,14 @@ impl Jobs {
     {
         let id = self.inner.next_id.fetch_add(1, Ordering::Relaxed);
         let cancel = Arc::new(AtomicBool::new(false));
+        let title = title.into();
+        crate::logging::line(&format!("job {id} start: {title}"));
         self.inner.entries().insert(
             id,
             Entry {
                 snapshot: JobSnapshot {
                     id,
-                    title: title.into(),
+                    title: title.clone(),
                     status: JobStatus::Running,
                     progress: None,
                     message: "准备中…".to_string(),
@@ -118,6 +120,7 @@ impl Jobs {
 
         let (tx, rx) = bounded(1);
         let inner = self.inner.clone();
+        let job_title = title;
         let ctx = JobContext {
             id,
             inner: inner.clone(),
@@ -151,12 +154,13 @@ impl Jobs {
                 let mut entries = inner.entries();
                 if let Some(entry) = entries.get_mut(&id) {
                     entry.snapshot.status = status;
-                    entry.snapshot.message = message;
+                    entry.snapshot.message = message.clone();
                     if status == JobStatus::Succeeded {
                         entry.snapshot.progress = Some(1.0);
                     }
                 }
             }
+            crate::logging::line(&format!("job {id} {:?}: {job_title} — {message}", status));
             inner.notify(id);
             let _ = tx.send_blocking(outcome);
         });

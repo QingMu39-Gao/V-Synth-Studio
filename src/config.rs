@@ -95,6 +95,10 @@ pub fn tools_dir() -> PathBuf {
     app_root().join("tools")
 }
 
+pub fn logs_dir() -> PathBuf {
+    data_dir().join("logs")
+}
+
 pub fn set_extensions_root(ext_dir: &str) {
     let _ = EXTENSIONS_ROOT.set(extensions_root_for(ext_dir));
 }

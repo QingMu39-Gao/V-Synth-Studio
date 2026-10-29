@@ -8,6 +8,7 @@ mod i18n;
 mod jizura;
 mod jizura_save;
 mod jobs;
+mod logging;
 mod pages;
 mod resources;
 mod services;
@@ -20,6 +21,7 @@ use gpui_kit::*;
 fn main() {
     let config = config::Config::load();
     config::set_extensions_root(&config.ext_dir);
+    logging::init();
     let initial_theme = config.theme;
 
     application()
