@@ -128,6 +128,16 @@ pub fn download_cover(url: &str, directory: &Path, name: &str) -> Result<PathBuf
     Ok(path)
 }
 
+pub fn decode_text(bytes: Vec<u8>) -> (String, bool) {
+    match String::from_utf8(bytes.clone()) {
+        Ok(text) => (text, false),
+        Err(_) => {
+            let (decoded, _, _) = encoding_rs::GBK.decode(&bytes);
+            (decoded.into_owned(), true)
+        }
+    }
+}
+
 pub fn lrc_to_srt(lrc: &str) -> String {
     let mut entries = Vec::new();
     for line in lrc.lines() {
@@ -249,6 +259,16 @@ fn sanitize_filename(name: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn decodes_utf8_then_falls_back_to_gbk() {
+        assert_eq!(
+            decode_text("歌词".as_bytes().to_vec()),
+            ("歌词".to_string(), false)
+        );
+        let (gbk, _, _) = encoding_rs::GBK.encode("歌词");
+        assert_eq!(decode_text(gbk.into_owned()), ("歌词".to_string(), true));
+    }
 
     #[test]
     fn converts_lrc_to_srt() {

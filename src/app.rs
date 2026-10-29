@@ -101,6 +101,11 @@ pub struct VSynthApp {
     webview: Option<Entity<WebView>>,
     webview_error: Option<String>,
     webview_source: Option<String>,
+    pv_ready: bool,
+    pv_status: Option<String>,
+    pv_pending_lyrics: Option<String>,
+    pv_injected: Option<String>,
+    pv_export_dir: Option<PathBuf>,
     job_center: Entity<JobCenter>,
     tool_job: Option<u64>,
     component_job: Option<(&'static str, u64)>,
@@ -182,6 +187,11 @@ impl VSynthApp {
             webview: None,
             webview_error: None,
             webview_source: None,
+            pv_ready: false,
+            pv_status: None,
+            pv_pending_lyrics: None,
+            pv_injected: None,
+            pv_export_dir: None,
             job_center,
             tool_job: None,
             component_job: None,
@@ -259,6 +269,9 @@ impl VSynthApp {
             }
         }
         self.page = page;
+        if page == Page::Pv {
+            self.maybe_inject_pv(cx);
+        }
         cx.notify();
     }
 
@@ -269,6 +282,7 @@ impl VSynthApp {
         let jizura_root = crate::jizura::asset_dir();
         let has_jizura = jizura_root.is_some();
         let s = self.text();
+        let (pv_sender, pv_receiver) = async_channel::unbounded::<String>();
         let mut builder = match jizura_root {
             Some(root) => {
                 self.webview_source = Some(s.custom_protocol.to_string());
@@ -283,15 +297,177 @@ impl VSynthApp {
                 wry::WebViewBuilder::new().with_html(WEBVIEW_DEMO)
             }
         };
+        builder = builder.with_ipc_handler(move |request| {
+            let _ = pv_sender.try_send(request.body().clone());
+        });
         if has_jizura {
             builder = builder.with_initialization_script(crate::jizura::save_bridge_script());
         }
         match WebView::build(builder, window, cx) {
-            Ok(webview) => self.webview = Some(cx.new(|_| webview)),
+            Ok(webview) => {
+                self.webview = Some(cx.new(|_| webview));
+                cx.spawn(async move |this, cx| {
+                    while let Ok(message) = pv_receiver.recv().await {
+                        if this
+                            .update(cx, |this, cx| this.handle_pv_message(&message, cx))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                })
+                .detach();
+            }
             Err(error) => {
                 self.webview_error = Some(format!("{}：{error}", s.webview_failed));
             }
         }
+    }
+
+    fn handle_pv_message(&mut self, body: &str, cx: &mut Context<Self>) {
+        let Ok(message) = serde_json::from_str::<serde_json::Value>(body) else {
+            return;
+        };
+        let ready_label = self.text().pv_ready;
+        let fill_ok = self.text().pv_fill_ok;
+        let fill_failed = self.text().pv_fill_failed;
+        let saved_label = self.text().pv_saved;
+        let save_failed = self.text().pv_save_failed;
+        match message["type"].as_str() {
+            Some("ready") => {
+                self.pv_ready = true;
+                if self.pv_pending_lyrics.is_some()
+                    && self.pv_injected.as_deref() != self.pv_pending_lyrics.as_deref()
+                {
+                    self.inject_pv_lyrics(cx);
+                } else if self.pv_status.is_none() {
+                    self.pv_status = Some(ready_label.to_string());
+                }
+            }
+            Some("fill") => {
+                if message["ok"].as_bool().unwrap_or(false) {
+                    self.pv_injected = self.pv_pending_lyrics.clone();
+                    self.pv_status = Some(fill_ok.to_string());
+                } else {
+                    self.pv_status = Some(fill_failed.to_string());
+                }
+            }
+            Some("saved") => {
+                let path = message["path"].as_str().unwrap_or_default();
+                if let Some(parent) = Path::new(path).parent() {
+                    self.pv_export_dir = Some(parent.to_path_buf());
+                }
+                self.pv_status = Some(if path.is_empty() {
+                    saved_label.to_string()
+                } else {
+                    format!("{saved_label}：{path}")
+                });
+            }
+            Some("save_canceled") => {
+                self.pv_status = Some(self.text().pv_save_canceled.to_string());
+            }
+            Some("save_error") => {
+                let detail = message["message"].as_str().unwrap_or_default();
+                self.pv_status = Some(if detail.is_empty() {
+                    save_failed.to_string()
+                } else {
+                    format!("{save_failed}：{detail}")
+                });
+            }
+            _ => {}
+        }
+        cx.notify();
+    }
+
+    fn maybe_inject_pv(&mut self, cx: &mut Context<Self>) {
+        if !self.pv_ready {
+            return;
+        }
+        if self.pv_pending_lyrics.is_some()
+            && self.pv_injected.as_deref() != self.pv_pending_lyrics.as_deref()
+        {
+            self.inject_pv_lyrics(cx);
+        }
+    }
+
+    fn inject_pv_lyrics(&mut self, cx: &mut Context<Self>) {
+        let Some(text) = self.pv_pending_lyrics.clone() else {
+            return;
+        };
+        let Some(webview) = &self.webview else {
+            return;
+        };
+        let Ok(literal) = serde_json::to_string(&text) else {
+            return;
+        };
+        let script = format!("window.__vss && window.__vss.fillLyrics({literal});");
+        let result = webview.update(cx, |webview, _| webview.raw().evaluate_script(&script));
+        self.pv_status = Some(if let Err(error) = result {
+            format!("{}：{error}", self.text().pv_fill_failed)
+        } else {
+            self.text().pv_filling.to_string()
+        });
+        cx.notify();
+    }
+
+    fn import_pv_lyrics(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = rfd::FileDialog::new()
+            .add_filter("Lyrics", &["lrc", "txt"])
+            .set_title(self.text().pv_import_lyrics)
+            .pick_file()
+        else {
+            return;
+        };
+        let bytes = match std::fs::read(&path) {
+            Ok(bytes) => bytes,
+            Err(error) => {
+                self.pv_status = Some(format!("{}：{error}", self.text().pv_import_failed));
+                cx.notify();
+                return;
+            }
+        };
+        let (text, gbk) = lyrics::decode_text(bytes);
+        let text = text.trim().to_string();
+        if text.is_empty() {
+            self.pv_status = Some(self.text().pv_fill_failed.to_string());
+            cx.notify();
+            return;
+        }
+        let note = if gbk { self.text().pv_gbk_note } else { "" };
+        self.pv_pending_lyrics = Some(text);
+        self.pv_injected = None;
+        self.pv_status = Some(format!("{}{note}", self.text().pv_import_ok));
+        self.maybe_inject_pv(cx);
+        cx.notify();
+    }
+
+    fn open_pv_export_dir(&mut self, cx: &mut Context<Self>) {
+        let Some(directory) = &self.pv_export_dir else {
+            return;
+        };
+        if let Err(error) = open::that(directory) {
+            self.pv_status = Some(format!("{}：{error}", self.text().pv_save_failed));
+        }
+        cx.notify();
+    }
+
+    fn send_lyrics_to_pv(&mut self, window: &mut Window, cx: &mut Context<Self>) {
+        let lyric = self.lyrics_editor.read(cx).value().trim().to_string();
+        if lyric.is_empty() {
+            self.lyrics_notice = Some(self.text().lyrics_no_lyrics.to_string());
+            cx.notify();
+            return;
+        }
+        let mut parts = vec![lyric];
+        let translation = self.lyrics_translation.trim().to_string();
+        if !translation.is_empty() {
+            parts.push(translation);
+            parts.push(self.text().pv_bilingual_note.to_string());
+        }
+        self.pv_pending_lyrics = Some(parts.join("\n"));
+        self.pv_injected = None;
+        self.pv_status = Some(self.text().pv_loading.to_string());
+        self.set_page(Page::Pv, window, cx);
     }
 
     pub fn watch_resource_search(&self, cx: &mut Context<Self>) {
@@ -1607,6 +1783,12 @@ impl VSynthApp {
         let border = theme.border;
         let radius = theme.radius;
         let entity = cx.entity();
+        let s = self.text();
+        let status = self
+            .pv_status
+            .clone()
+            .unwrap_or_else(|| s.pv_loading.to_string());
+        let init_entity = entity.clone();
 
         let body = if let Some(error) = &self.webview_error {
             callout(error, danger, radius).into_any_element()
@@ -1628,11 +1810,68 @@ impl VSynthApp {
                         .label(self.text().open_editor)
                         .primary()
                         .on_click(move |_, window, cx| {
-                            entity.update(cx, |this, cx| this.ensure_webview(window, cx));
+                            init_entity.update(cx, |this, cx| this.ensure_webview(window, cx));
                         }),
                 )
                 .into_any_element()
         };
+
+        let go_lyrics_entity = entity.clone();
+        let import_entity = entity.clone();
+        let mut toolbar = h_flex()
+            .items_center()
+            .gap_2()
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(status),
+            )
+            .child(
+                Button::new("pv-go-lyrics")
+                    .label(s.pv_go_lyrics)
+                    .compact()
+                    .on_click(move |_, window, cx| {
+                        go_lyrics_entity.update(cx, |this, cx| {
+                            this.set_page(Page::Lyrics, window, cx);
+                        });
+                    }),
+            )
+            .child(
+                Button::new("pv-import-lyrics")
+                    .label(s.pv_import_lyrics)
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        import_entity.update(cx, |this, cx| this.import_pv_lyrics(cx));
+                    }),
+            );
+        if self.pv_ready && self.pv_pending_lyrics.is_some() {
+            let reinject_entity = entity.clone();
+            toolbar = toolbar.child(
+                Button::new("pv-reinject")
+                    .label(s.pv_reinject)
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        reinject_entity.update(cx, |this, cx| {
+                            this.pv_injected = None;
+                            this.inject_pv_lyrics(cx);
+                        });
+                    }),
+            );
+        }
+        if self.pv_export_dir.is_some() {
+            let open_entity = entity.clone();
+            toolbar = toolbar.child(
+                Button::new("pv-open-export")
+                    .label(s.pv_open_export)
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        open_entity.update(cx, |this, cx| this.open_pv_export_dir(cx));
+                    }),
+            );
+        }
 
         let mut page =
             v_flex()
@@ -1643,7 +1882,7 @@ impl VSynthApp {
         if let Some(source) = self.webview_source.clone() {
             page = page.child(div().text_xs().text_color(muted).child(source));
         }
-        page.child(body).into_any_element()
+        page.child(toolbar).child(body).into_any_element()
     }
 
     fn render_dashboard(&self, cx: &mut Context<Self>) -> impl IntoElement {
@@ -2693,6 +2932,8 @@ impl VSynthApp {
 
         let save_lrc_entity = entity.clone();
         let save_srt_entity = entity.clone();
+        let to_pv_entity = entity.clone();
+        let has_lyrics = !self.lyrics_editor.read(cx).value().trim().is_empty();
         let save_buttons = h_flex()
             .gap_2()
             .child(
@@ -2708,6 +2949,14 @@ impl VSynthApp {
                     .label(s.lyrics_save_srt)
                     .on_click(move |_, _, cx| {
                         save_srt_entity.update(cx, |this, cx| this.save_lyrics(true, cx));
+                    }),
+            )
+            .child(
+                Button::new("lyrics-to-pv")
+                    .label(s.lyrics_to_pv)
+                    .disabled(!has_lyrics)
+                    .on_click(move |_, window, cx| {
+                        to_pv_entity.update(cx, |this, cx| this.send_lyrics_to_pv(window, cx));
                     }),
             );
 

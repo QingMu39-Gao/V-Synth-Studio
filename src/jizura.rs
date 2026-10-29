@@ -12,7 +12,7 @@ use wry::http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 pub const SCHEME: &str = "jizura";
 pub const START_URL: &str = "jizura://localhost/index.html";
 
-/// 接管 `J.saveFile`：JIZURA 的 MP4 / PNG ZIP / WAV 都会走这个出口。
+/// 接管 `J.saveFile`，并把编辑器就绪、歌词回填与保存结果通过 IPC 报回宿主。
 ///
 /// 每块 8 MiB POST 到同源的 `/__save`，由 Rust 追加到临时文件，最后一块原子改名。
 /// 用 getter 持续返回桥接函数，防止 JIZURA boot 后重新赋值把接管冲掉。
@@ -20,33 +20,112 @@ pub fn save_bridge_script() -> &'static str {
     r#"
 (() => {
   const CHUNK = 8 * 1024 * 1024;
+  const send = (payload) => {
+    try { window.ipc?.postMessage(JSON.stringify(payload)); } catch (_) {}
+  };
   const saveUrl = (query) =>
     (location.protocol === 'http:' || location.protocol === 'https:')
       ? `${location.origin}/__save?${query}`
       : `jizura://localhost/__save?${query}`;
+  const isBlob = (value) =>
+    typeof value === 'object' && value !== null &&
+    Object.prototype.toString.call(value) === '[object Blob]';
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
   async function bridgeSave(name, data) {
-    const blob = data instanceof Blob ? data : new Blob([data]);
+    const blob = isBlob(data) ? data : new Blob([data]);
     const id = Date.now().toString(36) + Math.random().toString(36).slice(2);
-    if (blob.size === 0) {
-      const res = await fetch(saveUrl(`id=${id}&name=${encodeURIComponent(name)}&last=1`), {
-        method: 'POST',
-        body: new Uint8Array(),
-      });
-      if (!res.ok) throw new Error(await res.text());
+    const label = String(name ?? 'export');
+    try {
+      let savedPath = '';
+      if (blob.size === 0) {
+        const res = await fetch(saveUrl(`id=${id}&name=${encodeURIComponent(label)}&last=1`), {
+          method: 'POST',
+          body: new Uint8Array(),
+        });
+        if (res.status === 403) { send({ type: 'save_canceled', name: label }); return 'saved'; }
+        if (!res.ok) throw new Error(await res.text());
+        savedPath = await res.text();
+      } else {
+        for (let offset = 0; offset < blob.size; offset += CHUNK) {
+          const last = offset + CHUNK >= blob.size ? 1 : 0;
+          const query = `id=${id}&name=${encodeURIComponent(label)}&offset=${offset}&last=${last}`;
+          const res = await fetch(saveUrl(query), {
+            method: 'POST',
+            body: blob.slice(offset, offset + CHUNK),
+          });
+          if (res.status === 403) { send({ type: 'save_canceled', name: label }); return 'saved'; }
+          if (!res.ok) throw new Error(await res.text());
+          const text = await res.text();
+          if (last) savedPath = text;
+        }
+      }
+      send({ type: 'saved', name: label, path: savedPath });
       return 'saved';
+    } catch (error) {
+      const message = String(error && error.message ? error.message : error);
+      send({ type: 'save_error', name: label, message });
+      throw error;
     }
-    for (let offset = 0; offset < blob.size; offset += CHUNK) {
-      const last = offset + CHUNK >= blob.size ? 1 : 0;
-      const query = `id=${id}&name=${encodeURIComponent(name)}&offset=${offset}&last=${last}`;
-      const res = await fetch(saveUrl(query), {
-        method: 'POST',
-        body: blob.slice(offset, offset + CHUNK),
-      });
-      if (!res.ok) throw new Error(await res.text());
-    }
-    return 'saved';
   }
+
+  const lyricsBox = () =>
+    document.getElementById('lyrics') || document.querySelector('textarea');
+
+  async function waitEditor(timeoutMs) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      if (document.readyState === 'complete' && window.J && window.J.uiApi && lyricsBox()) {
+        return true;
+      }
+      await sleep(200);
+    }
+    return false;
+  }
+
+  async function fillLyrics(text) {
+    const wanted = String(text ?? '');
+    if (!(await waitEditor(30000))) {
+      send({ type: 'fill', ok: false, got: 0, want: wanted.length, message: 'editor unavailable' });
+      return;
+    }
+    const write = () => {
+      const box = lyricsBox();
+      if (!box) return;
+      const setter = Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')?.set;
+      if (setter) setter.call(box, wanted);
+      else box.value = wanted;
+      box.dispatchEvent(new Event('input', { bubbles: true }));
+      try { window.J?.uiApi?.replan?.(); } catch (_) {}
+      try { window.J?.uiApi?.flushSave?.(); } catch (_) {}
+    };
+    write();
+    const deadline = Date.now() + 15000;
+    let overwrittenAt = 0;
+    let current = '';
+    while (true) {
+      await sleep(200);
+      const box = lyricsBox();
+      current = box ? box.value : '';
+      if (!overwrittenAt && current !== '' && current !== wanted) overwrittenAt = Date.now();
+      if (current === wanted && (!overwrittenAt || Date.now() - overwrittenAt > 600)) break;
+      if (Date.now() >= deadline) break;
+      write();
+    }
+    send({ type: 'fill', ok: current === wanted, got: current.length, want: wanted.length });
+  }
+
+  window.__vss = { fillLyrics };
+
+  let readySent = false;
+  const probe = setInterval(() => {
+    if (readySent) { clearInterval(probe); return; }
+    if (document.readyState === 'complete' && window.J && window.J.uiApi && lyricsBox()) {
+      readySent = true;
+      send({ type: 'ready' });
+      clearInterval(probe);
+    }
+  }, 200);
 
   let tries = 0;
   const timer = setInterval(() => {
