@@ -12,3 +12,4 @@ pub mod midi;
 pub mod python;
 pub mod svsep;
 pub mod update;
+pub mod ytdlp;

@@ -481,6 +481,13 @@ fn temp_path(output: &Path, kind: &str) -> PathBuf {
         .join(format!(".{stem}.{kind}"))
 }
 
+pub fn is_bilibili_input(input: &str) -> bool {
+    let text = input.trim();
+    let lower = text.to_ascii_lowercase();
+    let direct =
+        text.starts_with("BV") || lower.starts_with("av") || lower.contains("bilibili.com");
+    direct && parse_target(text).is_ok()
+}
 fn parse_target(input: &str) -> Result<Target, String> {
     let text = input.trim();
     if text.is_empty() {

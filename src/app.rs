@@ -28,9 +28,15 @@ use crate::services::media_server::MediaServer;
 use crate::services::midi::{self, Device as MidiDevice, Options as MidiOptions};
 use crate::services::svsep::{self, Stems};
 use crate::services::update::{self, UpdateInfo};
+use crate::services::ytdlp;
 use crate::tools::ToolStatus;
 
 const SIDEBAR_WIDTH: f32 = 228.0;
+
+enum ParsedSource {
+    Bili(ParsedVideo),
+    Yt(ytdlp::Info),
+}
 
 const ALL_DEPENDENCIES: [DependencyId; 6] = [
     DependencyId::LibreSvip,
@@ -140,6 +146,7 @@ pub struct VSynthApp {
     waveform_bounds: Rc<RefCell<Option<Bounds<Pixels>>>>,
     video_url_input: Entity<InputState>,
     video_info: Option<ParsedVideo>,
+    yt_info: Option<ytdlp::Info>,
     video_quality: Option<u32>,
     video_parse_job: Option<u64>,
     video_page_job: Option<u64>,
@@ -236,6 +243,7 @@ impl VSynthApp {
             waveform_bounds: Rc::new(RefCell::new(None)),
             video_url_input: inputs.video_url,
             video_info: None,
+            yt_info: None,
             video_quality: None,
             video_parse_job: None,
             video_page_job: None,
@@ -1097,10 +1105,14 @@ impl VSynthApp {
             return;
         }
         let s = self.text();
-        let job = self
-            .job_center
-            .read(cx)
-            .start(s.video_parse, move |_| bili::parse(&url));
+        let is_bili = bili::is_bilibili_input(&url);
+        let job = self.job_center.read(cx).start(s.video_parse, move |_| {
+            if is_bili {
+                bili::parse(&url).map(ParsedSource::Bili)
+            } else {
+                ytdlp::probe(&url).map(ParsedSource::Yt)
+            }
+        });
         self.video_parse_job = Some(job.id);
         self.video_notice = None;
         let job_id = job.id;
@@ -1114,9 +1126,17 @@ impl VSynthApp {
                     this.video_parse_job = None;
                 }
                 match outcome {
-                    Ok(JobOutcome::Done(video)) => {
+                    Ok(JobOutcome::Done(ParsedSource::Bili(video))) => {
                         this.video_quality = video.qualities.first().map(|quality| quality.qn);
                         this.video_info = Some(video);
+                        this.yt_info = None;
+                        this.video_output = None;
+                        this.video_notice = None;
+                    }
+                    Ok(JobOutcome::Done(ParsedSource::Yt(info))) => {
+                        this.video_info = None;
+                        this.yt_info = Some(info);
+                        this.video_quality = None;
                         this.video_output = None;
                         this.video_notice = None;
                     }
@@ -1200,6 +1220,7 @@ impl VSynthApp {
             return;
         }
         let Some(info) = self.video_info.clone() else {
+            self.download_yt_video(cx);
             return;
         };
         let Some(quality) = self.video_quality else {
@@ -1252,6 +1273,52 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn download_yt_video(&mut self, cx: &mut Context<Self>) {
+        let Some(info) = self.yt_info.clone() else {
+            return;
+        };
+        let directory = self.download_directory(cx);
+        let base = unique_video_base(&directory, &video_stem(&info.title));
+        let job_directory = directory;
+        let job_base = base.clone();
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.video_download, move |ctx| {
+                ytdlp::download(&info, &job_directory, &job_base, &ctx)
+            });
+        self.video_download_job = Some(job.id);
+        self.video_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.video_download_job == Some(job_id) {
+                    this.video_download_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(path)) => {
+                        this.video_output = Some(path.clone());
+                        this.video_notice =
+                            Some(format!("{}: {}", this.text().video_done, path.display()));
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.video_notice = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.video_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.video_notice = Some(this.text().job_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
     fn cancel_video_download(&mut self, cx: &mut Context<Self>) {
         if let Some(id) = self.video_download_job {
             self.job_center.read(cx).cancel(id);
@@ -1278,6 +1345,7 @@ impl VSynthApp {
             .video_info
             .as_ref()
             .map(|info| info.title.clone())
+            .or_else(|| self.yt_info.as_ref().map(|info| info.title.clone()))
             .unwrap_or_else(|| "video".to_string());
         self.video_webview = None;
         self.media_server = None;
@@ -3439,6 +3507,99 @@ impl VSynthApp {
                         .into_any_element()
                 }))
                 .into_any_element()
+        } else if let Some(info) = &self.yt_info {
+            let download_entity = entity.clone();
+            let cancel_entity = entity.clone();
+            let download_button = if downloading {
+                Button::new("yt-video-cancel")
+                    .label(s.video_cancel)
+                    .on_click(move |_, _, cx| {
+                        cancel_entity.update(cx, |this, cx| this.cancel_video_download(cx));
+                    })
+                    .into_any_element()
+            } else {
+                Button::new("yt-video-download")
+                    .label(s.video_download)
+                    .primary()
+                    .on_click(move |_, _, cx| {
+                        download_entity.update(cx, |this, cx| this.download_yt_video(cx));
+                    })
+                    .into_any_element()
+            };
+            let output_entity = entity.clone();
+            let output_block = self.video_output.as_ref().map(|output| {
+                let open_entity = output_entity.clone();
+                let preview_entity = output_entity.clone();
+                v_flex()
+                    .gap_2()
+                    .child(
+                        div()
+                            .text_xs()
+                            .text_color(muted)
+                            .child(output.display().to_string()),
+                    )
+                    .child(
+                        h_flex()
+                            .gap_2()
+                            .child(
+                                Button::new("yt-video-preview")
+                                    .label(s.video_preview)
+                                    .primary()
+                                    .on_click(move |_, window, cx| {
+                                        preview_entity.update(cx, |this, cx| {
+                                            this.open_video_preview(window, cx);
+                                        });
+                                    }),
+                            )
+                            .child(
+                                Button::new("yt-video-open-folder")
+                                    .label(s.video_open_folder)
+                                    .on_click(move |_, _, cx| {
+                                        open_entity
+                                            .update(cx, |this, cx| this.open_video_folder(cx));
+                                    }),
+                            ),
+                    )
+                    .into_any_element()
+            });
+            v_flex()
+                .gap_3()
+                .child(
+                    div()
+                        .text_lg()
+                        .font_weight(FontWeight::SEMIBOLD)
+                        .child(info.title.clone()),
+                )
+                .child(
+                    h_flex()
+                        .gap_4()
+                        .flex_wrap()
+                        .children(
+                            info.uploader
+                                .as_ref()
+                                .map(|owner| meta_text(s.video_owner, owner.clone(), muted)),
+                        )
+                        .children(info.duration.map(|duration| {
+                            meta_text(s.video_duration, format_duration(duration), muted)
+                        }))
+                        .child(meta_text(s.video_source, "yt-dlp".to_string(), muted)),
+                )
+                .children(
+                    info.webpage_url
+                        .as_ref()
+                        .map(|url| div().text_xs().text_color(muted).child(url.clone())),
+                )
+                .child(download_button)
+                .child(div().text_xs().text_color(muted).child(s.video_output_hint))
+                .children(output_block)
+                .children(self.video_webview_error.as_ref().map(|error| {
+                    div()
+                        .text_xs()
+                        .text_color(danger)
+                        .child(error.clone())
+                        .into_any_element()
+                }))
+                .into_any_element()
         } else {
             div()
                 .text_sm()
@@ -4985,6 +5146,47 @@ fn audio_output_path(input: &Path, operation: AudioOp, format: AudioFormat) -> P
     let mut index = 1;
     while candidate.exists() {
         candidate = directory.join(format!("{base}-{index}.{}", format.id()));
+        index += 1;
+    }
+    candidate
+}
+
+fn video_stem(title: &str) -> String {
+    let cleaned: String = title
+        .chars()
+        .map(|character| {
+            if character.is_control()
+                || matches!(
+                    character,
+                    '\\' | '/' | ':' | '*' | '?' | '"' | '<' | '>' | '|'
+                )
+            {
+                '_'
+            } else {
+                character
+            }
+        })
+        .collect();
+    let cleaned = cleaned.trim().trim_matches('.').trim();
+    if cleaned.is_empty() {
+        "video".to_string()
+    } else {
+        cleaned.chars().take(80).collect()
+    }
+}
+
+fn unique_video_base(directory: &Path, stem: &str) -> String {
+    let mut candidate = stem.to_string();
+    let mut index = 1;
+    while std::fs::read_dir(directory).ok().is_some_and(|entries| {
+        entries.flatten().any(|entry| {
+            entry
+                .file_name()
+                .to_string_lossy()
+                .starts_with(&format!("{candidate}."))
+        })
+    }) {
+        candidate = format!("{stem}-{index}");
         index += 1;
     }
     candidate
