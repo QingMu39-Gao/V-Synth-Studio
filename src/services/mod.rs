@@ -10,3 +10,4 @@ pub mod media_server;
 pub mod midi;
 pub mod python;
 pub mod svsep;
+pub mod update;

@@ -40,6 +40,37 @@ The installer scripts use a portable NSIS at
 `%LOCALAPPDATA%\Programs\V-Synth-Studio`. The setup and uninstaller support `/S`
 and `/D=<directory>` for scripted checks.
 
+## Updates
+
+Installed builds check the GPUI-only manifest at
+`https://admin1.qingmu39.top/api/vss-gpui-version.json` from Settings. It is a
+separate channel from the old Tauri releases and has this shape:
+
+```json
+{
+  "version": "0.1.1",
+  "published_at": "2026-10-29T00:00:00Z",
+  "changelog": "…",
+  "downloads": {
+    "windows": {
+      "url": "https://…/V-Synth-Studio-0.1.1-windows-x64-setup.exe",
+      "size": 6278154,
+      "sha256": "…"
+    }
+  }
+}
+```
+
+After bumping `Cargo.toml` and building the setup, generate the manifest and
+upload both files:
+
+```powershell
+scripts/make-manifest.ps1 -Url "https://…/setup.exe" -Changelog "…"
+```
+
+Updates are installed only for builds that contain `Uninstall.exe`; portable
+builds open the downloaded file's folder instead. HTTPS and SHA-256 are required.
+
 ## Layout
 
 | Path | Purpose |

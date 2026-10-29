@@ -27,6 +27,7 @@ use crate::services::lyrics::{self, SearchResult, SongDetail};
 use crate::services::media_server::MediaServer;
 use crate::services::midi::{self, Device as MidiDevice, Options as MidiOptions};
 use crate::services::svsep::{self, Stems};
+use crate::services::update::{self, UpdateInfo};
 use crate::tools::{Tool, ToolStatus};
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
@@ -163,6 +164,12 @@ pub struct VSynthApp {
     announcements: Option<Vec<Announcement>>,
     announce_error: Option<String>,
     announce_loading: bool,
+    update_checking: bool,
+    update_info: Option<UpdateInfo>,
+    update_error: Option<String>,
+    update_notice: Option<String>,
+    update_job: Option<u64>,
+    update_file: Option<PathBuf>,
 }
 
 impl VSynthApp {
@@ -252,6 +259,12 @@ impl VSynthApp {
             announcements: None,
             announce_error: None,
             announce_loading: false,
+            update_checking: false,
+            update_info: None,
+            update_error: None,
+            update_notice: None,
+            update_job: None,
+            update_file: None,
         }
     }
 
@@ -2114,6 +2127,266 @@ impl VSynthApp {
             .outline()
             .title(s.announcements)
             .child(v_flex().gap_3().child(buttons).child(body))
+            .into_any_element()
+    }
+
+    fn check_updates(&mut self, cx: &mut Context<Self>) {
+        if self.update_checking {
+            return;
+        }
+        self.update_checking = true;
+        self.update_info = None;
+        self.update_error = None;
+        self.update_notice = None;
+        self.update_file = None;
+        cx.notify();
+        let (sender, receiver) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let _ = sender.send_blocking(update::check());
+        });
+        cx.spawn(async move |this, cx| {
+            let result = receiver.recv().await;
+            let _ = this.update(cx, |this, cx| {
+                this.update_checking = false;
+                match result {
+                    Ok(Ok(Some(info))) => this.update_info = Some(info),
+                    Ok(Ok(None)) => {
+                        this.update_notice = Some(this.text().up_to_date.to_string());
+                    }
+                    Ok(Err(error)) => this.update_error = Some(error),
+                    Err(_) => {
+                        this.update_error = Some(this.text().update_failed.to_string());
+                    }
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn download_update(&mut self, cx: &mut Context<Self>) {
+        if self
+            .update_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
+        {
+            return;
+        }
+        let Some(info) = self.update_info.clone() else {
+            return;
+        };
+        let s = self.text();
+        let job = self
+            .job_center
+            .read(cx)
+            .start(s.download_update, move |ctx| update::download(&info, &ctx));
+        self.update_job = Some(job.id);
+        self.update_error = None;
+        self.update_notice = None;
+        let job_id = job.id;
+        cx.spawn(async move |this, cx| {
+            let outcome = job.result.recv().await;
+            let Some(this) = this.upgrade() else {
+                return;
+            };
+            this.update(cx, |this, cx| {
+                if this.update_job == Some(job_id) {
+                    this.update_job = None;
+                }
+                match outcome {
+                    Ok(JobOutcome::Done(path)) => {
+                        this.update_file = Some(path);
+                        this.update_notice = Some(this.text().update_downloaded.to_string());
+                    }
+                    Ok(JobOutcome::Failed(error)) => this.update_error = Some(error),
+                    Ok(JobOutcome::Canceled) => {
+                        this.update_notice = Some(this.text().job_canceled.to_string());
+                    }
+                    Err(_) => this.update_error = Some(this.text().update_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn install_update(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.update_file.clone() else {
+            return;
+        };
+        if !update::is_installed() {
+            if let Some(parent) = path.parent() {
+                self.open_directory(parent.to_path_buf(), cx);
+            }
+            self.update_notice = Some(self.text().update_portable.to_string());
+            cx.notify();
+            return;
+        }
+        match update::launch_installer(&path) {
+            Ok(()) => {
+                crate::logging::line(&format!("launching update installer {}", path.display()));
+                self.update_notice = Some(self.text().update_install_soon.to_string());
+                cx.notify();
+                std::process::exit(0);
+            }
+            Err(error) => {
+                self.update_error = Some(error);
+                cx.notify();
+            }
+        }
+    }
+
+    fn open_update_folder(&mut self, cx: &mut Context<Self>) {
+        let Some(path) = self.update_file.clone() else {
+            return;
+        };
+        if let Some(parent) = path.parent() {
+            self.open_directory(parent.to_path_buf(), cx);
+        }
+    }
+
+    fn render_updates(&self, cx: &mut Context<Self>) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let border = theme.border;
+        let entity = cx.entity();
+        let s = self.text();
+        let snapshot = self
+            .update_job
+            .and_then(|id| self.job_center.read(cx).snapshot(id));
+        let job_running = snapshot
+            .as_ref()
+            .is_some_and(|snap| snap.status.is_running());
+        let checking = self.update_checking;
+
+        let check_entity = entity.clone();
+        let buttons = h_flex().gap_2().child(
+            Button::new("update-check")
+                .label(s.check_updates)
+                .compact()
+                .disabled(checking)
+                .on_click(move |_, _, cx| {
+                    check_entity.update(cx, |this, cx| this.check_updates(cx));
+                }),
+        );
+
+        let body = if checking {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.checking_updates)
+                .into_any_element()
+        } else if let Some(error) = &self.update_error {
+            div()
+                .text_sm()
+                .text_color(theme.danger)
+                .child(format!("{}：{error}", s.update_failed))
+                .into_any_element()
+        } else if let Some(info) = &self.update_info {
+            let download_entity = entity.clone();
+            let install_entity = entity.clone();
+            let mut update_buttons = h_flex().gap_2();
+            if self.update_file.is_none() {
+                update_buttons = update_buttons.child(
+                    Button::new("update-download")
+                        .label(s.download_update)
+                        .compact()
+                        .disabled(job_running)
+                        .on_click(move |_, _, cx| {
+                            download_entity.update(cx, |this, cx| this.download_update(cx));
+                        }),
+                );
+            } else if update::is_installed() {
+                update_buttons = update_buttons.child(
+                    Button::new("update-install")
+                        .label(s.install_update)
+                        .primary()
+                        .compact()
+                        .on_click(move |_, _, cx| {
+                            install_entity.update(cx, |this, cx| this.install_update(cx));
+                        }),
+                );
+            } else {
+                let open_entity = entity.clone();
+                update_buttons = update_buttons.child(
+                    Button::new("update-open-folder")
+                        .label(s.open_update_folder)
+                        .compact()
+                        .on_click(move |_, _, cx| {
+                            open_entity.update(cx, |this, cx| this.open_update_folder(cx));
+                        }),
+                );
+            }
+            let mut details = v_flex().gap_1().child(
+                div()
+                    .text_sm()
+                    .font_weight(FontWeight::SEMIBOLD)
+                    .child(format!("{}：{}", s.update_available, info.version)),
+            );
+            if !info.published.is_empty() {
+                details = details.child(div().text_xs().text_color(muted).child(format!(
+                    "{}: {}",
+                    s.published_at,
+                    info.published.split('T').next().unwrap_or("")
+                )));
+            }
+            details = details.child(div().text_sm().child(if info.changelog.is_empty() {
+                s.update_no_changelog.to_string()
+            } else {
+                info.changelog.clone()
+            }));
+            if let Some(path) = &self.update_file {
+                details = details.child(
+                    div()
+                        .text_xs()
+                        .text_color(muted)
+                        .child(path.display().to_string()),
+                );
+            }
+            if !update::is_installed() && self.update_file.is_some() {
+                details = details.child(div().text_xs().text_color(muted).child(s.update_portable));
+            }
+            details.child(update_buttons).into_any_element()
+        } else if let Some(notice) = &self.update_notice {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(notice.clone())
+                .into_any_element()
+        } else {
+            div()
+                .text_xs()
+                .text_color(muted)
+                .child(s.update_hint)
+                .into_any_element()
+        };
+
+        let progress = snapshot
+            .filter(|snap| snap.status.is_running())
+            .map(|snap| {
+                div()
+                    .text_xs()
+                    .text_color(muted)
+                    .child(format!("{} {}", s.downloading_update, snap.message))
+            });
+
+        GroupBox::new()
+            .id("settings-updates")
+            .outline()
+            .title(s.updates)
+            .child(
+                v_flex()
+                    .gap_2()
+                    .child(info_row(
+                        s.current_version,
+                        env!("CARGO_PKG_VERSION").to_string(),
+                        muted,
+                        border,
+                    ))
+                    .child(buttons)
+                    .child(body)
+                    .children(progress),
+            )
             .into_any_element()
     }
 
@@ -4064,6 +4337,7 @@ impl VSynthApp {
 
     fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
         let announcements = self.render_announcements(cx, usize::MAX);
+        let updates = self.render_updates(cx);
         let (muted, border) = {
             let theme = cx.theme();
             (theme.muted_foreground, theme.border)
@@ -4306,6 +4580,7 @@ impl VSynthApp {
                     ),
             )
             .child(announcements)
+            .child(updates)
             .child(
                 GroupBox::new()
                     .id("settings-components")
