@@ -28,7 +28,7 @@ use crate::services::media_server::MediaServer;
 use crate::services::midi::{self, Device as MidiDevice, Options as MidiOptions};
 use crate::services::svsep::{self, Stems};
 use crate::services::update::{self, UpdateInfo};
-use crate::tools::{Tool, ToolStatus};
+use crate::tools::ToolStatus;
 
 const WEBVIEW_DEMO: &str = include_str!("webview_demo.html");
 
@@ -524,37 +524,6 @@ impl VSynthApp {
         cx.notify();
     }
 
-    fn refresh_tools_button(&self, cx: &mut Context<Self>) -> AnyElement {
-        let entity = cx.entity();
-        let s = self.text();
-        let running = self
-            .tool_job
-            .is_some_and(|id| self.job_center.read(cx).is_running(id));
-        let label = if running {
-            s.cancel
-        } else if self.scanning_tools {
-            s.checking
-        } else {
-            s.refresh_tools
-        };
-        let tool_job = self.tool_job;
-        Button::new("tools-refresh")
-            .label(label)
-            .on_click(move |_, _, cx| {
-                entity.update(cx, |this, cx| {
-                    if running {
-                        if let Some(id) = tool_job {
-                            this.job_center.read(cx).cancel(id);
-                        }
-                    } else {
-                        this.refresh_tools(cx);
-                    }
-                    cx.notify();
-                });
-            })
-            .into_any_element()
-    }
-
     pub fn refresh_tools(&mut self, cx: &mut Context<Self>) {
         if self.scanning_tools {
             return;
@@ -662,6 +631,25 @@ impl VSynthApp {
         }
     }
 
+    fn dependency_status(&self, id: DependencyId) -> dependencies::Status {
+        let mut status = dependencies::status(id);
+        if status.ready {
+            return status;
+        }
+        let tool = match id {
+            DependencyId::Ffmpeg => self.tools.as_ref().map(|tools| &tools.ffmpeg),
+            DependencyId::YtDlp => self.tools.as_ref().map(|tools| &tools.ytdlp),
+            _ => None,
+        };
+        if let Some(tool) = tool.filter(|tool| tool.available) {
+            status.ready = true;
+            if let Some(path) = &tool.path {
+                status.location = PathBuf::from(path);
+            }
+        }
+        status
+    }
+
     fn render_dependencies(
         &self,
         ids: &[DependencyId],
@@ -680,7 +668,7 @@ impl VSynthApp {
         let mut count = 0;
         for &id in ids {
             let info = dependencies::info(id);
-            let status = dependencies::status(id);
+            let status = self.dependency_status(id);
             if status.ready && !include_ready {
                 continue;
             }
@@ -2540,15 +2528,10 @@ impl VSynthApp {
 
         let svsep_status = svsep::status();
         let midi_status = midi::status();
-        let ffmpeg_available = self
-            .tools
-            .as_ref()
-            .is_some_and(|tools| tools.ffmpeg.available);
-        let ytdlp_available = self
-            .tools
-            .as_ref()
-            .is_some_and(|tools| tools.ytdlp.available);
-        let tools_known = self.tools.is_some();
+        let dependencies_ready = ALL_DEPENDENCIES
+            .iter()
+            .filter(|id| self.dependency_status(**id).ready)
+            .count();
         let packs_group = GroupBox::new()
             .id("dashboard-packs")
             .outline()
@@ -2575,28 +2558,6 @@ impl VSynthApp {
                         s,
                     )),
             );
-        let mut findings = Vec::new();
-        if tools_known {
-            if !ffmpeg_available {
-                findings.push(env_check(s.env_ffmpeg_missing, theme.warning));
-            }
-            if !ytdlp_available {
-                findings.push(env_check(s.env_ytdlp_missing, theme.primary));
-            }
-        }
-        let checks_group = (!findings.is_empty()).then(|| {
-            GroupBox::new()
-                .id("dashboard-checks")
-                .outline()
-                .title(s.environment_checks)
-                .child(v_flex().gap_2().children(findings))
-        });
-
-        let tools_ready = match self.tools.as_ref() {
-            Some(tools) => format!("{}/3 {}", tools.ready_count(), s.ready),
-            None if self.scanning_tools => s.checking.to_string(),
-            None => s.unchecked.to_string(),
-        };
 
         let jobs_element = jobs_panel(&jobs, self.job_center.clone(), theme, s);
         let quick_buttons = Page::ALL
@@ -2655,53 +2616,15 @@ impl VSynthApp {
                                 muted,
                                 border,
                             ))
-                            .child(info_row(s.external_tools, tools_ready, muted, border)),
-                    ),
-            )
-            .child(
-                GroupBox::new()
-                    .id("dashboard-tools")
-                    .outline()
-                    .title(s.external_tools)
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(tool_row(
-                                "ffmpeg",
-                                self.tools.as_ref().map(|tools| &tools.ffmpeg),
-                                self.scanning_tools,
-                                theme,
-                                s,
-                            ))
-                            .child(tool_row(
-                                "yt-dlp",
-                                self.tools.as_ref().map(|tools| &tools.ytdlp),
-                                self.scanning_tools,
-                                theme,
-                                s,
-                            ))
-                            .child(tool_row(
-                                "python",
-                                self.tools.as_ref().map(|tools| &tools.python),
-                                self.scanning_tools,
-                                theme,
-                                s,
-                            ))
-                            .child(
-                                h_flex()
-                                    .items_center()
-                                    .gap_3()
-                                    .child(self.refresh_tools_button(cx))
-                                    .child(div().text_xs().text_color(muted).child(format!(
-                                        "{}: {}",
-                                        s.tools_dir,
-                                        tools_dir_display()
-                                    ))),
-                            ),
+                            .child(info_row(
+                                s.dependencies,
+                                format!("{dependencies_ready}/6 {}", s.ready),
+                                muted,
+                                border,
+                            )),
                     ),
             )
             .child(jobs_element)
-            .children(checks_group)
             .child(packs_group)
             .child(
                 GroupBox::new()
@@ -4535,7 +4458,6 @@ impl VSynthApp {
                     .into_any_element()
             })
             .collect::<Vec<_>>();
-        let refresh_button = self.refresh_tools_button(cx);
         let sponsor_theme = cx.theme();
         let entity = cx.entity();
         let output_open = entity.clone();
@@ -4671,50 +4593,6 @@ impl VSynthApp {
                     ),
             )
             .child(directories_group)
-            .child(
-                GroupBox::new()
-                    .id("settings-tools")
-                    .outline()
-                    .title(s.external_tools)
-                    .child(
-                        v_flex()
-                            .gap_2()
-                            .child(tool_row(
-                                "ffmpeg",
-                                self.tools.as_ref().map(|tools| &tools.ffmpeg),
-                                self.scanning_tools,
-                                cx.theme(),
-                                s,
-                            ))
-                            .child(tool_row(
-                                "yt-dlp",
-                                self.tools.as_ref().map(|tools| &tools.ytdlp),
-                                self.scanning_tools,
-                                cx.theme(),
-                                s,
-                            ))
-                            .child(tool_row(
-                                "python",
-                                self.tools.as_ref().map(|tools| &tools.python),
-                                self.scanning_tools,
-                                cx.theme(),
-                                s,
-                            ))
-                            .child(h_flex().items_center().gap_3().child(refresh_button).child(
-                                div().text_xs().text_color(muted).child(format!(
-                                    "{}: {}",
-                                    s.tools_dir,
-                                    tools_dir_display()
-                                )),
-                            ))
-                            .child(
-                                div()
-                                    .text_xs()
-                                    .text_color(muted)
-                                    .child(s.missing_tools_hint),
-                            ),
-                    ),
-            )
             .child(announcements)
             .child(updates)
             .child(dependencies_panel)
@@ -5754,56 +5632,5 @@ fn pack_row(
                             entity.update(cx, |this, cx| this.set_page(target, window, cx));
                         }),
                 ),
-        )
-}
-
-fn env_check(text: &'static str, color: Hsla) -> impl IntoElement {
-    div().text_sm().text_color(color).child(text)
-}
-
-fn tool_row(
-    label: &'static str,
-    tool: Option<&Tool>,
-    scanning: bool,
-    theme: &Theme,
-    s: &Strings,
-) -> impl IntoElement {
-    let muted = theme.muted_foreground;
-    let (status, color, detail) = match tool {
-        Some(tool) if tool.available => (
-            s.available,
-            theme.success,
-            tool.version
-                .clone()
-                .or_else(|| tool.path.clone())
-                .unwrap_or_else(|| s.found_executable.to_string()),
-        ),
-        Some(_) => (s.missing, theme.danger, s.not_found.to_string()),
-        None if scanning => (s.scanning, muted, s.scanning_hint.to_string()),
-        None => (s.unchecked, muted, s.waiting_check.to_string()),
-    };
-
-    h_flex()
-        .justify_between()
-        .items_center()
-        .gap_4()
-        .py_1()
-        .border_b_1()
-        .border_color(theme.border)
-        .child(
-            v_flex()
-                .gap_1()
-                .child(div().text_sm().child(label))
-                .child(div().text_xs().text_color(muted).child(detail)),
-        )
-        .child(
-            div()
-                .px_2()
-                .py_1()
-                .rounded(theme.radius)
-                .bg(color.opacity(0.14))
-                .text_color(color)
-                .text_xs()
-                .child(status),
         )
 }
