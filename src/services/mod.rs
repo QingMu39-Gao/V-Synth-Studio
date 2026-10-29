@@ -1,3 +1,4 @@
+pub mod announce;
 pub mod artifacts;
 pub mod audio;
 pub mod bili;

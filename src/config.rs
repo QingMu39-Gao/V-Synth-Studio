@@ -40,9 +40,23 @@ pub struct Config {
     pub download_dir: String,
     #[serde(default)]
     pub ext_dir: String,
+    #[serde(default)]
+    pub seen_announcements: Vec<String>,
 }
 
 impl Config {
+    pub fn announcement_seen(&self, id: &str) -> bool {
+        self.seen_announcements.iter().any(|seen| seen == id)
+    }
+
+    pub fn mark_announcement_seen(&mut self, id: &str) {
+        self.seen_announcements.retain(|seen| seen != id);
+        self.seen_announcements.push(id.to_string());
+        if self.seen_announcements.len() > 100 {
+            let excess = self.seen_announcements.len() - 100;
+            self.seen_announcements.drain(..excess);
+        }
+    }
     pub fn load() -> Self {
         let path = config_path();
         let Ok(text) = fs::read_to_string(&path) else {
@@ -93,4 +107,23 @@ fn root() -> PathBuf {
         .ok()
         .and_then(|path| path.parent().map(PathBuf::from))
         .unwrap_or_else(|| PathBuf::from("."))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn seen_announcements_are_deduplicated_and_capped() {
+        let mut config = Config::default();
+        config.mark_announcement_seen("a");
+        config.mark_announcement_seen("a");
+        assert_eq!(config.seen_announcements, vec!["a"]);
+        for index in 0..120 {
+            config.mark_announcement_seen(&format!("id-{index}"));
+        }
+        assert_eq!(config.seen_announcements.len(), 100);
+        assert!(!config.announcement_seen("a"));
+        assert!(config.announcement_seen("id-119"));
+    }
 }

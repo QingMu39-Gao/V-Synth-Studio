@@ -17,6 +17,7 @@ use crate::i18n::{self, Language, Strings};
 use crate::jobs::JobCenter;
 use crate::pages::Page;
 use crate::resources::{Group, Item, Resources};
+use crate::services::announce::{self, Announcement};
 use crate::services::artifacts::{self, Artifact};
 use crate::services::audio::{self, AudioFormat, AudioInfo, AudioOperation};
 use crate::services::bili::{self, Page as VideoPage, ParsedVideo};
@@ -159,6 +160,9 @@ pub struct VSynthApp {
     midi_notice: Option<String>,
     midi_steps: usize,
     midi_device: MidiDevice,
+    announcements: Option<Vec<Announcement>>,
+    announce_error: Option<String>,
+    announce_loading: bool,
 }
 
 impl VSynthApp {
@@ -245,6 +249,9 @@ impl VSynthApp {
             midi_notice: None,
             midi_steps: 8,
             midi_device: MidiDevice::Auto,
+            announcements: None,
+            announce_error: None,
+            announce_loading: false,
         }
     }
 
@@ -1885,7 +1892,190 @@ impl VSynthApp {
         page.child(toolbar).child(body).into_any_element()
     }
 
+    pub fn refresh_announcements(&mut self, cx: &mut Context<Self>) {
+        if self.announce_loading {
+            return;
+        }
+        self.announce_loading = true;
+        self.announce_error = None;
+        cx.notify();
+        let (sender, receiver) = async_channel::bounded(1);
+        std::thread::spawn(move || {
+            let _ = sender.send_blocking(announce::fetch());
+        });
+        cx.spawn(async move |this, cx| {
+            let result = receiver.recv().await;
+            let _ = this.update(cx, |this, cx| {
+                this.announce_loading = false;
+                match result {
+                    Ok(Ok(items)) => {
+                        this.announcements = Some(items);
+                        this.announce_error = None;
+                    }
+                    Ok(Err(error)) => this.announce_error = Some(error),
+                    Err(_) => this.announce_error = Some(this.text().announce_failed.to_string()),
+                }
+                cx.notify();
+            });
+        })
+        .detach();
+    }
+
+    fn mark_announcement_seen(&mut self, id: &str, cx: &mut Context<Self>) {
+        self.config.mark_announcement_seen(id);
+        self.notice = self
+            .config
+            .save()
+            .err()
+            .map(|error| format!("{}：{error}", self.text().announce_read_failed));
+        cx.notify();
+    }
+
+    fn mark_all_announcements_seen(&mut self, cx: &mut Context<Self>) {
+        let Some(items) = self.announcements.clone() else {
+            return;
+        };
+        for item in items {
+            self.config.mark_announcement_seen(&item.id);
+        }
+        self.notice = self
+            .config
+            .save()
+            .err()
+            .map(|error| format!("{}：{error}", self.text().announce_read_failed));
+        cx.notify();
+    }
+
+    fn render_announcements(&self, cx: &mut Context<Self>, limit: usize) -> AnyElement {
+        let theme = cx.theme();
+        let muted = theme.muted_foreground;
+        let entity = cx.entity();
+        let s = self.text();
+        let unread = self.announcements.as_ref().is_some_and(|items| {
+            items
+                .iter()
+                .any(|item| !self.config.announcement_seen(&item.id))
+        });
+        let refresh_entity = entity.clone();
+        let all_entity = entity.clone();
+        let mut buttons = h_flex().gap_2().child(
+            Button::new("announce-refresh")
+                .label(s.announce_refresh)
+                .compact()
+                .disabled(self.announce_loading)
+                .on_click(move |_, _, cx| {
+                    refresh_entity.update(cx, |this, cx| this.refresh_announcements(cx));
+                }),
+        );
+        if unread {
+            buttons = buttons.child(
+                Button::new("announce-mark-all")
+                    .label(s.announce_mark_all)
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        all_entity.update(cx, |this, cx| this.mark_all_announcements_seen(cx));
+                    }),
+            );
+        }
+
+        let body = if self.announce_loading {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.announce_loading)
+                .into_any_element()
+        } else if let Some(error) = &self.announce_error {
+            div()
+                .text_sm()
+                .text_color(theme.danger)
+                .child(format!("{}：{error}", s.announce_failed))
+                .into_any_element()
+        } else if let Some(items) = &self.announcements {
+            if items.is_empty() {
+                div()
+                    .text_sm()
+                    .text_color(muted)
+                    .child(s.announce_empty)
+                    .into_any_element()
+            } else {
+                let mut rows = v_flex().gap_3();
+                for item in items.iter().take(limit) {
+                    let color = match item.level.as_str() {
+                        "warn" => theme.warning,
+                        "critical" => theme.danger,
+                        _ => theme.primary,
+                    };
+                    let level = match item.level.as_str() {
+                        "warn" => s.announce_warn,
+                        "critical" => s.announce_critical,
+                        _ => s.announce_info,
+                    };
+                    let is_unread = !self.config.announcement_seen(&item.id);
+                    let mark_entity = entity.clone();
+                    let id = item.id.clone();
+                    let date = item.date.split(['T', ' ']).next().unwrap_or("");
+                    let mut header = h_flex()
+                        .items_center()
+                        .gap_2()
+                        .child(
+                            div()
+                                .text_sm()
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .child(item.title.clone()),
+                        )
+                        .child(announce_badge(level, color, theme.radius));
+                    if !date.is_empty() {
+                        header =
+                            header.child(div().text_xs().text_color(muted).child(date.to_string()));
+                    }
+                    if is_unread {
+                        header = header
+                            .child(announce_badge(
+                                s.announce_unread,
+                                theme.primary,
+                                theme.radius,
+                            ))
+                            .child(
+                                Button::new(SharedString::from(format!(
+                                    "announce-read-{}",
+                                    item.id
+                                )))
+                                .label(s.announce_mark_read)
+                                .compact()
+                                .on_click(move |_, _, cx| {
+                                    mark_entity.update(cx, |this, cx| {
+                                        this.mark_announcement_seen(&id, cx);
+                                    });
+                                }),
+                            );
+                    }
+                    rows = rows.child(
+                        v_flex()
+                            .gap_1()
+                            .child(header)
+                            .child(div().text_sm().child(item.body.clone())),
+                    );
+                }
+                rows.into_any_element()
+            }
+        } else {
+            div()
+                .text_sm()
+                .text_color(muted)
+                .child(s.announce_none_yet)
+                .into_any_element()
+        };
+
+        GroupBox::new()
+            .id("announcements")
+            .outline()
+            .title(s.announcements)
+            .child(v_flex().gap_3().child(buttons).child(body))
+            .into_any_element()
+    }
+
     fn render_dashboard(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let announcements = self.render_announcements(cx, 5);
         let jobs = self.job_center.read(cx).snapshots().to_vec();
         let theme = cx.theme();
         let muted = theme.muted_foreground;
@@ -1917,6 +2107,7 @@ impl VSynthApp {
         v_flex()
             .gap_4()
             .child(page_header(self.page, muted, self.text()))
+            .child(announcements)
             .child(
                 GroupBox::new()
                     .id("dashboard-runtime")
@@ -3773,6 +3964,7 @@ impl VSynthApp {
     }
 
     fn render_settings(&self, cx: &mut Context<Self>) -> impl IntoElement {
+        let announcements = self.render_announcements(cx, usize::MAX);
         let (muted, border) = {
             let theme = cx.theme();
             (theme.muted_foreground, theme.border)
@@ -3942,6 +4134,7 @@ impl VSynthApp {
                             ),
                     ),
             )
+            .child(announcements)
             .child(
                 GroupBox::new()
                     .id("settings-components")
@@ -4354,6 +4547,17 @@ fn format_duration(seconds: f64) -> String {
     let minutes = (seconds / 60.0).floor() as u64;
     let rest = seconds - minutes as f64 * 60.0;
     format!("{minutes}:{rest:04.1}")
+}
+
+fn announce_badge(label: &'static str, color: Hsla, radius: Pixels) -> impl IntoElement {
+    div()
+        .px_2()
+        .py_1()
+        .rounded(radius)
+        .bg(color.opacity(0.14))
+        .text_color(color)
+        .text_xs()
+        .child(label)
 }
 
 fn meta_text(label: &'static str, value: String, muted: Hsla) -> impl IntoElement {

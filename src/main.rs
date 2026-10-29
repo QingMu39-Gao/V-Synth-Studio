@@ -70,6 +70,7 @@ fn main() {
                     this.watch_system_theme(window, cx);
                     this.watch_resource_search(cx);
                     this.refresh_tools(cx);
+                    this.refresh_announcements(cx);
                 });
                 view
             })
