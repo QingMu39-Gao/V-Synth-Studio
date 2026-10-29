@@ -24,6 +24,22 @@ cargo run
 Debug builds read and write `data/config.json` under the repository root. Release
 builds use the directory containing the executable.
 
+## Packaging
+
+```powershell
+scripts/package.ps1          # build release + dist/V-Synth-Studio-<version>-windows-x64.zip
+scripts/build-installer.ps1  # portable layout + NSIS setup at dist/...-setup.exe
+```
+
+Packaging copies only the executable and the assets, resource JSON, notices and
+license from this repository. External tools, the Python runtime and model packs
+are deliberately not bundled; they are downloaded on demand from the app.
+
+The installer scripts use a portable NSIS at
+`.tools/nsis/nsis-3.13/makensis.exe` (ignored by Git) and install per-user under
+`%LOCALAPPDATA%\Programs\V-Synth-Studio`. The setup and uninstaller support `/S`
+and `/D=<directory>` for scripted checks.
+
 ## Layout
 
 | Path | Purpose |

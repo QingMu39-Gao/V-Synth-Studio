@@ -1,4 +1,6 @@
 /target
+/dist/
+/.tools/
 .idea
 
 /data/config.json
