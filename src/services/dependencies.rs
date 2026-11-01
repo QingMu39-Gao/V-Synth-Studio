@@ -148,7 +148,7 @@ pub fn importable(id: Id) -> bool {
 
 pub fn import(id: Id, path: &Path, ctx: &JobContext) -> Result<(), String> {
     match id {
-        Id::Python => Err("Python 运行环境由多个组件组成，不支持单文件导入".to_string()),
+        Id::Python => Err(crate::i18n::t().err_python_not_importable.to_string()),
         Id::UvrModel => svsep::import_model(path, ctx),
         Id::GameModel => midi::import_models(path, ctx),
         Id::LibreSvip | Id::Ffmpeg | Id::YtDlp => {

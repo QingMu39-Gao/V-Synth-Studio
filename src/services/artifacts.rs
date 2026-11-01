@@ -123,10 +123,9 @@ pub fn install_from_file(
     }
     ctx.progress(Some(0.05), "校验本地安装包");
     if !verify_sha256(source, artifact.sha256)? {
-        return Err(format!(
-            "{} 的本地文件校验值与内置版本不符，拒绝安装",
-            artifact.name
-        ));
+        return Err(crate::i18n::t()
+            .err_import_hash
+            .replace("{0}", artifact.name));
     }
     ctx.log(format!("使用本地安装包：{}", source.display()));
     install_archive(

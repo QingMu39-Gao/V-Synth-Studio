@@ -294,26 +294,21 @@ pub fn download(
             return Err(error);
         }
     };
+    let s = crate::i18n::t();
     if size == 0 {
-        return Err(discard(
-            &part,
-            "下载到的音频是空的（直链可能已失效，重试一次通常就好）",
-        ));
+        return Err(discard(&part, s.err_empty_file));
     }
 
     let head = read_head(&part, 16);
     let Some(format) = audio_format(&head) else {
-        return Err(discard(
-            &part,
-            "拿到的不是音频数据（直链可能已过期，重试一次通常就好）",
-        ));
+        return Err(discard(&part, s.err_not_audio));
     };
     if declared_size > 0 && (size as i64 - declared_size).abs() > declared_size / 20 {
         return Err(discard(
             &part,
-            &format!(
-                "下到的文件不完整（拿到 {size} 字节，服务端声明 {declared_size} 字节），重试一次通常就好"
-            ),
+            &s.err_incomplete_file
+                .replace("{0}", &format!("{size}"))
+                .replace("{1}", &format!("{declared_size}")),
         ));
     }
     if let Some(reason) = duration_mismatch(size, br, expected_ms / 1000) {
@@ -468,10 +463,12 @@ fn duration_mismatch(bytes: u64, br: u64, expected_sec: u64) -> Option<String> {
     }
     let got = bytes as f64 * 8.0 / br as f64;
     if got < expected_sec as f64 * 0.85 {
-        return Some(format!(
-            "只拿到约 {} 秒音频（这首歌约 {expected_sec} 秒）。未登录或非会员有时只能试听，登录后重试，或换搜索结果里的另一个版本试试。",
-            got.round() as i64
-        ));
+        return Some(
+            crate::i18n::t()
+                .err_trial_clip
+                .replace("{0}", &format!("{}", got.round() as i64))
+                .replace("{1}", &format!("{expected_sec}")),
+        );
     }
     None
 }
@@ -492,6 +489,7 @@ fn level_rank(level: &str) -> i64 {
 }
 
 fn no_direct_link_reason(media: &Value) -> String {
+    let s = crate::i18n::t();
     let reason = media["freeTrialPrivilege"]["cannotListenReason"]
         .as_i64()
         .unwrap_or(0);
@@ -500,12 +498,10 @@ fn no_direct_link_reason(media: &Value) -> String {
         .unwrap_or(true);
     let code = media["code"].as_i64().unwrap_or(0);
     match reason {
-        1 => "这首歌拿不到下载地址：版权或付费受限。登录后重试；如果登录后还是拿不到，换搜索结果里的另一个版本试试。".to_string(),
-        2 => "这首歌只有会员能听，没有可下载的直链。换搜索结果里的另一个版本试试。".to_string(),
-        _ if !consumable || code == -110 => {
-            "这个版本网易云不给免费账号下载（要会员）。搜索结果里同一首歌往往有好几个版本，换一个能下的试试。".to_string()
-        }
-        _ => "网易云没有返回这首歌的下载地址（可能已下架，或需要登录）。".to_string(),
+        1 => s.err_login_required.to_string(),
+        2 => s.err_vip_only.to_string(),
+        _ if !consumable || code == -110 => s.err_paid_version.to_string(),
+        _ => s.err_no_link.to_string(),
     }
 }
 

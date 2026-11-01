@@ -213,9 +213,7 @@ pub fn import_model(source: &Path, ctx: &JobContext) -> Result<(), String> {
     }
     ctx.progress(Some(0.1), "校验本地模型");
     if !download::verify_sha256(source, MODEL_SHA)? {
-        return Err(format!(
-            "{MODEL_NAME} 的本地文件校验值与内置版本不符，拒绝使用"
-        ));
+        return Err(crate::i18n::t().err_import_hash.replace("{0}", MODEL_NAME));
     }
     let path = model_file();
     if let Some(parent) = path.parent() {

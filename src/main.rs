@@ -20,6 +20,7 @@ use gpui_kit::*;
 
 fn main() {
     let config = config::Config::load();
+    i18n::set_language(config.language);
     config::set_extensions_root(&config.ext_dir);
     logging::init();
     let initial_theme = config.theme;

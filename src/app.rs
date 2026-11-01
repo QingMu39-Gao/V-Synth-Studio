@@ -2305,6 +2305,7 @@ impl VSynthApp {
 
     fn set_language(&mut self, language: Language, cx: &mut Context<Self>) {
         self.config.language = language;
+        i18n::set_language(language);
         self.notice = self.config.save().err();
         cx.notify();
     }

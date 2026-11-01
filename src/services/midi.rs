@@ -322,7 +322,9 @@ pub fn import_models(source: &Path, ctx: &JobContext) -> Result<(), String> {
     }
     ctx.progress(Some(0.05), "校验本地模型");
     if !download::verify_sha256(source, MODEL_SHA)? {
-        return Err("GAME 模型包的本地文件校验值与内置版本不符，拒绝使用".to_string());
+        return Err(crate::i18n::t()
+            .err_import_hash
+            .replace("{0}", "GAME 1.0.3 large (ONNX)"));
     }
     ctx.log(format!("使用本地模型包：{}", source.display()));
     install_models(source, ctx)

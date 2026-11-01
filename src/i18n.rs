@@ -252,6 +252,16 @@ pub struct Strings {
     pub netease_login_success: &'static str,
     pub netease_logged_out: &'static str,
     pub webview_open_failed: &'static str,
+    pub err_login_required: &'static str,
+    pub err_vip_only: &'static str,
+    pub err_paid_version: &'static str,
+    pub err_no_link: &'static str,
+    pub err_trial_clip: &'static str,
+    pub err_not_audio: &'static str,
+    pub err_empty_file: &'static str,
+    pub err_incomplete_file: &'static str,
+    pub err_import_hash: &'static str,
+    pub err_python_not_importable: &'static str,
     pub lyrics_quality: &'static str,
     pub lyrics_quality_auto: &'static str,
     pub lyrics_quality_lossless: &'static str,
@@ -601,6 +611,16 @@ pub const ZH: Strings = Strings {
     netease_login_success: "登录成功。",
     netease_logged_out: "已退出网易云登录。",
     webview_open_failed: "无法打开页面",
+    err_login_required: "这首歌拿不到下载地址：版权或付费受限。先在「登录网易云」里登录再试；登录后还是拿不到，换搜索结果里的另一个版本。",
+    err_vip_only: "这首歌只有会员能听，没有可下载的直链。换搜索结果里的另一个版本试试。",
+    err_paid_version: "这个版本网易云不给免费账号下载（要会员）。搜索结果里同一首歌往往有好几个版本，换一个能下的试试。",
+    err_no_link: "网易云没有返回这首歌的下载地址（可能已下架，或需要登录）。",
+    err_trial_clip: "只拿到约 {0} 秒音频（这首歌约 {1} 秒）。未登录或非会员有时只能试听，登录后重试，或换搜索结果里的另一个版本试试。",
+    err_not_audio: "拿到的不是音频数据（直链可能已过期，重试一次通常就好）。",
+    err_empty_file: "下载到的音频是空的（直链可能已失效，重试一次通常就好）。",
+    err_incomplete_file: "下到的文件不完整（拿到 {0} 字节，服务端声明 {1} 字节），重试一次通常就好。",
+    err_import_hash: "{0} 的本地文件校验值与内置版本不符，已拒绝使用。",
+    err_python_not_importable: "Python 运行环境由多个组件组成，不支持单文件导入。",
     lyrics_quality: "下载音质",
     lyrics_quality_auto: "自动",
     lyrics_quality_lossless: "无损",
@@ -950,6 +970,16 @@ pub const EN: Strings = Strings {
     netease_login_success: "Signed in.",
     netease_logged_out: "Signed out of NetEase.",
     webview_open_failed: "Could not open the page",
+    err_login_required: "No download URL for this track: it is licensed or paid. Sign in to NetEase first; if it still fails, pick another version from the results.",
+    err_vip_only: "Only members can listen to this track, so there is no downloadable link. Try another version from the results.",
+    err_paid_version: "NetEase will not let free accounts download this version. The same song usually has several versions - pick one that works.",
+    err_no_link: "NetEase returned no download URL for this track (it may be delisted, or sign-in is required).",
+    err_trial_clip: "Only about {0} seconds arrived (the track is about {1} seconds). Without a membership NetEase sometimes offers a preview only - sign in again or pick another version.",
+    err_not_audio: "The bytes received are not audio (the link probably expired; retrying usually works).",
+    err_empty_file: "The downloaded audio is empty (the link may have expired; retrying usually works).",
+    err_incomplete_file: "The file is incomplete ({0} bytes received, the server declared {1}); retrying usually works.",
+    err_import_hash: "The local file for {0} does not match the pinned checksum, so it was rejected.",
+    err_python_not_importable: "The Python runtime is made of several components and cannot be imported as one file.",
     lyrics_quality: "Download quality",
     lyrics_quality_auto: "Auto",
     lyrics_quality_lossless: "Lossless",
@@ -1299,6 +1329,16 @@ pub const JA: Strings = Strings {
     netease_login_success: "ログインしました。",
     netease_logged_out: "NetEase からログアウトしました。",
     webview_open_failed: "ページを開けません",
+    err_login_required: "この曲はダウンロード URL を取得できません（権利または有料制限）。まず NetEase にログインして再試行し、それでも取得できない場合は検索結果の別バージョンを選んでください。",
+    err_vip_only: "この曲は会員のみ再生可能で、ダウンロード用 URL がありません。検索結果の別バージョンを試してください。",
+    err_paid_version: "このバージョンは無料アカウントではダウンロードできません。同じ曲に複数バージョンがあることが多いので、取得できるものを選んでください。",
+    err_no_link: "NetEase からこの曲のダウンロード URL が返されませんでした（配信終了か、ログインが必要な可能性があります）。",
+    err_trial_clip: "約 {0} 秒分しか取得できませんでした（この曲は約 {1} 秒）。非会員では試聴のみの場合があります。再ログインするか別のバージョンを選んでください。",
+    err_not_audio: "取得したデータは音声ではありません（リンク切れの可能性が高く、再試行で復旧することが多いです）。",
+    err_empty_file: "ダウンロードした音声は空です（リンク切れの可能性が高く、再試行で復旧することが多いです）。",
+    err_incomplete_file: "ファイルが不完全です（{0} バイト取得、サーバー宣言 {1} バイト）。再試行で復旧することが多いです。",
+    err_import_hash: "{0} のローカルファイルは固定チェックサムと一致しないため拒否しました。",
+    err_python_not_importable: "Python ランタイムは複数の構成要素で成り立っており、単一ファイルとしてインポートできません。",
     lyrics_quality: "ダウンロード音質",
     lyrics_quality_auto: "自動",
     lyrics_quality_lossless: "ロスレス",
@@ -1428,6 +1468,26 @@ pub const JA: Strings = Strings {
     clear: "クリア",
 };
 
+static LANGUAGE: core::sync::atomic::AtomicU8 = core::sync::atomic::AtomicU8::new(0);
+
+/// Jobs run off the UI thread and cannot read the config, so the language the
+/// user picked is published here for the messages they report.
+pub fn set_language(language: Language) {
+    LANGUAGE.store(language as u8, core::sync::atomic::Ordering::Relaxed);
+}
+
+pub fn language() -> Language {
+    match LANGUAGE.load(core::sync::atomic::Ordering::Relaxed) {
+        1 => Language::En,
+        2 => Language::Ja,
+        _ => Language::Zh,
+    }
+}
+
+pub fn t() -> &'static Strings {
+    strings(language())
+}
+
 pub fn strings(language: Language) -> &'static Strings {
     match language {
         Language::Zh => &ZH,
@@ -1455,5 +1515,30 @@ mod tests {
         assert_eq!(ZH.page_dashboard, "总览");
         assert_eq!(EN.page_dashboard, "Overview");
         assert_eq!(JA.page_dashboard, "概要");
+    }
+
+    #[test]
+    fn service_guidance_is_translated_and_keeps_its_placeholders() {
+        let tables = [&ZH, &EN, &JA];
+        assert_ne!(tables[0].err_login_required, tables[1].err_login_required);
+        assert_ne!(tables[1].err_vip_only, tables[2].err_vip_only);
+        for table in tables {
+            for marker in ["{0}", "{1}"] {
+                assert_eq!(
+                    table.err_trial_clip.matches(marker).count(),
+                    1,
+                    "{}",
+                    table.err_trial_clip
+                );
+                assert_eq!(
+                    table.err_incomplete_file.matches(marker).count(),
+                    1,
+                    "{}",
+                    table.err_incomplete_file
+                );
+            }
+            assert_eq!(table.err_import_hash.matches("{0}").count(), 1);
+            assert!(!table.err_python_not_importable.is_empty());
+        }
     }
 }
