@@ -15,6 +15,148 @@ use crate::services::jobs::JobContext;
 const MAX_ANSWERS: usize = 120;
 const MAX_RUNTIME: Duration = Duration::from_secs(15 * 60);
 
+/// Answers for LibreSVIP's interactive prompts. Field names follow the CLI's
+/// own option names so a saved config stays readable next to the tool's output.
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+#[serde(default)]
+pub struct Options {
+    pub volume_envelope: bool,
+    pub dynamics_envelope: bool,
+    pub pitch_curve: bool,
+    pub accompaniment: bool,
+    pub gender_envelope: bool,
+    pub breath_envelope: bool,
+    pub follow_pitch_mode: bool,
+    pub pitch_mode: String,
+    pub breath_note: String,
+    pub note_group: String,
+    pub transpose: bool,
+    pub scale: bool,
+    pub lyrics_pron: bool,
+    pub remove_short: bool,
+    pub replace_lyrics: bool,
+    pub semitones: i32,
+    pub scale_factor: String,
+    pub vsqx_version: String,
+    pub pretty_xml: bool,
+    pub language: String,
+}
+
+impl Default for Options {
+    /// Defaults are the CLI's own, not a guess: the panel starts where an
+    /// unattended run would end.
+    fn default() -> Self {
+        Self {
+            volume_envelope: true,
+            dynamics_envelope: true,
+            pitch_curve: true,
+            accompaniment: true,
+            gender_envelope: true,
+            breath_envelope: true,
+            follow_pitch_mode: true,
+            pitch_mode: "plain".to_string(),
+            breath_note: "convert".to_string(),
+            note_group: "split".to_string(),
+            transpose: false,
+            scale: false,
+            lyrics_pron: false,
+            remove_short: false,
+            replace_lyrics: false,
+            semitones: 0,
+            scale_factor: "1/1".to_string(),
+            vsqx_version: "4".to_string(),
+            pretty_xml: true,
+            language: "4".to_string(),
+        }
+    }
+}
+
+fn yes_no(value: bool) -> String {
+    if value {
+        "y".to_string()
+    } else {
+        "n".to_string()
+    }
+}
+
+/// Keyword in the prompt text → the answer this option implies. The prompt set
+/// changes with the input and output format, so anything unmatched keeps its
+/// bracketed default.
+type Rule = (&'static str, fn(&Options) -> String);
+
+const RULES: &[Rule] = &[
+    ("音量包络", |o| yes_no(o.volume_envelope)),
+    ("力度包络", |o| yes_no(o.dynamics_envelope)),
+    ("音高曲线", |o| yes_no(o.pitch_curve)),
+    ("伴奏轨", |o| yes_no(o.accompaniment)),
+    ("性别包络", |o| yes_no(o.gender_envelope)),
+    ("气声包络", |o| yes_no(o.breath_envelope)),
+    ("即时音高", |o| yes_no(o.follow_pitch_mode)),
+    ("音高信息输入模式", |o| o.pitch_mode.clone()),
+    ("换气音符", |o| o.breath_note.clone()),
+    ("音符组", |o| o.note_group.clone()),
+    ("音高变调", |o| yes_no(o.transpose)),
+    ("工程缩放", |o| yes_no(o.scale)),
+    ("歌词发音转换", |o| yes_no(o.lyrics_pron)),
+    ("无声间隙", |o| yes_no(o.remove_short)),
+    ("替换歌词", |o| yes_no(o.replace_lyrics)),
+    ("音高变化量", |o| o.semitones.to_string()),
+    ("缩放系数", |o| o.scale_factor.clone()),
+    ("VSQX文件版本", |o| o.vsqx_version.clone()),
+    ("美化XML", |o| yes_no(o.pretty_xml)),
+    ("默认语言", |o| o.language.clone()),
+];
+
+/// VSQX export crashes on parameter curves, so the four envelope imports are
+/// forced off; the caller reports what it dropped instead of failing silently.
+type VsqxEnvelope = (&'static str, fn(&Options) -> bool, fn(&mut Options));
+
+const VSQX_ENVELOPES: &[VsqxEnvelope] = &[
+    (
+        "导入音量包络",
+        |o| o.volume_envelope,
+        |o| o.volume_envelope = false,
+    ),
+    (
+        "导入力度包络",
+        |o| o.dynamics_envelope,
+        |o| o.dynamics_envelope = false,
+    ),
+    (
+        "导入性别包络",
+        |o| o.gender_envelope,
+        |o| o.gender_envelope = false,
+    ),
+    (
+        "导入气声包络",
+        |o| o.breath_envelope,
+        |o| o.breath_envelope = false,
+    ),
+];
+
+fn for_target(options: &Options, output: &Path) -> (Options, Vec<&'static str>) {
+    let mut effective = options.clone();
+    let mut dropped = Vec::new();
+    if output.extension().and_then(|ext| ext.to_str()) == Some("vsqx") {
+        for (name, enabled, disable) in VSQX_ENVELOPES {
+            if enabled(options) {
+                disable(&mut effective);
+                dropped.push(*name);
+            }
+        }
+    }
+    (effective, dropped)
+}
+
+fn answer_for(question: &str, default: &str, options: &Options) -> String {
+    RULES
+        .iter()
+        .find(|(keyword, _)| question.contains(keyword))
+        .map(|(_, answer)| answer(options))
+        .filter(|answer| !answer.is_empty())
+        .unwrap_or_else(|| default.to_string())
+}
+
 pub fn cli_path(root: &Path) -> Result<PathBuf, String> {
     let path = root.join("tools").join("libresvip").join(if cfg!(windows) {
         "libresvip-cli.exe"
@@ -32,12 +174,14 @@ pub fn convert_batch(
     inputs: &[PathBuf],
     format: &crate::formats::Format,
     output_dir: Option<&Path>,
+    options: &Options,
     ctx: &JobContext,
 ) -> Result<Vec<PathBuf>, String> {
     convert_batch_with(
         inputs,
         format,
         output_dir,
+        options,
         |fraction, message| ctx.progress(fraction, message),
         |line| ctx.log(line),
         || ctx.is_canceled(),
@@ -48,6 +192,7 @@ pub(crate) fn convert_batch_with<P, L, C>(
     inputs: &[PathBuf],
     format: &crate::formats::Format,
     output_dir: Option<&Path>,
+    options: &Options,
     mut progress: P,
     mut log: L,
     canceled: C,
@@ -69,6 +214,7 @@ where
         convert_with(
             input,
             &output,
+            options,
             |fraction, message| progress(fraction.map(|value| base + value * span), message),
             &mut log,
             &canceled,
@@ -103,6 +249,7 @@ pub(crate) fn unique_output(
 pub(crate) fn convert_with<P, L, C>(
     input: &Path,
     output: &Path,
+    options: &Options,
     mut progress: P,
     mut log: L,
     canceled: C,
@@ -124,6 +271,14 @@ where
     }
     if canceled() {
         return Err("已取消".to_string());
+    }
+
+    let (options, dropped) = for_target(options, output);
+    if !dropped.is_empty() {
+        log(format!(
+            "⚠ VSQX 导出会在带参数曲线时崩溃，已自动关闭：{}",
+            dropped.join("、")
+        ));
     }
 
     let root = crate::config::app_root();
@@ -185,12 +340,13 @@ where
         match receiver.recv_timeout(Duration::from_millis(200)) {
             Ok(Event::Stdout(bytes)) => {
                 stdout_buffer.extend_from_slice(&bytes);
-                while let Some((answer, consumed)) = extract_prompt(&stdout_buffer) {
+                while let Some((question, default, consumed)) = extract_prompt(&stdout_buffer) {
                     if answers >= MAX_ANSWERS {
                         terminate(&mut child);
                         return Err("LibreSVIP 选项过多，已中止".to_string());
                     }
                     answers += 1;
+                    let answer = answer_for(&question, &default, &options);
                     stdin
                         .write_all(answer.as_bytes())
                         .and_then(|_| stdin.write_all(b"\n"))
@@ -282,7 +438,15 @@ where
     std::fs::create_dir_all(&dir)
         .map_err(|error| format!("创建预览目录失败（{}）：{error}", dir.display()))?;
     let output = dir.join("preview.ufdata");
-    let result = convert_with(input, &output, &mut progress, &mut log, &canceled).and_then(|_| {
+    let result = convert_with(
+        input,
+        &output,
+        &Options::default(),
+        &mut progress,
+        &mut log,
+        &canceled,
+    )
+    .and_then(|_| {
         let text =
             std::fs::read_to_string(&output).map_err(|error| format!("读取预览失败：{error}"))?;
         parse_ufdata(&text)
@@ -364,14 +528,17 @@ fn terminate(child: &mut Child) {
     let _ = child.wait();
 }
 
-fn extract_prompt(buffer: &[u8]) -> Option<(String, usize)> {
+/// Split the leading `... (default): ` prompt out of the byte buffer and return
+/// the question text with its bracketed default.
+fn extract_prompt(buffer: &[u8]) -> Option<(String, String, usize)> {
     let colon = buffer.windows(2).position(|window| window == b"):")?;
     let open = buffer[..colon].iter().rposition(|byte| *byte == b'(')?;
     let default = std::str::from_utf8(&buffer[open + 1..colon]).ok()?.trim();
     if default.is_empty() {
         return None;
     }
-    Some((default.to_string(), colon + 2))
+    let question = String::from_utf8_lossy(&buffer[..colon + 2]).into_owned();
+    Some((question, default.to_string(), colon + 2))
 }
 
 #[cfg(test)]
@@ -380,13 +547,66 @@ mod tests {
 
     #[test]
     fn extracts_boolean_and_enum_defaults() {
-        let (answer, consumed) = extract_prompt(b"1. Import volume [y/n] (y): ").unwrap();
-        assert_eq!(answer, "y");
+        let (question, default, consumed) =
+            extract_prompt(b"1. Import volume [y/n] (y): ").unwrap();
+        assert_eq!(default, "y");
+        assert!(question.ends_with("(y):"));
         assert!(consumed <= 33);
-        let (answer, consumed) = extract_prompt(b"4. Encoding [UTF-8/GBK] (utf-8): ").unwrap();
-        assert_eq!(answer, "utf-8");
+        let (question, default, consumed) =
+            extract_prompt(b"4. Encoding [UTF-8/GBK] (utf-8): ").unwrap();
+        assert_eq!(default, "utf-8");
+        assert!(question.contains("Encoding"));
         assert!(consumed <= 45);
         assert!(extract_prompt(b"4. Encoding [UTF-8/GBK] ").is_none());
+    }
+
+    #[test]
+    fn matched_prompts_answer_from_options_and_rest_keep_defaults() {
+        let options = Options {
+            volume_envelope: false,
+            pitch_mode: "full".to_string(),
+            semitones: 3,
+            scale_factor: "2/1".to_string(),
+            language: "1".to_string(),
+            ..Options::default()
+        };
+        let (question, default, _) =
+            extract_prompt("1. 导入音量包络 [y/n] (y): ".as_bytes()).unwrap();
+        assert_eq!(answer_for(&question, &default, &options), "n");
+        let (question, default, _) =
+            extract_prompt("7. 音高信息输入模式 [full/vibrato/plain] (plain): ".as_bytes())
+                .unwrap();
+        assert_eq!(answer_for(&question, &default, &options), "full");
+        let (question, default, _) = extract_prompt("音高变化量 (0): ".as_bytes()).unwrap();
+        assert_eq!(answer_for(&question, &default, &options), "3");
+        let (question, default, _) = extract_prompt("缩放系数 [1/1/2] (1/1): ".as_bytes()).unwrap();
+        assert_eq!(answer_for(&question, &default, &options), "2/1");
+        let (question, default, _) = extract_prompt("默认语言 (4): ".as_bytes()).unwrap();
+        assert_eq!(answer_for(&question, &default, &options), "1");
+        // 歌词编码 is not an option here, so the bracketed default must survive
+        let (question, default, _) =
+            extract_prompt("4. 歌词编码 [utf-8/gbk] (utf-8): ".as_bytes()).unwrap();
+        assert_eq!(answer_for(&question, &default, &options), "utf-8");
+    }
+
+    #[test]
+    fn vsqx_targets_drop_only_the_envelopes_that_were_on() {
+        let options = Options {
+            volume_envelope: false,
+            ..Options::default()
+        };
+        let (effective, dropped) = for_target(&options, Path::new("out.vsqx"));
+        assert_eq!(
+            dropped,
+            vec!["导入力度包络", "导入性别包络", "导入气声包络"]
+        );
+        assert!(!effective.volume_envelope);
+        assert!(!effective.dynamics_envelope);
+        assert!(!effective.breath_envelope);
+
+        let (effective, dropped) = for_target(&options, Path::new("out.svp"));
+        assert!(dropped.is_empty());
+        assert_eq!(effective, options);
     }
 
     #[test]
@@ -416,6 +636,7 @@ mod tests {
         convert_with(
             &input,
             &output,
+            &Options::default(),
             |_, _| {},
             |line| println!("{line}"),
             || false,
@@ -444,6 +665,7 @@ mod tests {
             &[first, second],
             ufdata(),
             None,
+            &Options::default(),
             |_, _| {},
             |_| {},
             || false,
@@ -481,11 +703,52 @@ mod tests {
             move || cancel.load(Ordering::Relaxed)
         };
 
-        let error = convert_batch_with(&[first, second], ufdata(), None, |_, _| {}, log, canceled)
-            .expect_err("the second conversion should be canceled");
+        let error = convert_batch_with(
+            &[first, second],
+            ufdata(),
+            None,
+            &Options::default(),
+            |_, _| {},
+            log,
+            canceled,
+        )
+        .expect_err("the second conversion should be canceled");
         assert!(error.contains("已取消"), "{error}");
         assert!(dir.join("first.ufdata").is_file());
         assert!(!dir.join("second.ufdata").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    #[ignore = "requires tools/libresvip and answers with non-default options"]
+    fn non_default_options_are_accepted_by_the_cli() {
+        let dir = batch_dir("options");
+        let input = dir.join("test.mid");
+        let output = dir.join("test.ufdata");
+        std::fs::write(&input, minimal_midi()).unwrap();
+        let options = Options {
+            volume_envelope: false,
+            pitch_curve: false,
+            pitch_mode: "full".to_string(),
+            breath_note: "keep".to_string(),
+            note_group: "merge".to_string(),
+            transpose: true,
+            scale: true,
+            semitones: 2,
+            scale_factor: "2/1".to_string(),
+            language: "1".to_string(),
+            ..Options::default()
+        };
+        convert_with(
+            &input,
+            &output,
+            &options,
+            |_, _| {},
+            |line| println!("{line}"),
+            || false,
+        )
+        .unwrap();
+        assert!(output.is_file());
         let _ = std::fs::remove_dir_all(dir);
     }
 

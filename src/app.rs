@@ -38,6 +38,23 @@ enum ParsedSource {
     Yt(ytdlp::Info),
 }
 
+/// One y/n row of the conversion options panel.
+type ToggleRow = (
+    &'static str,
+    &'static str,
+    &'static str,
+    fn(&mut libresvip::Options, &str),
+);
+
+/// One enumerated row; the current value may be one the panel does not list.
+type ChoiceRow<'a> = (
+    &'static str,
+    &'static str,
+    &'a str,
+    &'static [&'static str],
+    fn(&mut libresvip::Options, &str),
+);
+
 const ALL_DEPENDENCIES: [DependencyId; 6] = [
     DependencyId::LibreSvip,
     DependencyId::Ffmpeg,
@@ -1019,6 +1036,72 @@ impl VSynthApp {
         cx.notify();
     }
 
+    fn set_convert_option(
+        &mut self,
+        apply: fn(&mut libresvip::Options, &str),
+        value: &str,
+        cx: &mut Context<Self>,
+    ) {
+        apply(&mut self.config.convert_options, value);
+        self.notice = self.config.save().err();
+        cx.notify();
+    }
+
+    fn reset_convert_options(&mut self, cx: &mut Context<Self>) {
+        self.config.convert_options = libresvip::Options::default();
+        self.notice = self.config.save().err();
+        cx.notify();
+    }
+
+    fn step_semitones(&mut self, delta: i32, cx: &mut Context<Self>) {
+        let options = &mut self.config.convert_options;
+        options.semitones = (options.semitones + delta).clamp(-24, 24);
+        self.notice = self.config.save().err();
+        cx.notify();
+    }
+
+    fn convert_option_row(
+        &self,
+        app: Entity<VSynthApp>,
+        id: &'static str,
+        label: &str,
+        current: &str,
+        values: &[&'static str],
+        apply: fn(&mut libresvip::Options, &str),
+    ) -> AnyElement {
+        let mut choices: Vec<String> = values.iter().map(|value| value.to_string()).collect();
+        if !choices.iter().any(|value| value == current) {
+            choices.insert(0, current.to_string());
+        }
+        let buttons = choices
+            .into_iter()
+            .map(|value| {
+                let selected = value == current;
+                let button_entity = app.clone();
+                let id = SharedString::from(format!("convert-option-{id}-{value}"));
+                let mut button = Button::new(id).label(value.clone()).compact();
+                button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button.on_click(move |_, _, cx| {
+                    let value = value.clone();
+                    button_entity.update(cx, |this, cx| {
+                        this.set_convert_option(apply, &value, cx);
+                    });
+                })
+            })
+            .collect::<Vec<_>>();
+        h_flex()
+            .gap_2()
+            .items_center()
+            .flex_wrap()
+            .child(div().text_sm().w(px(180.)).child(label.to_string()))
+            .children(buttons)
+            .into_any_element()
+    }
+
     fn start_convert(&mut self, cx: &mut Context<Self>) {
         if self.convert_inputs.is_empty()
             || self
@@ -1029,13 +1112,14 @@ impl VSynthApp {
         }
         let inputs = self.convert_inputs.clone();
         let format = *self.convert_format;
+        let options = self.config.convert_options.clone();
         let output_dir = {
             let value = self.output_input.read(cx).value().trim().to_string();
             (!value.is_empty()).then(|| PathBuf::from(value))
         };
         let s = self.text();
         let job = self.job_center.read(cx).start(s.page_convert, move |ctx| {
-            libresvip::convert_batch(&inputs, &format, output_dir.as_deref(), &ctx)
+            libresvip::convert_batch(&inputs, &format, output_dir.as_deref(), &options, &ctx)
         });
         self.convert_job = Some(job.id);
         self.convert_notice = None;
@@ -5188,6 +5272,184 @@ impl VSynthApp {
             })
             .collect::<Vec<_>>();
 
+        let options = &self.config.convert_options;
+        let yes_no = |value: bool| if value { "y" } else { "n" };
+        let toggles: &[ToggleRow] = &[
+            (
+                "volume",
+                "导入音量包络",
+                yes_no(options.volume_envelope),
+                |o, v| o.volume_envelope = v == "y",
+            ),
+            (
+                "dynamics",
+                "导入力度包络",
+                yes_no(options.dynamics_envelope),
+                |o, v| o.dynamics_envelope = v == "y",
+            ),
+            (
+                "pitch-curve",
+                "导入音高曲线",
+                yes_no(options.pitch_curve),
+                |o, v| o.pitch_curve = v == "y",
+            ),
+            (
+                "accompaniment",
+                "导入伴奏轨",
+                yes_no(options.accompaniment),
+                |o, v| o.accompaniment = v == "y",
+            ),
+            (
+                "gender",
+                "导入性别包络",
+                yes_no(options.gender_envelope),
+                |o, v| o.gender_envelope = v == "y",
+            ),
+            (
+                "breath-envelope",
+                "导入气声包络",
+                yes_no(options.breath_envelope),
+                |o, v| o.breath_envelope = v == "y",
+            ),
+            (
+                "follow-pitch",
+                "遵循即时音高模式设置",
+                yes_no(options.follow_pitch_mode),
+                |o, v| o.follow_pitch_mode = v == "y",
+            ),
+            (
+                "transpose",
+                "音高变调",
+                yes_no(options.transpose),
+                |o, v| o.transpose = v == "y",
+            ),
+            ("scale", "工程缩放", yes_no(options.scale), |o, v| {
+                o.scale = v == "y"
+            }),
+            (
+                "lyrics-pron",
+                "歌词发音转换",
+                yes_no(options.lyrics_pron),
+                |o, v| o.lyrics_pron = v == "y",
+            ),
+            (
+                "remove-short",
+                "移除短的无声间隙",
+                yes_no(options.remove_short),
+                |o, v| o.remove_short = v == "y",
+            ),
+            (
+                "replace-lyrics",
+                "替换歌词",
+                yes_no(options.replace_lyrics),
+                |o, v| o.replace_lyrics = v == "y",
+            ),
+            (
+                "pretty-xml",
+                "美化XML",
+                yes_no(options.pretty_xml),
+                |o, v| o.pretty_xml = v == "y",
+            ),
+        ];
+        let choices: &[ChoiceRow<'_>] = &[
+            (
+                "pitch-mode",
+                "音高信息输入模式",
+                options.pitch_mode.as_str(),
+                &["full", "vibrato", "plain"],
+                |o, v| o.pitch_mode = v.to_string(),
+            ),
+            (
+                "breath-note",
+                "换气音符处理方式",
+                options.breath_note.as_str(),
+                &["ignore", "keep", "convert"],
+                |o, v| o.breath_note = v.to_string(),
+            ),
+            (
+                "note-group",
+                "音符组导入方式",
+                options.note_group.as_str(),
+                &["split", "merge"],
+                |o, v| o.note_group = v.to_string(),
+            ),
+            (
+                "scale-factor",
+                "缩放系数",
+                options.scale_factor.as_str(),
+                &["1/1", "2/1", "1/2", "4/3", "3/4"],
+                |o, v| o.scale_factor = v.to_string(),
+            ),
+            (
+                "vsqx-version",
+                "VSQX文件版本",
+                options.vsqx_version.as_str(),
+                &["3", "4"],
+                |o, v| o.vsqx_version = v.to_string(),
+            ),
+            (
+                "language",
+                "默认语言",
+                options.language.as_str(),
+                &["0", "1", "2", "3", "4"],
+                |o, v| o.language = v.to_string(),
+            ),
+        ];
+        let mut option_rows = Vec::new();
+        for (id, label, current, apply) in toggles {
+            option_rows.push(self.convert_option_row(
+                entity.clone(),
+                id,
+                label,
+                current,
+                &["y", "n"],
+                *apply,
+            ));
+        }
+        for (id, label, current, values, apply) in choices {
+            option_rows.push(self.convert_option_row(
+                entity.clone(),
+                id,
+                label,
+                current,
+                values,
+                *apply,
+            ));
+        }
+        let minus_entity = entity.clone();
+        let plus_entity = entity.clone();
+        let semitones_row = h_flex()
+            .gap_2()
+            .items_center()
+            .flex_wrap()
+            .child(div().text_sm().w(px(180.)).child("音高变化量"))
+            .child(
+                Button::new("convert-semitones-minus")
+                    .label("−")
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        minus_entity.update(cx, |this, cx| this.step_semitones(-1, cx));
+                    }),
+            )
+            .child(div().text_sm().child(format!("{}", options.semitones)))
+            .child(
+                Button::new("convert-semitones-plus")
+                    .label("+")
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        plus_entity.update(cx, |this, cx| this.step_semitones(1, cx));
+                    }),
+            );
+        option_rows.push(semitones_row.into_any_element());
+        let reset_entity = entity.clone();
+        let reset_button = Button::new("convert-options-reset")
+            .label(s.convert_reset)
+            .ghost()
+            .compact()
+            .on_click(move |_, _, cx| {
+                reset_entity.update(cx, |this, cx| this.reset_convert_options(cx));
+            });
+
         let output_value = self.output_input.read(cx).value().trim().to_string();
         let output_detail = if output_value.is_empty() {
             s.convert_same_dir.to_string()
@@ -5325,6 +5587,24 @@ impl VSynthApp {
                                     .text_xs()
                                     .text_color(muted)
                                     .child(s.convert_defaults_hint),
+                            ),
+                    ),
+            )
+            .child(
+                GroupBox::new()
+                    .id("convert-options")
+                    .outline()
+                    .title(s.convert_options)
+                    .child(
+                        v_flex()
+                            .gap_2()
+                            .children(option_rows)
+                            .child(reset_button)
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.convert_options_hint),
                             ),
                     ),
             )

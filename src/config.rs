@@ -44,6 +44,8 @@ pub struct Config {
     #[serde(default)]
     pub ext_dir: String,
     #[serde(default)]
+    pub convert_options: crate::services::libresvip::Options,
+    #[serde(default)]
     pub seen_announcements: Vec<String>,
 }
 
