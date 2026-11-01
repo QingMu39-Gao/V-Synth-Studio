@@ -213,6 +213,7 @@ pub struct VSynthApp {
     announce_loading: bool,
     update_checking: bool,
     update_info: Option<UpdateInfo>,
+    update_prompt: Option<UpdateInfo>,
     update_error: Option<String>,
     update_notice: Option<String>,
     update_job: Option<u64>,
@@ -324,6 +325,7 @@ impl VSynthApp {
             announce_loading: false,
             update_checking: false,
             update_info: None,
+            update_prompt: None,
             update_error: None,
             update_notice: None,
             update_job: None,
@@ -2906,7 +2908,7 @@ impl VSynthApp {
             .into_any_element()
     }
 
-    fn check_updates(&mut self, cx: &mut Context<Self>) {
+    pub fn check_updates(&mut self, at_startup: bool, cx: &mut Context<Self>) {
         if self.update_checking {
             return;
         }
@@ -2925,7 +2927,15 @@ impl VSynthApp {
             let _ = this.update(cx, |this, cx| {
                 this.update_checking = false;
                 match result {
-                    Ok(Ok(Some(info))) => this.update_info = Some(info),
+                    Ok(Ok(Some(info))) => {
+                        // A startup check stays silent for the one version the
+                        // user dismissed; a forced release ignores that choice.
+                        let silenced = !info.force && this.config.update_ignored(&info.version);
+                        if at_startup && !silenced {
+                            this.update_prompt = Some(info.clone());
+                        }
+                        this.update_info = Some(info);
+                    }
                     Ok(Ok(None)) => {
                         this.update_notice = Some(this.text().up_to_date.to_string());
                     }
@@ -2938,6 +2948,95 @@ impl VSynthApp {
             });
         })
         .detach();
+    }
+
+    fn dismiss_update_prompt(&mut self, cx: &mut Context<Self>) {
+        self.update_prompt = None;
+        cx.notify();
+    }
+
+    fn ignore_update_version(&mut self, cx: &mut Context<Self>) {
+        let Some(info) = self.update_prompt.clone() else {
+            return;
+        };
+        if info.force {
+            return;
+        }
+        self.config.ignored_update = Some(info.version);
+        self.notice = self.config.save().err();
+        self.update_prompt = None;
+        cx.notify();
+    }
+
+    fn render_update_prompt(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let info = self.update_prompt.as_ref()?;
+        let theme = cx.theme();
+        let s = self.text();
+        let download_entity = cx.entity();
+        let ignore_entity = cx.entity();
+        let later_entity = cx.entity();
+        let changelog = if info.changelog.trim().is_empty() {
+            s.update_no_changelog.to_string()
+        } else {
+            info.changelog.clone()
+        };
+        let mut rows = v_flex()
+            .gap_3()
+            .child(div().font_weight(FontWeight::BOLD).child(format!(
+                "{} → {}",
+                env!("CARGO_PKG_VERSION"),
+                info.version
+            )))
+            .child(div().text_sm().child(changelog));
+        if info.force {
+            rows = rows.child(
+                div()
+                    .text_sm()
+                    .text_color(theme.danger)
+                    .child(s.update_required),
+            );
+        }
+        let download_button = Button::new("update-prompt-download")
+            .label(s.download_update)
+            .primary()
+            .on_click(move |_, _, cx| {
+                download_entity.update(cx, |this, cx| {
+                    this.dismiss_update_prompt(cx);
+                    this.download_update(cx);
+                });
+            });
+        let mut buttons = h_flex().gap_2().child(download_button);
+        if !info.force {
+            let ignore_button = Button::new("update-prompt-ignore")
+                .label(s.update_ignore)
+                .on_click(move |_, _, cx| {
+                    ignore_entity.update(cx, |this, cx| this.ignore_update_version(cx));
+                });
+            let later_button = Button::new("update-prompt-later")
+                .label(s.update_later)
+                .on_click(move |_, _, cx| {
+                    later_entity.update(cx, |this, cx| this.dismiss_update_prompt(cx));
+                });
+            buttons = buttons.child(ignore_button).child(later_button);
+        }
+        let card = GroupBox::new()
+            .id("update-prompt")
+            .title(s.update_available)
+            .child(rows.child(buttons));
+
+        Some(
+            div()
+                .absolute()
+                .top_0()
+                .left_0()
+                .size_full()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(rgba(0x60_00_00_00))
+                .child(div().w(px(520.)).child(card))
+                .into_any_element(),
+        )
     }
 
     fn download_update(&mut self, cx: &mut Context<Self>) {
@@ -3042,7 +3141,7 @@ impl VSynthApp {
                 .compact()
                 .disabled(checking)
                 .on_click(move |_, _, cx| {
-                    check_entity.update(cx, |this, cx| this.check_updates(cx));
+                    check_entity.update(cx, |this, cx| this.check_updates(false, cx));
                 }),
         );
 
@@ -6264,6 +6363,7 @@ impl Render for VSynthApp {
                     .child(self.render_sidebar(cx))
                     .child(self.render_main(cx)),
             )
+            .children(self.render_update_prompt(cx))
     }
 }
 
