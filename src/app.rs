@@ -26,6 +26,7 @@ use crate::services::libresvip::{self, ProjectInfo};
 use crate::services::lyrics::{self, SearchResult, SongDetail};
 use crate::services::media_server::MediaServer;
 use crate::services::midi::{self, Device as MidiDevice, Options as MidiOptions};
+use crate::services::playback;
 use crate::services::svsep::{self, Stems};
 use crate::services::update::{self, UpdateInfo};
 use crate::services::ytdlp;
@@ -152,6 +153,8 @@ pub struct VSynthApp {
     audio_info: Option<AudioInfo>,
     audio_peaks: Vec<f32>,
     audio_view: (f32, f32),
+    audio_playing: bool,
+    audio_playhead: Option<f32>,
     audio_selection: Option<(f32, f32)>,
     audio_drag: Option<f32>,
     audio_load_job: Option<u64>,
@@ -261,6 +264,8 @@ impl VSynthApp {
             audio_info: None,
             audio_peaks: Vec::new(),
             audio_view: (0.0, 1.0),
+            audio_playing: false,
+            audio_playhead: None,
             audio_selection: None,
             audio_drag: None,
             audio_load_job: None,
@@ -1160,6 +1165,70 @@ impl VSynthApp {
         }
     }
 
+    fn toggle_audio_playback(&mut self, cx: &mut Context<Self>) {
+        if self.audio_playing {
+            self.stop_audio_playback(cx);
+            return;
+        }
+        let Some(path) = self.audio_input.clone() else {
+            cx.notify();
+            return;
+        };
+        if let Err(error) = playback::open(&path).and_then(|()| playback::play()) {
+            let _ = playback::close();
+            self.audio_notice = Some(error);
+            cx.notify();
+            return;
+        }
+        let duration = self
+            .audio_info
+            .as_ref()
+            .map(|info| info.duration)
+            .unwrap_or(0.0);
+        self.audio_playing = true;
+        self.audio_playhead = Some(0.0);
+        self.audio_notice = None;
+        let weak = cx.entity().downgrade();
+        cx.spawn(async move |_, cx| {
+            loop {
+                let _ = cx
+                    .background_executor()
+                    .timer(std::time::Duration::from_millis(120))
+                    .await;
+                let Some(entity) = weak.upgrade() else { return };
+                let position = playback::position_ms();
+                let playing = playback::playing();
+                entity.update(cx, |this, cx| {
+                    match (playing, position) {
+                        (true, Some(ms)) if duration > 0.0 => {
+                            this.audio_playhead = Some((ms as f64 / 1000.0 / duration) as f32);
+                        }
+                        (true, _) => {}
+                        _ => {
+                            this.audio_playing = false;
+                            this.audio_playhead = None;
+                            let _ = playback::close();
+                        }
+                    }
+                    cx.notify();
+                });
+                if !playing {
+                    return;
+                }
+            }
+        })
+        .detach();
+        cx.notify();
+    }
+
+    fn stop_audio_playback(&mut self, cx: &mut Context<Self>) {
+        let _ = playback::stop();
+        let _ = playback::close();
+        self.audio_playing = false;
+        self.audio_playhead = None;
+        cx.notify();
+    }
+
     fn add_audio_file(&mut self, cx: &mut Context<Self>) {
         const FILTER: &[&str] = &[
             "wav", "mp3", "flac", "m4a", "ogg", "aac", "opus", "mp4", "mkv", "mov", "webm", "avi",
@@ -1184,6 +1253,10 @@ impl VSynthApp {
         self.audio_info = None;
         self.audio_peaks.clear();
         self.audio_view = (0.0, 1.0);
+        let _ = playback::stop();
+        let _ = playback::close();
+        self.audio_playing = false;
+        self.audio_playhead = None;
         self.audio_selection = None;
         self.audio_drag = None;
         self.audio_notice = None;
@@ -4804,6 +4877,8 @@ impl VSynthApp {
         let peaks = self.audio_peaks.clone();
         let view = self.audio_view;
         let selection = self.audio_selection;
+        let playhead = self.audio_playhead;
+        let playhead_color = theme.danger;
         let bounds_slot = self.waveform_bounds.clone();
         let waveform = canvas(
             move |bounds, _, _| {
@@ -4815,10 +4890,12 @@ impl VSynthApp {
                     &peaks,
                     view,
                     selection,
+                    playhead,
                     WaveformColors {
                         primary,
                         background,
                         border,
+                        playhead: playhead_color,
                     },
                     window,
                 );
@@ -5162,7 +5239,30 @@ impl VSynthApp {
                         v_flex()
                             .gap_2()
                             .child(waveform_box)
-                            .child(h_flex().gap_2().flex_wrap().children(zoom_buttons))
+                            .child(
+                                h_flex()
+                                    .gap_2()
+                                    .flex_wrap()
+                                    .child(
+                                        Button::new("audio-play")
+                                            .label(if self.audio_playing {
+                                                s.audio_stop
+                                            } else {
+                                                s.audio_play
+                                            })
+                                            .primary()
+                                            .disabled(self.audio_input.is_none())
+                                            .on_click({
+                                                let play_entity = entity.clone();
+                                                move |_, _, cx| {
+                                                    play_entity.update(cx, |this, cx| {
+                                                        this.toggle_audio_playback(cx);
+                                                    });
+                                                }
+                                            }),
+                                    )
+                                    .children(zoom_buttons),
+                            )
                             .child(
                                 div()
                                     .text_xs()
@@ -6474,6 +6574,7 @@ struct WaveformColors {
     primary: Hsla,
     background: Hsla,
     border: Hsla,
+    playhead: Hsla,
 }
 
 fn paint_waveform(
@@ -6481,6 +6582,7 @@ fn paint_waveform(
     peaks: &[f32],
     view: (f32, f32),
     selection: Option<(f32, f32)>,
+    playhead: Option<f32>,
     colors: WaveformColors,
     window: &mut Window,
 ) {
@@ -6557,6 +6659,26 @@ fn paint_waveform(
                     Default::default(),
                 ));
             }
+        }
+    }
+    if let Some(position) = playhead {
+        let on_screen = to_view(view, position);
+        if (0.0..=1.0).contains(&on_screen) {
+            let line = Bounds {
+                origin: point(
+                    px(bounds.origin.x.as_f32() + on_screen * width),
+                    bounds.origin.y,
+                ),
+                size: size(px(1.), bounds.size.height),
+            };
+            window.paint_quad(quad(
+                line,
+                px(0.),
+                colors.playhead,
+                px(0.),
+                transparent_black(),
+                Default::default(),
+            ));
         }
     }
 }
