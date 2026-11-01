@@ -4915,7 +4915,7 @@ impl VSynthApp {
         let move_bounds = self.waveform_bounds.clone();
         let up_entity = entity.clone();
         let waveform_box = div()
-            .id("audio-waveform")
+            .id("audio-waveform-canvas")
             .h(px(168.))
             .w_full()
             .rounded(theme.radius)
