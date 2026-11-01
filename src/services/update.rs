@@ -10,7 +10,8 @@ use serde_json::Value;
 use crate::services::download;
 use crate::services::jobs::JobContext;
 
-const MANIFEST_URL: &str = "https://admin1.qingmu39.top/api/vss-gpui-version.json";
+const MANIFEST_URL: &str =
+    "https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest/download/vss-gpui-version.json";
 const MAX_BYTES: u64 = 1024 * 1024;
 
 #[derive(Debug, Clone)]

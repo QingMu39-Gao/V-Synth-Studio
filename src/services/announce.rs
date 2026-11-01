@@ -1,4 +1,4 @@
-//! Product announcements from the self-hosted JSON endpoint.
+//! Product announcements from a release asset.
 
 use std::collections::HashSet;
 use std::io::Read;
@@ -6,7 +6,8 @@ use std::time::Duration;
 
 use serde_json::Value;
 
-const URL: &str = "https://admin1.qingmu39.top/api/announcement.json";
+const URL: &str =
+    "https://github.com/QingMu39-Gao/V-Synth-Studio/releases/latest/download/announcement.json";
 const MAX_ITEMS: usize = 50;
 const MAX_BYTES: u64 = 1024 * 1024;
 const BODY_LIMIT: usize = 4000;

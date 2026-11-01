@@ -42,18 +42,20 @@ and `/D=<directory>` for scripted checks.
 
 ## Updates
 
-Installed builds check the GPUI-only manifest at
-`https://admin1.qingmu39.top/api/vss-gpui-version.json` from Settings. It is a
-separate channel from the old Tauri releases and has this shape:
+Installed builds check the manifest at
+`.../releases/latest/download/vss-gpui-version.json` from Settings; so does the
+announcement panel. The manifest path stays version-free because it is a release
+*asset name*, while the package URL inside it is pinned to the tag so one
+release's bytes and SHA-256 can never drift onto another:
 
 ```json
 {
-  "version": "0.1.1",
+  "version": "1.6.0",
   "published_at": "2026-10-29T00:00:00Z",
   "changelog": "…",
   "downloads": {
     "windows": {
-      "url": "https://…/V-Synth-Studio-0.1.1-windows-x64-setup.exe",
+      "url": "https://github.com/QingMu39-Gao/V-Synth-Studio/releases/download/v1.6.0/V-Synth-Studio-1.6.0-windows-x64-setup.exe",
       "size": 6278154,
       "sha256": "…"
     }
@@ -65,11 +67,15 @@ After bumping `Cargo.toml` and building the setup, generate the manifest and
 upload both files:
 
 ```powershell
-scripts/make-manifest.ps1 -Url "https://…/setup.exe" -Changelog "…"
+scripts/make-manifest.ps1 -Url "https://…/V-Synth-Studio-1.6.0-windows-x64-setup.exe" -Changelog "…"
 ```
 
 Updates are installed only for builds that contain `Uninstall.exe`; portable
 builds open the downloaded file's folder instead. HTTPS and SHA-256 are required.
+
+The retired Tauri line read `admin1.qingmu39.top`, which no longer exists, so
+installs below 1.6.0 have to be replaced by hand once; from there on this channel
+carries them.
 
 ## Layout
 
