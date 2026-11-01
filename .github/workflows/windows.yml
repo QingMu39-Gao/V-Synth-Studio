@@ -3,6 +3,7 @@ name: windows
 on:
   push:
     branches: [master]
+    tags: ['v*']
   pull_request:
   workflow_dispatch:
 
@@ -34,3 +35,61 @@ jobs:
             dist/*.zip
             dist/*-setup.exe
           if-no-files-found: error
+
+  release:
+    needs: build
+    # Only a version tag publishes; a branch push or pull request stops at build.
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # The changelog is the annotated tag's message, so the tag object has
+          # to be present.
+          fetch-depth: 0
+      - name: Read the version and check it matches the tag
+        shell: pwsh
+        run: |
+          $version = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"').Matches[0].Groups[1].Value
+          if ("v$version" -ne "${{ github.ref_name }}") {
+            throw "tag ${{ github.ref_name }} does not match Cargo.toml version $version"
+          }
+          "VSS_VERSION=$version" | Out-File -Append -FilePath $env:GITHUB_ENV -Encoding utf8
+      - name: Read the tag message as the changelog
+        shell: pwsh
+        run: |
+          $notes = git tag -l --format='%(contents)' "${{ github.ref_name }}"
+          if (-not $notes.Trim()) {
+            throw "tag ${{ github.ref_name }} carries no release notes; annotate it with the changelog before pushing"
+          }
+          Set-Content -Path release-notes.txt -Value $notes -Encoding utf8
+      - name: Download the packages
+        uses: actions/download-artifact@v4
+        with:
+          name: v-synth-studio-windows-x64
+          path: dist
+      - name: Build the manifest for this tag
+        shell: pwsh
+        run: |
+          ./scripts/make-manifest.ps1 `
+            -Url "https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/V-Synth-Studio-$env:VSS_VERSION-windows-x64-setup.exe" `
+            -Changelog (Get-Content release-notes.txt -Raw)
+      - name: Publish the release
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = "${{ github.ref_name }}"
+          $assets = @(
+            "dist/V-Synth-Studio-$env:VSS_VERSION-windows-x64-setup.exe",
+            "dist/V-Synth-Studio-$env:VSS_VERSION-windows-x64.zip",
+            "dist/vss-gpui-version.json"
+          )
+          if (gh release view $tag 2>$null) {
+            gh release edit $tag --notes-file release-notes.txt
+            gh release upload $tag @assets --clobber
+          } else {
+            gh release create $tag @assets --title "V-Synth Studio $env:VSS_VERSION" --notes-file release-notes.txt
+          }

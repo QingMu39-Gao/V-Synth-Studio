@@ -63,8 +63,21 @@ release's bytes and SHA-256 can never drift onto another:
 }
 ```
 
-After bumping `Cargo.toml` and building the setup, generate the manifest and
-upload both files:
+Releases are published by CI from a version tag; nothing is uploaded by hand.
+Bump `Cargo.toml`, commit, then annotate the tag with the text users will read:
+
+```powershell
+git tag -a v1.6.0 -m "界面与底层重写完成。" -m "工具与模型改为按需下载。"
+git push origin master v1.6.0
+```
+
+The workflow reruns fmt/clippy/test, builds the setup and the portable ZIP, and
+stops before publishing when the tag and `Cargo.toml` disagree or the tag carries
+no message — both would otherwise ship a manifest whose version or notes are
+wrong, and the client only rejects the version, never the notes. Re-running the
+same tag edits the release notes and replaces the assets instead of failing.
+
+`scripts/make-manifest.ps1` stays usable by hand for a local check:
 
 ```powershell
 scripts/make-manifest.ps1 -Url "https://…/V-Synth-Studio-1.6.0-windows-x64-setup.exe" -Changelog "…"
