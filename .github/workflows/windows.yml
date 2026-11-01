@@ -1,0 +1,36 @@
+name: windows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - name: Check formatting
+        run: cargo fmt --all --check
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+      - name: Test
+        run: cargo test
+      - name: Install NSIS
+        run: choco install nsis -y --no-progress
+      - name: Build portable ZIP and installer
+        shell: pwsh
+        run: ./scripts/build-installer.ps1
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: v-synth-studio-windows-x64
+          path: |
+            dist/*.zip
+            dist/*-setup.exe
+          if-no-files-found: error

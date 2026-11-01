@@ -1,0 +1,12 @@
+/target
+/dist/
+/.tools/
+.idea
+
+/data/config.json
+/data/cache/
+/data/logs/
+/data/python/
+/data/svsep/
+/data/midi/
+/tools/
