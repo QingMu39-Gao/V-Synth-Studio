@@ -280,16 +280,27 @@ where
         let end = (start + chunk - 1).min(total - 1);
         let expected = end - start + 1;
         let part = dest.with_extension(format!("part{index}"));
-        let _ = fs::remove_file(&part);
+        // A part left behind by an earlier run is kept and continued: the whole
+        // file is hashed after merging, so a stale or wrong part can only ever
+        // fail that check, and then every part is deleted.
+        let have = fs::metadata(&part)
+            .map(|meta| meta.len().min(expected))
+            .unwrap_or(0);
+        if have == expected {
+            downloaded.fetch_add(expected, Ordering::Relaxed);
+            part_files.push(part);
+            continue;
+        }
         part_files.push(part.clone());
         let url = url.to_string();
         let downloaded = downloaded.clone();
         let abort = abort.clone();
         handles.push(std::thread::spawn(move || -> Result<(), String> {
+            let from = start + have;
             let response = agent()
                 .get(&url)
                 .header("User-Agent", USER_AGENT)
-                .header("Range", format!("bytes={start}-{end}"))
+                .header("Range", format!("bytes={from}-{end}"))
                 .call()
                 .map_err(|error| error.to_string())?;
             if response.status().as_u16() != 206 {
@@ -298,10 +309,17 @@ where
                     response.status()
                 ));
             }
-            let mut file = File::create(&part).map_err(|error| error.to_string())?;
+            let mut file = if have > 0 {
+                fs::OpenOptions::new()
+                    .append(true)
+                    .open(&part)
+                    .map_err(|error| error.to_string())?
+            } else {
+                File::create(&part).map_err(|error| error.to_string())?
+            };
             let mut reader = response.into_body().into_reader();
             let mut buffer = [0u8; 256 * 1024];
-            let mut written = 0u64;
+            let mut written = have;
             loop {
                 if abort.load(Ordering::Relaxed) {
                     return Err("已取消".to_string());
@@ -331,9 +349,6 @@ where
             for handle in handles {
                 let _ = handle.join();
             }
-            for part in part_files {
-                let _ = fs::remove_file(part);
-            }
             return Err("已取消".to_string());
         }
         let done = downloaded.load(Ordering::Relaxed).min(total);
@@ -360,9 +375,6 @@ where
         }
     }
     if let Some(error) = failure {
-        for part in part_files {
-            let _ = fs::remove_file(part);
-        }
         return Err(format!("下载 {label} 失败：{error}"));
     }
     let part = dest.with_extension("part");
@@ -370,13 +382,20 @@ where
     for path in &part_files {
         let mut input = File::open(path).map_err(|error| error.to_string())?;
         std::io::copy(&mut input, &mut output).map_err(|error| error.to_string())?;
-        let _ = fs::remove_file(path);
     }
     output.flush().map_err(|error| error.to_string())?;
     drop(output);
     if !verify_sha256(&part, sha256)? {
+        // The merged file is only as good as its parts, so a mismatch throws all
+        // of them away rather than letting the next run resume onto bad data.
         let _ = fs::remove_file(&part);
+        for path in &part_files {
+            let _ = fs::remove_file(path);
+        }
         return Err(format!("{label} 校验失败"));
+    }
+    for path in &part_files {
+        let _ = fs::remove_file(path);
     }
     fs::rename(&part, dest).map_err(|error| format!("保存 {label} 失败：{error}"))?;
     Ok(true)
@@ -475,6 +494,118 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+
+    #[test]
+    fn resumes_existing_range_parts() {
+        use crate::services::jobs::JobOutcome;
+        use std::sync::Mutex;
+
+        let size = (PARALLEL_MIN + 1024 * 1024) as usize;
+        let data: Vec<u8> = (0..size).map(|index| (index * 31 % 251) as u8).collect();
+        let sha = Sha256::digest(&data)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        let total = size as u64;
+        let chunk = total.div_ceil(PARALLEL_PARTS as u64);
+
+        let directory =
+            std::env::temp_dir().join(format!("vss-resume-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let dest = directory.join("model.bin");
+
+        // Half of every part is already on disk, as after an interrupted run.
+        let mut seeded = 0u64;
+        for index in 0..PARALLEL_PARTS {
+            let start = index as u64 * chunk;
+            if start >= total {
+                break;
+            }
+            let end = (start + chunk - 1).min(total - 1);
+            let expected = end - start + 1;
+            let have = expected / 2;
+            let part = dest.with_extension(format!("part{index}"));
+            fs::write(&part, &data[start as usize..(start + have) as usize]).unwrap();
+            seeded += have;
+        }
+        assert!(seeded > 0);
+
+        let listener = TcpListener::bind("127.0.0.1:0").unwrap();
+        let address = listener.local_addr().unwrap();
+        let ranges = Arc::new(Mutex::new(Vec::new()));
+        let server_ranges = ranges.clone();
+        let server_data = data.clone();
+        std::thread::spawn(move || {
+            for stream in listener.incoming().take(PARALLEL_PARTS + 1) {
+                let Ok(mut stream) = stream else { continue };
+                let mut request = Vec::new();
+                let mut buffer = [0u8; 2048];
+                while let Ok(read) = stream.read(&mut buffer) {
+                    if read == 0 {
+                        break;
+                    }
+                    request.extend_from_slice(&buffer[..read]);
+                    if request.windows(4).any(|window| window == b"\r\n\r\n") {
+                        break;
+                    }
+                }
+                let text = String::from_utf8_lossy(&request).to_ascii_lowercase();
+                let Some(line) = text.lines().find(|line| line.starts_with("range:")) else {
+                    continue;
+                };
+                let spec = line.trim_start_matches("range: bytes=").trim();
+                let (start, end) = spec.split_once('-').expect("range pair");
+                let (start, end) = (
+                    start.parse::<usize>().expect("start"),
+                    end.parse::<usize>().expect("end"),
+                );
+                server_ranges.lock().unwrap().push((start, end));
+                let body = &server_data[start..=end];
+                let header = format!(
+                    "HTTP/1.1 206 Partial Content\r\nContent-Length: {}\r\nContent-Range: bytes {start}-{end}/{}\r\nAccept-Ranges: bytes\r\nConnection: close\r\n\r\n",
+                    body.len(),
+                    server_data.len()
+                );
+                let _ = stream.write_all(header.as_bytes());
+                let _ = stream.write_all(body);
+            }
+        });
+
+        let urls = vec![format!("http://{address}/model.bin")];
+        let job_dest = dest.clone();
+        let job_sha = sha.clone();
+        let (jobs, _events) = crate::services::jobs::Jobs::new();
+        let job = jobs.start("resume", move |ctx| {
+            fetch_all(&urls, &job_dest, &job_sha, total, 0.0, 1.0, &ctx, "test")
+        });
+        assert!(matches!(
+            job.result.recv_blocking().unwrap(),
+            JobOutcome::Done(())
+        ));
+
+        let requested = ranges.lock().unwrap().clone();
+        // One probe plus one request per part; every part request must start
+        // past its range head, otherwise nothing was resumed. Threads race, so
+        // compare the sorted set of offsets rather than arrival order.
+        assert_eq!(requested.len(), PARALLEL_PARTS + 1);
+        assert_eq!(requested[0], (0, 0));
+        let mut starts = requested
+            .iter()
+            .skip(1)
+            .map(|(start, _)| *start as u64)
+            .collect::<Vec<_>>();
+        starts.sort_unstable();
+        let expected = (0..PARALLEL_PARTS as u64)
+            .map(|index| index * chunk + chunk / 2)
+            .collect::<Vec<_>>();
+        assert_eq!(starts, expected);
+        assert_eq!(fs::read(&dest).unwrap(), data);
+        for index in 0..PARALLEL_PARTS {
+            assert!(!dest.with_extension(format!("part{index}")).exists());
+        }
+        let _ = fs::remove_dir_all(directory);
+    }
 
     #[test]
     fn lists_primary_then_mirrors_then_proxy_pair() {
