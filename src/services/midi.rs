@@ -439,6 +439,10 @@ pub fn model_dir() -> PathBuf {
     base_dir().join("models")
 }
 
+pub fn cache_dir() -> PathBuf {
+    base_dir().join("cache")
+}
+
 fn backend_path() -> PathBuf {
     base_dir().join("midi_backend.py")
 }

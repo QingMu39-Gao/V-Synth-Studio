@@ -1,5 +1,6 @@
 //! Unified view of the tools, runtime and models that are downloaded on demand.
 
+use std::fs;
 use std::path::{Path, PathBuf};
 
 use crate::services::artifacts;
@@ -186,6 +187,55 @@ fn extension_filter(extension: &str) -> &'static [&'static str] {
     }
 }
 
+/// Everything 删除 takes away: the installed files and the cached archive, so a
+/// later install downloads again instead of silently reusing a stale package.
+pub fn paths(id: Id) -> Vec<PathBuf> {
+    let root = crate::config::app_root();
+    match id {
+        Id::Python => vec![python::base_dir()],
+        Id::UvrModel => vec![svsep::model_file()],
+        Id::GameModel => vec![midi::model_dir(), midi::cache_dir()],
+        Id::LibreSvip | Id::Ffmpeg | Id::YtDlp => {
+            let artifact_id = artifact_id(id);
+            artifacts::ALL
+                .iter()
+                .find(|artifact| artifact.id == artifact_id)
+                .map(|artifact| vec![artifact.install_dir(&root), artifact.cache_path(&root)])
+                .unwrap_or_default()
+        }
+    }
+}
+
+pub fn uninstall(id: Id, ctx: &JobContext) -> Result<(), String> {
+    ctx.progress(Some(0.1), "删除组件");
+    let mut removed = 0;
+    for path in paths(id) {
+        if remove_path(&path)? {
+            removed += 1;
+            ctx.log(format!("已删除 {}", path.display()));
+        }
+    }
+    if removed == 0 {
+        ctx.log("没有需要删除的文件");
+    }
+    ctx.progress(Some(1.0), "已删除");
+    Ok(())
+}
+
+fn remove_path(path: &Path) -> Result<bool, String> {
+    if path.is_dir() {
+        fs::remove_dir_all(path)
+            .map_err(|error| format!("删除目录失败（{}）：{error}", path.display()))?;
+        return Ok(true);
+    }
+    if path.is_file() {
+        fs::remove_file(path)
+            .map_err(|error| format!("删除文件失败（{}）：{error}", path.display()))?;
+        return Ok(true);
+    }
+    Ok(false)
+}
+
 fn artifact_id(id: Id) -> &'static str {
     match id {
         Id::LibreSvip => "libresvip",
@@ -224,5 +274,21 @@ mod tests {
         assert!(import_extensions(Id::Python).is_empty());
         assert!(!importable(Id::Python));
         assert!(importable(Id::GameModel));
+    }
+
+    #[test]
+    fn remove_path_clears_directories_files_and_skips_absent() {
+        let root = std::env::temp_dir().join(format!("vss-deps-remove-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(root.join("models/sub")).unwrap();
+        fs::write(root.join("models/sub/weights.onnx"), b"x").unwrap();
+        fs::write(root.join("tool.bin"), b"y").unwrap();
+
+        assert!(remove_path(&root.join("models")).unwrap());
+        assert!(!root.join("models").exists());
+        assert!(remove_path(&root.join("tool.bin")).unwrap());
+        assert!(!root.join("tool.bin").exists());
+        assert!(!remove_path(&root.join("never-downloaded")).unwrap());
+        let _ = fs::remove_dir_all(root);
     }
 }

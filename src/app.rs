@@ -124,6 +124,7 @@ pub struct VSynthApp {
     job_center: Entity<JobCenter>,
     tool_job: Option<u64>,
     dependency_job: Option<(DependencyId, u64)>,
+    pending_uninstall: Option<DependencyId>,
     convert_inputs: Vec<PathBuf>,
     convert_format: &'static Format,
     convert_preview: Option<(PathBuf, ProjectInfo)>,
@@ -231,6 +232,7 @@ impl VSynthApp {
             job_center,
             tool_job: None,
             dependency_job: None,
+            pending_uninstall: None,
             convert_inputs: Vec::new(),
             convert_format: formats::DEFAULT,
             convert_preview: None,
@@ -336,6 +338,7 @@ impl VSynthApp {
             }
         }
         self.page = page;
+        self.pending_uninstall = None;
         if page == Page::Pv {
             self.maybe_inject_pv(cx);
         }
@@ -639,6 +642,25 @@ impl VSynthApp {
         );
     }
 
+    fn ask_uninstall_dependency(&mut self, id: DependencyId, cx: &mut Context<Self>) {
+        self.pending_uninstall = Some(id);
+        cx.notify();
+    }
+
+    fn clear_uninstall_prompt(&mut self, cx: &mut Context<Self>) {
+        self.pending_uninstall = None;
+        cx.notify();
+    }
+
+    fn uninstall_dependency(&mut self, id: DependencyId, cx: &mut Context<Self>) {
+        let title = format!(
+            "{} {}",
+            self.text().uninstall_job,
+            dependencies::info(id).name
+        );
+        self.run_dependency_job(id, title, move |ctx| dependencies::uninstall(id, &ctx), cx);
+    }
+
     fn run_dependency_job(
         &mut self,
         id: DependencyId,
@@ -654,6 +676,7 @@ impl VSynthApp {
         }
         let job = self.job_center.read(cx).start(title, work);
         self.dependency_job = Some((id, job.id));
+        self.pending_uninstall = None;
         let job_id = job.id;
         cx.spawn(async move |this, cx| {
             let outcome = job.result.recv().await;
@@ -737,29 +760,94 @@ impl VSynthApp {
             }
             count += 1;
             let is_active = active_running && active.is_some_and(|(active_id, _)| active_id == id);
-            let row_entity = entity.clone();
-            let button = if is_active {
-                Button::new(SharedString::from(format!("dep-cancel-{}", info.name)))
-                    .label(s.cancel_install)
-                    .compact()
-                    .on_click(move |_, _, cx| {
-                        row_entity.update(cx, |this, cx| this.cancel_dependency(cx));
-                    })
-                    .into_any_element()
-            } else if !status.ready {
-                let install_entity = entity.clone();
-                Button::new(SharedString::from(format!("dep-install-{}", info.name)))
-                    .label(s.install)
-                    .primary()
+            let pending_uninstall = self.pending_uninstall == Some(id);
+            let mut actions: Vec<AnyElement> = Vec::new();
+            if is_active {
+                let row_entity = entity.clone();
+                actions.push(
+                    Button::new(SharedString::from(format!("dep-cancel-{}", info.name)))
+                        .label(s.cancel_install)
+                        .compact()
+                        .on_click(move |_, _, cx| {
+                            row_entity.update(cx, |this, cx| this.cancel_dependency(cx));
+                        })
+                        .into_any_element(),
+                );
+            } else if pending_uninstall {
+                let confirm_entity = entity.clone();
+                let cancel_entity = entity.clone();
+                actions.push(
+                    Button::new(SharedString::from(format!(
+                        "dep-uninstall-confirm-{}",
+                        info.name
+                    )))
+                    .label(s.uninstall_confirm)
+                    .danger()
                     .compact()
                     .disabled(active_running)
                     .on_click(move |_, _, cx| {
-                        install_entity.update(cx, |this, cx| this.install_dependency(id, cx));
+                        confirm_entity.update(cx, |this, cx| this.uninstall_dependency(id, cx));
                     })
-                    .into_any_element()
+                    .into_any_element(),
+                );
+                actions.push(
+                    Button::new(SharedString::from(format!(
+                        "dep-uninstall-cancel-{}",
+                        info.name
+                    )))
+                    .label(s.uninstall_cancel)
+                    .compact()
+                    .on_click(move |_, _, cx| {
+                        cancel_entity.update(cx, |this, cx| this.clear_uninstall_prompt(cx));
+                    })
+                    .into_any_element(),
+                );
             } else {
-                div().into_any_element()
-            };
+                if !status.ready {
+                    let install_entity = entity.clone();
+                    actions.push(
+                        Button::new(SharedString::from(format!("dep-install-{}", info.name)))
+                            .label(s.install)
+                            .primary()
+                            .compact()
+                            .disabled(active_running)
+                            .on_click(move |_, _, cx| {
+                                install_entity.update(cx, |this, cx| {
+                                    this.install_dependency(id, cx);
+                                });
+                            })
+                            .into_any_element(),
+                    );
+                }
+                if dependencies::importable(id) {
+                    let import_entity = entity.clone();
+                    actions.push(
+                        Button::new(SharedString::from(format!("dep-import-{}", info.name)))
+                            .label(s.import_local)
+                            .compact()
+                            .disabled(active_running)
+                            .on_click(move |_, _, cx| {
+                                import_entity.update(cx, |this, cx| {
+                                    this.import_dependency(id, cx);
+                                });
+                            })
+                            .into_any_element(),
+                    );
+                }
+                let uninstall_entity = entity.clone();
+                actions.push(
+                    Button::new(SharedString::from(format!("dep-uninstall-{}", info.name)))
+                        .label(s.uninstall)
+                        .compact()
+                        .disabled(active_running)
+                        .on_click(move |_, _, cx| {
+                            uninstall_entity.update(cx, |this, cx| {
+                                this.ask_uninstall_dependency(id, cx);
+                            });
+                        })
+                        .into_any_element(),
+                );
+            }
             let color = if status.ready {
                 theme.success
             } else if is_active {
@@ -774,7 +862,7 @@ impl VSynthApp {
             } else {
                 s.needs_download
             };
-            let detail = if is_active {
+            let mut detail = if is_active {
                 snapshot
                     .as_ref()
                     .map(|snap| snap.message.clone())
@@ -794,21 +882,9 @@ impl VSynthApp {
                     info.size as f64 / 1_000_000.0
                 )
             };
-            let import_button = if is_active || !dependencies::importable(id) {
-                None
-            } else {
-                let import_entity = entity.clone();
-                Some(
-                    Button::new(SharedString::from(format!("dep-import-{}", info.name)))
-                        .label(s.import_local)
-                        .compact()
-                        .disabled(active_running)
-                        .on_click(move |_, _, cx| {
-                            import_entity.update(cx, |this, cx| this.import_dependency(id, cx));
-                        })
-                        .into_any_element(),
-                )
-            };
+            if pending_uninstall {
+                detail.push_str(&format!(" · {}", s.uninstall_hint));
+            }
             rows = rows.child(
                 h_flex()
                     .justify_between()
@@ -830,10 +906,11 @@ impl VSynthApp {
                     .child(
                         h_flex()
                             .items_center()
+                            .justify_end()
+                            .flex_wrap()
                             .gap_2()
                             .child(announce_badge(status_label, color, theme.radius))
-                            .children(import_button)
-                            .child(button),
+                            .children(actions),
                     ),
             );
         }
