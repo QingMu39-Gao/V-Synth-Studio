@@ -60,6 +60,9 @@ jobs:
       - name: Read the tag message as the changelog
         shell: pwsh
         run: |
+          # Native output is decoded with the console codepage, which mangles a
+          # non-ASCII tag message into mojibake that would ship as the changelog.
+          [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
           $notes = git tag -l --format='%(contents)' "${{ github.ref_name }}"
           if (-not $notes.Trim()) {
             throw "tag ${{ github.ref_name }} carries no release notes; annotate it with the changelog before pushing"
