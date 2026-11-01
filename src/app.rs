@@ -2990,11 +2990,7 @@ impl VSynthApp {
         let download_entity = cx.entity();
         let ignore_entity = cx.entity();
         let later_entity = cx.entity();
-        let changelog = if info.changelog.trim().is_empty() {
-            s.update_no_changelog.to_string()
-        } else {
-            info.changelog.clone()
-        };
+        let changelog = release_notes(&info.changelog, s.update_no_changelog);
         let mut rows = v_flex()
             .gap_3()
             .child(div().font_weight(FontWeight::BOLD).child(format!(
@@ -3002,7 +2998,13 @@ impl VSynthApp {
                 env!("CARGO_PKG_VERSION"),
                 info.version
             )))
-            .child(div().text_sm().child(changelog));
+            .child(
+                v_flex().gap_1().children(
+                    changelog
+                        .into_iter()
+                        .map(|line| div().text_sm().child(line)),
+                ),
+            );
         if info.force {
             rows = rows.child(
                 div()
@@ -3220,11 +3222,13 @@ impl VSynthApp {
                     info.published.split('T').next().unwrap_or("")
                 )));
             }
-            details = details.child(div().text_sm().child(if info.changelog.is_empty() {
-                s.update_no_changelog.to_string()
-            } else {
-                info.changelog.clone()
-            }));
+            details = details.child(
+                v_flex().gap_1().children(
+                    release_notes(&info.changelog, s.update_no_changelog)
+                        .into_iter()
+                        .map(|line| div().text_sm().child(line)),
+                ),
+            );
             if let Some(path) = &self.update_file {
                 details = details.child(
                     div()
@@ -6560,6 +6564,21 @@ fn dependency_purpose(id: DependencyId, s: &Strings) -> &'static str {
     }
 }
 
+/// Release notes are plain text with newlines, and a div collapses them into one
+/// run-on line, so each line becomes its own element.
+fn release_notes(changelog: &str, empty: &'static str) -> Vec<String> {
+    let trimmed = changelog.trim();
+    if trimmed.is_empty() {
+        return vec![empty.to_string()];
+    }
+    trimmed
+        .lines()
+        .map(str::trim_end)
+        .filter(|line| !line.is_empty())
+        .map(str::to_string)
+        .collect()
+}
+
 fn announce_badge(label: &'static str, color: Hsla, radius: Pixels) -> impl IntoElement {
     div()
         .px_2()
@@ -7320,7 +7339,14 @@ fn pack_row(
 
 #[cfg(test)]
 mod tests {
-    use super::{MIN_VIEW_SPAN, fit_view, to_file, to_view, zoom_view};
+    use super::{MIN_VIEW_SPAN, fit_view, release_notes, to_file, to_view, zoom_view};
+
+    #[test]
+    fn release_notes_keep_one_element_per_line() {
+        assert_eq!(release_notes("a\nb\n", "none"), vec!["a", "b"]);
+        assert_eq!(release_notes("  \n ", "none"), vec!["none"]);
+        assert_eq!(release_notes("single", "none"), vec!["single"]);
+    }
 
     #[test]
     fn zoom_centers_on_the_view_and_stays_in_range() {
