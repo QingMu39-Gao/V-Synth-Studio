@@ -26,6 +26,80 @@ pub fn cli_path(root: &Path) -> Result<PathBuf, String> {
         .ok_or_else(|| format!("找不到 LibreSVIP CLI：{}", path.display()))
 }
 
+/// Convert a batch, mapping each file's progress into the whole job and
+/// stopping between files once cancellation is requested.
+pub fn convert_batch(
+    inputs: &[PathBuf],
+    format: &crate::formats::Format,
+    output_dir: Option<&Path>,
+    ctx: &JobContext,
+) -> Result<Vec<PathBuf>, String> {
+    convert_batch_with(
+        inputs,
+        format,
+        output_dir,
+        |fraction, message| ctx.progress(fraction, message),
+        |line| ctx.log(line),
+        || ctx.is_canceled(),
+    )
+}
+
+pub(crate) fn convert_batch_with<P, L, C>(
+    inputs: &[PathBuf],
+    format: &crate::formats::Format,
+    output_dir: Option<&Path>,
+    mut progress: P,
+    mut log: L,
+    canceled: C,
+) -> Result<Vec<PathBuf>, String>
+where
+    P: FnMut(Option<f32>, &str),
+    L: FnMut(String),
+    C: Fn() -> bool,
+{
+    let total = inputs.len().max(1);
+    let mut outputs = Vec::with_capacity(inputs.len());
+    for (index, input) in inputs.iter().enumerate() {
+        if canceled() {
+            return Err("已取消".to_string());
+        }
+        let output = unique_output(input, format, output_dir);
+        let base = index as f32 / total as f32;
+        let span = 1.0 / total as f32;
+        convert_with(
+            input,
+            &output,
+            |fraction, message| progress(fraction.map(|value| base + value * span), message),
+            &mut log,
+            &canceled,
+        )?;
+        outputs.push(output);
+    }
+    Ok(outputs)
+}
+
+pub(crate) fn unique_output(
+    input: &Path,
+    format: &crate::formats::Format,
+    output_dir: Option<&Path>,
+) -> PathBuf {
+    let directory = output_dir
+        .map(Path::to_path_buf)
+        .or_else(|| input.parent().map(Path::to_path_buf))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let stem = input
+        .file_stem()
+        .map(|stem| stem.to_string_lossy().to_string())
+        .unwrap_or_else(|| "output".to_string());
+    let mut candidate = directory.join(format!("{stem}.{}", format.id));
+    let mut index = 1;
+    while candidate.exists() {
+        candidate = directory.join(format!("{stem}-{index}.{}", format.id));
+        index += 1;
+    }
+    candidate
+}
+
 pub(crate) fn convert_with<P, L, C>(
     input: &Path,
     output: &Path,
@@ -355,6 +429,79 @@ mod tests {
         assert_eq!(info.notes, 1);
         assert_eq!(info.bpm, Some(120.0));
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    #[ignore = "requires tools/libresvip and converts two files"]
+    fn converts_every_file_in_the_batch() {
+        let dir = batch_dir("all");
+        let first = dir.join("first.mid");
+        let second = dir.join("second.mid");
+        std::fs::write(&first, minimal_midi()).unwrap();
+        std::fs::write(&second, minimal_midi()).unwrap();
+
+        let outputs = convert_batch_with(
+            &[first, second],
+            ufdata(),
+            None,
+            |_, _| {},
+            |_| {},
+            || false,
+        )
+        .unwrap();
+
+        assert_eq!(outputs.len(), 2);
+        assert!(outputs.iter().all(|path| path.is_file()));
+        assert_eq!(outputs[0].file_name().unwrap(), "first.ufdata");
+        assert_eq!(outputs[1].file_name().unwrap(), "second.ufdata");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    #[ignore = "requires tools/libresvip and cancels mid-batch"]
+    fn keeps_finished_files_when_the_batch_is_canceled() {
+        use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        let dir = batch_dir("cancel");
+        let first = dir.join("first.mid");
+        let second = dir.join("second.mid");
+        std::fs::write(&first, minimal_midi()).unwrap();
+        std::fs::write(&second, minimal_midi()).unwrap();
+
+        let cancel = Arc::new(AtomicBool::new(false));
+        let watch = cancel.clone();
+        let log = move |line: String| {
+            if line.contains("second.mid") {
+                watch.store(true, Ordering::Relaxed);
+            }
+        };
+        let canceled = {
+            let cancel = cancel.clone();
+            move || cancel.load(Ordering::Relaxed)
+        };
+
+        let error = convert_batch_with(&[first, second], ufdata(), None, |_, _| {}, log, canceled)
+            .expect_err("the second conversion should be canceled");
+        assert!(error.contains("已取消"), "{error}");
+        assert!(dir.join("first.ufdata").is_file());
+        assert!(!dir.join("second.ufdata").exists());
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn batch_dir(label: &str) -> PathBuf {
+        let dir =
+            std::env::temp_dir().join(format!("vss-libresvip-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    fn ufdata() -> &'static crate::formats::Format {
+        crate::formats::ALL
+            .iter()
+            .find(|format| format.id == "ufdata")
+            .expect("ufdata format")
     }
 
     fn minimal_midi() -> Vec<u8> {

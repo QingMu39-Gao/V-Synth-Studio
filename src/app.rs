@@ -1035,27 +1035,7 @@ impl VSynthApp {
         };
         let s = self.text();
         let job = self.job_center.read(cx).start(s.page_convert, move |ctx| {
-            let total = inputs.len().max(1);
-            let mut outputs = Vec::new();
-            for (index, input) in inputs.iter().enumerate() {
-                if ctx.is_canceled() {
-                    return Err("已取消".to_string());
-                }
-                let output = unique_output(input, &format, output_dir.as_deref());
-                let base = index as f32 / total as f32;
-                let span = 1.0 / total as f32;
-                libresvip::convert_with(
-                    input,
-                    &output,
-                    |fraction, message| {
-                        ctx.progress(fraction.map(|value| base + value * span), message);
-                    },
-                    |line| ctx.log(line),
-                    || ctx.is_canceled(),
-                )?;
-                outputs.push(output);
-            }
-            Ok(outputs)
+            libresvip::convert_batch(&inputs, &format, output_dir.as_deref(), &ctx)
         });
         self.convert_job = Some(job.id);
         self.convert_notice = None;
@@ -5868,24 +5848,6 @@ fn page_header(page: Page, muted: Hsla, s: &Strings) -> impl IntoElement {
                 .child(page.title(s)),
         )
         .child(div().text_sm().text_color(muted).child(page.subtitle(s)))
-}
-
-fn unique_output(input: &Path, format: &Format, output_dir: Option<&Path>) -> PathBuf {
-    let directory = output_dir
-        .map(Path::to_path_buf)
-        .or_else(|| input.parent().map(Path::to_path_buf))
-        .unwrap_or_else(|| PathBuf::from("."));
-    let stem = input
-        .file_stem()
-        .map(|stem| stem.to_string_lossy().to_string())
-        .unwrap_or_else(|| "output".to_string());
-    let mut candidate = directory.join(format!("{stem}.{}", format.id));
-    let mut index = 1;
-    while candidate.exists() {
-        candidate = directory.join(format!("{stem}-{index}.{}", format.id));
-        index += 1;
-    }
-    candidate
 }
 
 fn audio_output_path(input: &Path, operation: AudioOp, format: AudioFormat) -> PathBuf {
