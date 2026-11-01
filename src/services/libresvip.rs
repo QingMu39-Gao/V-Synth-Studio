@@ -682,8 +682,8 @@ mod tests {
     #[test]
     #[ignore = "requires tools/libresvip and cancels mid-batch"]
     fn keeps_finished_files_when_the_batch_is_canceled() {
-        use std::sync::atomic::{AtomicBool, Ordering};
         use std::sync::Arc;
+        use std::sync::atomic::{AtomicBool, Ordering};
 
         let dir = batch_dir("cancel");
         let first = dir.join("first.mid");

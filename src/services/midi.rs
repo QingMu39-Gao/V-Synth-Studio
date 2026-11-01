@@ -420,7 +420,7 @@ fn write_outputs(output_dir: &Path, stem: &str, report: &Report) -> Result<Outpu
         &json,
         serde_json::to_vec_pretty(&body).map_err(|error| error.to_string())?,
     )
-        .map_err(|error| format!("写 JSON 失败：{error}"))?;
+    .map_err(|error| format!("写 JSON 失败：{error}"))?;
 
     Ok(Outputs {
         midi,

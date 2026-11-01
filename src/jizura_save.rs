@@ -11,7 +11,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
-use wry::http::{header::CONTENT_TYPE, Request, Response, StatusCode};
+use wry::http::{Request, Response, StatusCode, header::CONTENT_TYPE};
 
 struct Session {
     file: File,
@@ -217,11 +217,8 @@ mod tests {
 
     #[test]
     fn avoids_overwriting_existing_files() {
-        let dir = std::env::temp_dir().join(format!(
-            "vss-save-test-{}-{}",
-            std::process::id(),
-            line!()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("vss-save-test-{}-{}", std::process::id(), line!()));
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("a.wav"), b"x").unwrap();
         let next = unique_path(&dir, "a.wav");

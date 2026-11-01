@@ -111,11 +111,8 @@ mod tests {
 
     #[test]
     fn prefers_extra_directories_over_path() {
-        let dir = std::env::temp_dir().join(format!(
-            "vss-tools-test-{}-{}",
-            std::process::id(),
-            line!()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("vss-tools-test-{}-{}", std::process::id(), line!()));
         std::fs::create_dir_all(&dir).unwrap();
         let binary = dir.join(exe_name("vss-probe-test"));
         std::fs::write(&binary, b"").unwrap();
