@@ -34,14 +34,21 @@ component governed by Microsoft's distribution terms.
 | urlencoding 2.1 | MIT |
 | serde 1 | MIT OR Apache-2.0 |
 | serde_json 1 | MIT OR Apache-2.0 |
+| ureq 3.5 | MIT OR Apache-2.0 |
+| sha2 0.11 | MIT OR Apache-2.0 |
+| zip 9.1 | MIT |
+| flate2 1.1 | MIT OR Apache-2.0 |
+| encoding_rs 0.8 | (Apache-2.0 OR MIT) AND BSD-3-Clause |
+| async-channel 2.5 | Apache-2.0 OR MIT |
 
 Transitive Rust dependencies are recorded in `Cargo.lock`; their license texts
 are available from the crate sources.
 
 ## External tools
 
-These tools are distributed with the application when their corresponding
-feature ships.
+These tools are not part of the installer or the portable archive. Each one is
+downloaded on demand into `tools/` or `data/` after the user asks for it, and
+stays under the license below.
 
 | Tool | License |
 |---|---|
@@ -63,3 +70,12 @@ the repository or installer.
 - Upstream: <https://github.com/openvpi/GAME>
 - Asset: `GAME-1.0.3-large-onnx.zip` from the v1.0.3 release, SHA-256
   `8a5480539fe7d995800dc0efe149b83a1cd4f4e4a36aa2a1f7665f1765dcac08`
+
+### UVR-MDX-NET-Inst_HQ_3.onnx
+
+- Source: the `TRvlvr/model_repo` release `all_public_uvr_models`
+- License: none is shipped with that repository or release; the terms are the
+  publisher's, and users are responsible for staying within them
+- Upstream: <https://github.com/TRvlvr/model_repo/releases/tag/all_public_uvr_models>
+- Asset: `UVR-MDX-NET-Inst_HQ_3.onnx`, SHA-256
+  `317554b07fe1ea5279a77f2b1520a41ea4b93432560c4ffd08792c30fddf9adc`
