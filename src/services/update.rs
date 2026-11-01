@@ -22,6 +22,7 @@ pub struct UpdateInfo {
     pub url: String,
     pub size: u64,
     pub sha256: String,
+    pub force: bool,
 }
 
 pub fn check() -> Result<Option<UpdateInfo>, String> {
@@ -78,6 +79,12 @@ pub fn parse_manifest(text: &str, current: &str) -> Result<Option<UpdateInfo>, S
         .filter(|hash| hash.len() == 64 && hash.chars().all(|c| c.is_ascii_hexdigit()))
         .ok_or_else(|| "更新清单缺少 SHA-256".to_string())?
         .to_string();
+    // Both fields mean "refuse the old build", and both are only allowed to do
+    // that for a release that really is newer: `is_newer` has already returned
+    // None above, so a mistyped field cannot lock every install out.
+    let min_version = value["min_version"].as_str().map(str::trim);
+    let force = value["force"].as_bool().unwrap_or(false)
+        || min_version.is_some_and(|min| !min.is_empty() && is_newer(min, current));
     Ok(Some(UpdateInfo {
         version,
         published: value["published_at"].as_str().unwrap_or("").to_string(),
@@ -85,6 +92,7 @@ pub fn parse_manifest(text: &str, current: &str) -> Result<Option<UpdateInfo>, S
         url,
         size,
         sha256,
+        force,
     }))
 }
 
@@ -200,6 +208,63 @@ mod tests {
         assert_eq!(info.size, 10);
         assert!(parse_manifest(text, "0.2.0").unwrap().is_none());
         assert!(parse_manifest(text, "0.3.0").unwrap().is_none());
+    }
+
+    #[test]
+    fn force_applies_only_to_a_release_that_is_newer() {
+        let forced = parse_manifest(&manifest("\"force\": true,"), "1.5.0").unwrap();
+        assert!(forced.unwrap().force);
+        // Same manifest, install already at or past it: not an update, so not a
+        // gate either. This is the case a mistyped `force` would otherwise lock
+        // every install out of the app with no way to dismiss it.
+        assert!(
+            parse_manifest(&manifest("\"force\": true,"), "1.6.0")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            parse_manifest(&manifest("\"force\": true,"), "1.7.0")
+                .unwrap()
+                .is_none()
+        );
+        assert!(
+            !parse_manifest(&manifest(""), "1.5.0")
+                .unwrap()
+                .unwrap()
+                .force
+        );
+    }
+
+    #[test]
+    fn min_version_gates_the_installs_below_it() {
+        let text = manifest("\"min_version\": \"1.6.0\",");
+        assert!(parse_manifest(&text, "1.5.9").unwrap().unwrap().force);
+        assert!(
+            !parse_manifest(&manifest("\"min_version\": \"1.4.0\","), "1.5.0")
+                .unwrap()
+                .unwrap()
+                .force
+        );
+        // An empty or unreadable value must not be read as "gate everyone".
+        assert!(
+            !parse_manifest(&manifest("\"min_version\": \"\","), "1.5.0")
+                .unwrap()
+                .unwrap()
+                .force
+        );
+        assert!(
+            !parse_manifest(&manifest("\"min_version\": 7,"), "1.5.0")
+                .unwrap()
+                .unwrap()
+                .force
+        );
+    }
+
+    fn manifest(fields: &str) -> String {
+        format!(
+            r#"{{"version": "1.6.0", {fields}"downloads": {{"windows": {{"url": "https://example.com/a.exe", "size": 1, "sha256": "{}"}}}}}}"#,
+            "a".repeat(64)
+        )
     }
 
     #[test]

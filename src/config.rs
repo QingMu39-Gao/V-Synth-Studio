@@ -47,9 +47,17 @@ pub struct Config {
     pub convert_options: crate::services::libresvip::Options,
     #[serde(default)]
     pub seen_announcements: Vec<String>,
+    #[serde(default)]
+    pub ignored_update: Option<String>,
 }
 
 impl Config {
+    /// A dismissed version only silences that version; the next release asks
+    /// again, which is why this stores a version and not a flag.
+    pub fn update_ignored(&self, version: &str) -> bool {
+        self.ignored_update.as_deref() == Some(version)
+    }
+
     pub fn announcement_seen(&self, id: &str) -> bool {
         self.seen_announcements.iter().any(|seen| seen == id)
     }
@@ -160,5 +168,18 @@ mod tests {
         assert_eq!(config.seen_announcements.len(), 100);
         assert!(!config.announcement_seen("a"));
         assert!(config.announcement_seen("id-119"));
+    }
+
+    #[test]
+    fn ignoring_an_update_silences_only_that_version() {
+        let config: Config = serde_json::from_str("{}").unwrap();
+        assert_eq!(config.ignored_update, None);
+        assert!(!config.update_ignored("1.6.0"));
+        let config = Config {
+            ignored_update: Some("1.6.0".to_string()),
+            ..Default::default()
+        };
+        assert!(config.update_ignored("1.6.0"));
+        assert!(!config.update_ignored("1.6.1"));
     }
 }
