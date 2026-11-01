@@ -14,8 +14,8 @@ mod resources;
 mod services;
 mod tools;
 
-use gpui_kit::component::TitleBar;
 use gpui_kit::component::input::{InputState, TextareaState};
+use gpui_kit::component::TitleBar;
 use gpui_kit::*;
 
 fn main() {

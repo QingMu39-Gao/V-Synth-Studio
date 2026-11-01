@@ -7,7 +7,7 @@ use std::borrow::Cow;
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use wry::http::{Request, Response, StatusCode, header::CONTENT_TYPE};
+use wry::http::{header::CONTENT_TYPE, Request, Response, StatusCode};
 
 pub const SCHEME: &str = "jizura";
 pub const START_URL: &str = "jizura://localhost/index.html";

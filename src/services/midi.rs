@@ -420,7 +420,7 @@ fn write_outputs(output_dir: &Path, stem: &str, report: &Report) -> Result<Outpu
         &json,
         serde_json::to_vec_pretty(&body).map_err(|error| error.to_string())?,
     )
-    .map_err(|error| format!("写 JSON 失败：{error}"))?;
+        .map_err(|error| format!("写 JSON 失败：{error}"))?;
 
     Ok(Outputs {
         midi,
@@ -763,7 +763,7 @@ mod tests {
         for sample in samples {
             data.extend_from_slice(&sample.to_le_bytes());
         }
-        let mut file = std::fs::File::create(path).unwrap();
+        let mut file = fs::File::create(path).unwrap();
         use std::io::Write;
         file.write_all(b"RIFF").unwrap();
         file.write_all(&(36 + data.len() as u32).to_le_bytes())

@@ -175,7 +175,7 @@ mod tests {
         let _ = std::fs::remove_file(path);
     }
 
-    fn write_sine_wav(path: &std::path::Path) {
+    fn write_sine_wav(path: &Path) {
         let rate = 8000u32;
         let samples: Vec<i16> = (0..rate)
             .map(|index| {

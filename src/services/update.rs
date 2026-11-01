@@ -217,16 +217,12 @@ mod tests {
         // Same manifest, install already at or past it: not an update, so not a
         // gate either. This is the case a mistyped `force` would otherwise lock
         // every install out of the app with no way to dismiss it.
-        assert!(
-            parse_manifest(&manifest("\"force\": true,"), "1.6.0")
-                .unwrap()
-                .is_none()
-        );
-        assert!(
-            parse_manifest(&manifest("\"force\": true,"), "1.7.0")
-                .unwrap()
-                .is_none()
-        );
+        assert!(parse_manifest(&manifest("\"force\": true,"), "1.6.0")
+            .unwrap()
+            .is_none());
+        assert!(parse_manifest(&manifest("\"force\": true,"), "1.7.0")
+            .unwrap()
+            .is_none());
         assert!(
             !parse_manifest(&manifest(""), "1.5.0")
                 .unwrap()

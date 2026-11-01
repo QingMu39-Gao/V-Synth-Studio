@@ -114,7 +114,7 @@ mod tests {
         let dir = std::env::temp_dir().join(format!(
             "vss-tools-test-{}-{}",
             std::process::id(),
-            std::line!()
+            line!()
         ));
         std::fs::create_dir_all(&dir).unwrap();
         let binary = dir.join(exe_name("vss-probe-test"));

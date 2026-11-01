@@ -25,7 +25,7 @@ impl JobCenter {
                 });
             }
         })
-        .detach();
+            .detach();
         Self {
             jobs,
             snapshots: Vec::new(),

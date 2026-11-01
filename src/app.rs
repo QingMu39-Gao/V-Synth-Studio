@@ -405,7 +405,7 @@ impl VSynthApp {
                         }
                     }
                 })
-                .detach();
+                    .detach();
             }
             Err(error) => {
                 self.webview_error = Some(format!("{}：{error}", s.webview_failed));
@@ -565,7 +565,7 @@ impl VSynthApp {
                 cx.notify();
             }
         })
-        .detach();
+            .detach();
     }
 
     fn open_resource(&mut self, url: &str, cx: &mut Context<Self>) {
@@ -630,7 +630,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -732,7 +732,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -807,26 +807,26 @@ impl VSynthApp {
                         "dep-uninstall-confirm-{}",
                         info.name
                     )))
-                    .label(s.uninstall_confirm)
-                    .danger()
-                    .compact()
-                    .disabled(active_running)
-                    .on_click(move |_, _, cx| {
-                        confirm_entity.update(cx, |this, cx| this.uninstall_dependency(id, cx));
-                    })
-                    .into_any_element(),
+                        .label(s.uninstall_confirm)
+                        .danger()
+                        .compact()
+                        .disabled(active_running)
+                        .on_click(move |_, _, cx| {
+                            confirm_entity.update(cx, |this, cx| this.uninstall_dependency(id, cx));
+                        })
+                        .into_any_element(),
                 );
                 actions.push(
                     Button::new(SharedString::from(format!(
                         "dep-uninstall-cancel-{}",
                         info.name
                     )))
-                    .label(s.uninstall_cancel)
-                    .compact()
-                    .on_click(move |_, _, cx| {
-                        cancel_entity.update(cx, |this, cx| this.clear_uninstall_prompt(cx));
-                    })
-                    .into_any_element(),
+                        .label(s.uninstall_cancel)
+                        .compact()
+                        .on_click(move |_, _, cx| {
+                            cancel_entity.update(cx, |this, cx| this.clear_uninstall_prompt(cx));
+                        })
+                        .into_any_element(),
                 );
             } else {
                 if !status.ready {
@@ -1041,7 +1041,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1114,8 +1114,8 @@ impl VSynthApp {
     fn start_convert(&mut self, cx: &mut Context<Self>) {
         if self.convert_inputs.is_empty()
             || self
-                .convert_job
-                .is_some_and(|id| self.job_center.read(cx).is_running(id))
+            .convert_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
         {
             return;
         }
@@ -1156,7 +1156,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1226,7 +1226,7 @@ impl VSynthApp {
                 }
             }
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1301,7 +1301,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1381,7 +1381,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1397,8 +1397,8 @@ impl VSynthApp {
             .video_parse_job
             .is_some_and(|id| self.job_center.read(cx).is_running(id))
             || self
-                .video_download_job
-                .is_some_and(|id| self.job_center.read(cx).is_running(id))
+            .video_download_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id))
         {
             return;
         }
@@ -1453,7 +1453,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1512,7 +1512,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1573,7 +1573,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1643,7 +1643,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -1689,7 +1689,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -2025,7 +2025,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -2098,7 +2098,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -2146,7 +2146,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -2220,7 +2220,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -2274,7 +2274,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -2370,7 +2370,7 @@ impl VSynthApp {
                 cx.notify();
             }
         })
-        .detach();
+            .detach();
     }
 
     fn set_theme(
@@ -2562,7 +2562,7 @@ impl VSynthApp {
     fn render_main(&self, cx: &mut Context<Self>) -> AnyElement {
         if self.page == Page::Pv
             || self.page == Page::Video
-                && (self.video_webview.is_some() || self.bili_login_webview.is_some())
+            && (self.video_webview.is_some() || self.bili_login_webview.is_some())
             || self.page == Page::Lyrics && self.lyrics_login_webview.is_some()
         {
             return v_flex()
@@ -2752,7 +2752,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
     }
 
     fn mark_announcement_seen(&mut self, id: &str, cx: &mut Context<Self>) {
@@ -2874,13 +2874,13 @@ impl VSynthApp {
                                     "announce-read-{}",
                                     item.id
                                 )))
-                                .label(s.announce_mark_read)
-                                .compact()
-                                .on_click(move |_, _, cx| {
-                                    mark_entity.update(cx, |this, cx| {
-                                        this.mark_announcement_seen(&id, cx);
-                                    });
-                                }),
+                                    .label(s.announce_mark_read)
+                                    .compact()
+                                    .on_click(move |_, _, cx| {
+                                        mark_entity.update(cx, |this, cx| {
+                                            this.mark_announcement_seen(&id, cx);
+                                        });
+                                    }),
                             );
                     }
                     let link = if item.url.is_empty() {
@@ -2962,7 +2962,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
     }
 
     fn dismiss_update_prompt(&mut self, cx: &mut Context<Self>) {
@@ -3098,7 +3098,7 @@ impl VSynthApp {
                 cx.notify();
             });
         })
-        .detach();
+            .detach();
         cx.notify();
     }
 
@@ -3697,25 +3697,25 @@ impl VSynthApp {
             (MidiDevice::Cpu, s.midi_cpu),
             (MidiDevice::Gpu, s.midi_gpu),
         ]
-        .into_iter()
-        .map(|(device, label)| {
-            let entity = entity.clone();
-            let selected = self.midi_device == device;
-            let button = Button::new(SharedString::from(format!("midi-device-{}", device.key())))
-                .label(label)
-                .compact();
-            let button = if selected {
-                button.primary()
-            } else {
-                button.ghost()
-            };
-            button
-                .on_click(move |_, _, cx| {
-                    entity.update(cx, |this, cx| this.set_midi_device(device, cx));
-                })
-                .into_any_element()
-        })
-        .collect::<Vec<_>>();
+            .into_iter()
+            .map(|(device, label)| {
+                let entity = entity.clone();
+                let selected = self.midi_device == device;
+                let button = Button::new(SharedString::from(format!("midi-device-{}", device.key())))
+                    .label(label)
+                    .compact();
+                let button = if selected {
+                    button.primary()
+                } else {
+                    button.ghost()
+                };
+                button
+                    .on_click(move |_, _, cx| {
+                        entity.update(cx, |this, cx| this.set_midi_device(device, cx));
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
 
         let language_buttons = [(4_i64, "中文"), (1, "English"), (2, "日本語"), (3, "粵語")]
             .into_iter()
@@ -3757,7 +3757,7 @@ impl VSynthApp {
                     );
                 },
             )
-            .size_full();
+                .size_full();
             let mut preview = v_flex().gap_1().child(
                 h_flex()
                     .gap_2()
@@ -4064,8 +4064,8 @@ impl VSynthApp {
             .video_parse_job
             .is_some_and(|id| self.job_center.read(cx).is_running(id))
             || self
-                .video_page_job
-                .is_some_and(|id| self.job_center.read(cx).is_running(id));
+            .video_page_job
+            .is_some_and(|id| self.job_center.read(cx).is_running(id));
         let downloading = self
             .video_download_job
             .is_some_and(|id| self.job_center.read(cx).is_running(id));
@@ -4662,31 +4662,31 @@ impl VSynthApp {
                 (lyrics::Quality::Higher, s.lyrics_quality_higher),
                 (lyrics::Quality::Standard, s.lyrics_quality_standard),
             ]
-            .into_iter()
-            .map(|(quality, label)| {
-                let selected = self.lyrics_quality == quality;
-                let entity = entity.clone();
-                let mut button = Button::new(SharedString::from(format!(
-                    "lyrics-quality-{}",
-                    quality_key(quality)
-                )))
-                .label(label)
-                .compact();
-                button = if selected {
-                    button.primary()
-                } else {
-                    button.ghost()
-                };
-                button
-                    .on_click(move |_, _, cx| {
-                        entity.update(cx, |this, cx| {
-                            this.lyrics_quality = quality;
-                            cx.notify();
-                        });
-                    })
-                    .into_any_element()
-            })
-            .collect::<Vec<_>>();
+                .into_iter()
+                .map(|(quality, label)| {
+                    let selected = self.lyrics_quality == quality;
+                    let entity = entity.clone();
+                    let mut button = Button::new(SharedString::from(format!(
+                        "lyrics-quality-{}",
+                        quality_key(quality)
+                    )))
+                        .label(label)
+                        .compact();
+                    button = if selected {
+                        button.primary()
+                    } else {
+                        button.ghost()
+                    };
+                    button
+                        .on_click(move |_, _, cx| {
+                            entity.update(cx, |this, cx| {
+                                this.lyrics_quality = quality;
+                                cx.notify();
+                            });
+                        })
+                        .into_any_element()
+                })
+                .collect::<Vec<_>>();
             let folder_entity = entity.clone();
             let folder_button = self.lyrics_output.is_some().then(|| {
                 Button::new("lyrics-open-folder")
@@ -5026,7 +5026,7 @@ impl VSynthApp {
                 );
             },
         )
-        .size_full();
+            .size_full();
         let down_entity = entity.clone();
         let down_bounds = self.waveform_bounds.clone();
         let move_entity = entity.clone();
@@ -5074,30 +5074,30 @@ impl VSynthApp {
             (s.audio_zoom_selection, "audio-zoom-selection", 0.0, true),
             (s.audio_zoom_all, "audio-zoom-all", 1.0, false),
         ]
-        .into_iter()
-        .map(|(label, id, factor, fit_selection)| {
-            let zoom_entity = entity.clone();
-            Button::new(SharedString::from(id))
-                .label(label)
-                .compact()
-                .ghost()
-                .on_click(move |_, _, cx| {
-                    zoom_entity.update(cx, |this, cx| {
-                        let view = if fit_selection {
-                            fit_view(this.audio_selection).unwrap_or(this.audio_view)
-                        } else if id == "audio-zoom-all" {
-                            (0.0, 1.0)
-                        } else {
-                            let anchor = (this.audio_view.0 + this.audio_view.1) / 2.0;
-                            zoom_view(this.audio_view, anchor, factor)
-                        };
-                        this.audio_view = view;
-                        cx.notify();
-                    });
-                })
-                .into_any_element()
-        })
-        .collect::<Vec<_>>();
+            .into_iter()
+            .map(|(label, id, factor, fit_selection)| {
+                let zoom_entity = entity.clone();
+                Button::new(SharedString::from(id))
+                    .label(label)
+                    .compact()
+                    .ghost()
+                    .on_click(move |_, _, cx| {
+                        zoom_entity.update(cx, |this, cx| {
+                            let view = if fit_selection {
+                                fit_view(this.audio_selection).unwrap_or(this.audio_view)
+                            } else if id == "audio-zoom-all" {
+                                (0.0, 1.0)
+                            } else {
+                                let anchor = (this.audio_view.0 + this.audio_view.1) / 2.0;
+                                zoom_view(this.audio_view, anchor, factor)
+                            };
+                            this.audio_view = view;
+                            cx.notify();
+                        });
+                    })
+                    .into_any_element()
+            })
+            .collect::<Vec<_>>();
 
         let operation_buttons = AudioOp::ALL
             .iter()
@@ -5109,8 +5109,8 @@ impl VSynthApp {
                     "audio-op-{}",
                     operation.suffix()
                 )))
-                .label(operation.label(s))
-                .compact();
+                    .label(operation.label(s))
+                    .compact();
                 button = if selected {
                     button.primary()
                 } else {
@@ -5173,8 +5173,8 @@ impl VSynthApp {
                             "audio-speed-{}",
                             (ratio * 100.0) as i32
                         )))
-                        .label(format!("{ratio}x"))
-                        .compact();
+                            .label(format!("{ratio}x"))
+                            .compact();
                         button = if selected {
                             button.primary()
                         } else {
@@ -7081,7 +7081,7 @@ fn resource_matches(item: &Item, query: &str) -> bool {
         item.region,
         item.tags.join(" ")
     )
-    .to_lowercase();
+        .to_lowercase();
     haystack.contains(query)
 }
 
@@ -7161,7 +7161,7 @@ fn sponsor_card(
     width: f32,
     height: f32,
     theme: &Theme,
-) -> impl IntoElement + use<> {
+) -> impl IntoElement + use < > {
     v_flex()
         .items_center()
         .gap_2()

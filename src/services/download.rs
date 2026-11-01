@@ -3,8 +3,8 @@
 use std::fs::{self, File};
 use std::io::{Read, Write};
 use std::path::{Component, Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 
 use sha2::{Digest, Sha256};
@@ -490,8 +490,8 @@ fn safe_relative(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use std::net::TcpListener;
-    use std::sync::Arc;
     use std::sync::atomic::{AtomicUsize, Ordering};
+    use std::sync::Arc;
 
     use super::*;
 

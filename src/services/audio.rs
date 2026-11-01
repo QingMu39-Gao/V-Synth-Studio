@@ -575,7 +575,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let video = dir.join("clip.mp4");
-        let status = std::process::Command::new(ffmpeg_path().unwrap())
+        let status = Command::new(ffmpeg_path().unwrap())
             .args([
                 "-hide_banner",
                 "-loglevel",
