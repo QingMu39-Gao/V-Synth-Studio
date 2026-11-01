@@ -106,13 +106,15 @@ pub fn position_ms() -> Option<u64> {
 }
 
 #[cfg(windows)]
+pub fn mode() -> Option<String> {
+    windows_mci::command(&format!("status {} mode", windows_mci::alias()))
+        .ok()
+        .map(|mode| mode.trim().to_string())
+}
+
+#[cfg(windows)]
 pub fn playing() -> bool {
-    matches!(
-        windows_mci::command(&format!("status {} mode", windows_mci::alias()))
-            .as_deref()
-            .map(str::trim),
-        Ok("playing")
-    )
+    mode().as_deref() == Some("playing")
 }
 
 #[cfg(not(windows))]
@@ -138,13 +140,16 @@ mod unsupported {
     pub fn position_ms() -> Option<u64> {
         None
     }
+    pub fn mode() -> Option<String> {
+        None
+    }
     pub fn playing() -> bool {
         false
     }
 }
 
 #[cfg(not(windows))]
-pub use unsupported::{close, play, playing, position_ms, stop};
+pub use unsupported::{close, mode, play, playing, position_ms, stop};
 
 #[cfg(all(test, windows))]
 mod tests {

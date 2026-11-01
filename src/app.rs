@@ -1176,6 +1176,7 @@ impl VSynthApp {
         };
         if let Err(error) = playback::open(&path).and_then(|()| playback::play()) {
             let _ = playback::close();
+            crate::logging::line(&format!("playback failed: {error}"));
             self.audio_notice = Some(error);
             cx.notify();
             return;
@@ -1198,6 +1199,12 @@ impl VSynthApp {
                 let Some(entity) = weak.upgrade() else { return };
                 let position = playback::position_ms();
                 let playing = playback::playing();
+                if !playing && position.unwrap_or(0) == 0 {
+                    crate::logging::line(&format!(
+                        "playback did not start: mode={:?}",
+                        playback::mode()
+                    ));
+                }
                 entity.update(cx, |this, cx| {
                     match (playing, position) {
                         (true, Some(ms)) if duration > 0.0 => {
