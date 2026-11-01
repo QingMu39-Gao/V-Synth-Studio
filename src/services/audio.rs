@@ -568,6 +568,57 @@ mod tests {
         let _ = std::fs::remove_dir_all(dir);
     }
 
+    #[test]
+    #[ignore = "requires tools/ffmpeg and builds a video fixture"]
+    fn extracts_audio_from_a_video_file() {
+        let dir = std::env::temp_dir().join(format!("vss-audio-extract-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let video = dir.join("clip.mp4");
+        let status = std::process::Command::new(ffmpeg_path().unwrap())
+            .args([
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-y",
+                "-f",
+                "lavfi",
+                "-i",
+                "sine=frequency=440:duration=1",
+                "-f",
+                "lavfi",
+                "-i",
+                "color=c=black:s=64x64:r=10",
+                "-t",
+                "1",
+                "-c:v",
+                "mpeg4",
+                "-c:a",
+                "aac",
+            ])
+            .arg(&video)
+            .status()
+            .expect("ffmpeg fixture");
+        assert!(status.success(), "could not build the video fixture");
+
+        let wav = dir.join("voice.wav");
+        run_with(
+            &video,
+            &wav,
+            &AudioOperation::Extract,
+            AudioFormat::Wav,
+            |_, _| {},
+            |_| {},
+            || false,
+        )
+        .unwrap();
+        let info = probe(&wav).unwrap();
+        assert!((info.duration - 1.0).abs() < 0.1, "{info:?}");
+        assert_eq!(info.codec, "pcm_s16le");
+        assert!(wav.metadata().unwrap().len() > 44);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
     fn write_test_wav(path: &Path, seconds: f64) {
         let rate = 44100u32;
         let count = (rate as f64 * seconds) as u32;
