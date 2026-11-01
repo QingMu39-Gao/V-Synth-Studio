@@ -2883,11 +2883,26 @@ impl VSynthApp {
                                 }),
                             );
                     }
+                    let link = if item.url.is_empty() {
+                        None
+                    } else {
+                        let open_entity = entity.clone();
+                        let url = item.url.clone();
+                        Some(
+                            Button::new(SharedString::from(format!("announce-open-{}", item.id)))
+                                .label(s.announce_open)
+                                .compact()
+                                .on_click(move |_, _, cx| {
+                                    open_entity.update(cx, |this, cx| this.open_resource(&url, cx));
+                                }),
+                        )
+                    };
                     rows = rows.child(
                         v_flex()
                             .gap_1()
                             .child(header)
-                            .child(div().text_sm().child(item.body.clone())),
+                            .child(div().text_sm().child(item.body.clone()))
+                            .children(link),
                     );
                 }
                 rows.into_any_element()
