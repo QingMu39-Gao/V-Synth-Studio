@@ -151,6 +151,7 @@ pub struct VSynthApp {
     audio_input: Option<PathBuf>,
     audio_info: Option<AudioInfo>,
     audio_peaks: Vec<f32>,
+    audio_view: (f32, f32),
     audio_selection: Option<(f32, f32)>,
     audio_drag: Option<f32>,
     audio_load_job: Option<u64>,
@@ -259,6 +260,7 @@ impl VSynthApp {
             audio_input: None,
             audio_info: None,
             audio_peaks: Vec::new(),
+            audio_view: (0.0, 1.0),
             audio_selection: None,
             audio_drag: None,
             audio_load_job: None,
@@ -1181,6 +1183,7 @@ impl VSynthApp {
         self.audio_input = Some(path.clone());
         self.audio_info = None;
         self.audio_peaks.clear();
+        self.audio_view = (0.0, 1.0);
         self.audio_selection = None;
         self.audio_drag = None;
         self.audio_notice = None;
@@ -4798,6 +4801,7 @@ impl VSynthApp {
             });
 
         let peaks = self.audio_peaks.clone();
+        let view = self.audio_view;
         let selection = self.audio_selection;
         let bounds_slot = self.waveform_bounds.clone();
         let waveform = canvas(
@@ -4806,7 +4810,16 @@ impl VSynthApp {
             },
             move |bounds, _, window, _| {
                 paint_waveform(
-                    bounds, &peaks, selection, primary, background, border, window,
+                    bounds,
+                    &peaks,
+                    view,
+                    selection,
+                    WaveformColors {
+                        primary,
+                        background,
+                        border,
+                    },
+                    window,
                 );
             },
         )
@@ -4824,21 +4837,24 @@ impl VSynthApp {
             .overflow_hidden()
             .child(waveform)
             .on_mouse_down(MouseButton::Left, move |event, _, cx| {
-                if let Some(fraction) = waveform_fraction(&down_bounds, event.position) {
-                    down_entity.update(cx, |this, cx| {
-                        this.audio_drag = Some(fraction);
-                        this.audio_selection = Some((fraction, fraction));
-                        cx.notify();
-                    });
-                }
+                let Some(fraction) = waveform_fraction(&down_bounds, event.position) else {
+                    return;
+                };
+                let position = to_file(view, fraction);
+                down_entity.update(cx, |this, cx| {
+                    this.audio_drag = Some(position);
+                    this.audio_selection = Some((position, position));
+                    cx.notify();
+                });
             })
             .on_mouse_move(move |event, _, cx| {
                 let Some(fraction) = waveform_fraction(&move_bounds, event.position) else {
                     return;
                 };
+                let position = to_file(view, fraction);
                 move_entity.update(cx, |this, cx| {
                     if let Some(anchor) = this.audio_drag {
-                        this.audio_selection = Some((anchor, fraction));
+                        this.audio_selection = Some((anchor, position));
                         cx.notify();
                     }
                 });
@@ -4849,6 +4865,44 @@ impl VSynthApp {
                     cx.notify();
                 });
             });
+        let zoom_buttons = [
+            (s.audio_zoom_in, "audio-zoom-in", 0.5_f32, false),
+            (s.audio_zoom_out, "audio-zoom-out", 2.0_f32, false),
+            (s.audio_zoom_selection, "audio-zoom-selection", 0.0, true),
+            (s.audio_zoom_all, "audio-zoom-all", 1.0, false),
+        ]
+        .into_iter()
+        .map(|(label, id, factor, fit_selection)| {
+            let zoom_entity = entity.clone();
+            Button::new(SharedString::from(id))
+                .label(label)
+                .compact()
+                .ghost()
+                .on_click(move |_, _, cx| {
+                    zoom_entity.update(cx, |this, cx| {
+                        let view = if fit_selection {
+                            match this.audio_selection {
+                                Some((from, until)) if (until - from).abs() > 0.001 => {
+                                    let start = from.min(until);
+                                    let end = from.max(until);
+                                    let padding = (end - start) * 0.1;
+                                    ((start - padding).max(0.0), (end + padding).min(1.0))
+                                }
+                                _ => this.audio_view,
+                            }
+                        } else if id == "audio-zoom-all" {
+                            (0.0, 1.0)
+                        } else {
+                            let anchor = (this.audio_view.0 + this.audio_view.1) / 2.0;
+                            zoom_view(this.audio_view, anchor, factor)
+                        };
+                        this.audio_view = view;
+                        cx.notify();
+                    });
+                })
+                .into_any_element()
+        })
+        .collect::<Vec<_>>();
 
         let operation_buttons = AudioOp::ALL
             .iter()
@@ -5112,12 +5166,16 @@ impl VSynthApp {
                     .outline()
                     .title(s.audio_waveform)
                     .child(
-                        v_flex().gap_2().child(waveform_box).child(
-                            div()
-                                .text_xs()
-                                .text_color(muted)
-                                .child(s.audio_selection_hint),
-                        ),
+                        v_flex()
+                            .gap_2()
+                            .child(waveform_box)
+                            .child(h_flex().gap_2().flex_wrap().children(zoom_buttons))
+                            .child(
+                                div()
+                                    .text_xs()
+                                    .text_color(muted)
+                                    .child(s.audio_selection_hint),
+                            ),
                     ),
             )
             .child(
@@ -6305,6 +6363,31 @@ fn meta_text(label: &'static str, value: String, muted: Hsla) -> impl IntoElemen
         .child(div().text_xs().child(value))
 }
 
+/// Smallest visible window; below this the bars are one pixel wide anyway.
+const MIN_VIEW_SPAN: f32 = 0.005;
+
+/// Zoom a normalized view window so the file position under `anchor` keeps its
+/// place on screen.
+fn zoom_view(view: (f32, f32), anchor: f32, factor: f32) -> (f32, f32) {
+    let current = (view.1 - view.0).max(f32::EPSILON);
+    let span = (current * factor).clamp(MIN_VIEW_SPAN, 1.0);
+    let ratio = ((anchor - view.0) / current).clamp(0.0, 1.0);
+    let start = (anchor - span * ratio).clamp(0.0, 1.0 - span);
+    (start, start + span)
+}
+
+fn to_file(view: (f32, f32), on_screen: f32) -> f32 {
+    view.0 + (view.1 - view.0) * on_screen.clamp(0.0, 1.0)
+}
+
+fn to_view(view: (f32, f32), file: f32) -> f32 {
+    let span = view.1 - view.0;
+    if span <= f32::EPSILON {
+        return 0.0;
+    }
+    ((file - view.0) / span).clamp(0.0, 1.0)
+}
+
 fn waveform_fraction(
     bounds: &Rc<RefCell<Option<Bounds<Pixels>>>>,
     position: Point<Pixels>,
@@ -6382,21 +6465,27 @@ fn paint_piano_roll(
     }
 }
 
-fn paint_waveform(
-    bounds: Bounds<Pixels>,
-    peaks: &[f32],
-    selection: Option<(f32, f32)>,
+struct WaveformColors {
     primary: Hsla,
     background: Hsla,
     border: Hsla,
+}
+
+fn paint_waveform(
+    bounds: Bounds<Pixels>,
+    peaks: &[f32],
+    view: (f32, f32),
+    selection: Option<(f32, f32)>,
+    colors: WaveformColors,
     window: &mut Window,
 ) {
+    let primary = colors.primary;
     window.paint_quad(quad(
         bounds,
         px(4.),
-        background,
+        colors.background,
         px(1.),
-        border,
+        colors.border,
         Default::default(),
     ));
     if peaks.is_empty() {
@@ -6404,14 +6493,18 @@ fn paint_waveform(
     }
     let width = bounds.size.width.as_f32();
     let height = bounds.size.height.as_f32();
-    let bar_width = (width / peaks.len() as f32).max(1.0);
-    for (index, peak) in peaks.iter().enumerate() {
+    let count = peaks.len();
+    let first = ((count as f32 * view.0) as usize).min(count.saturating_sub(1));
+    let last = ((count as f32 * view.1) as usize).clamp(first + 1, count);
+    let visible = (last - first).max(1);
+    let bar_width = (width / visible as f32).max(1.0);
+    for (offset, peak) in peaks[first..last].iter().enumerate() {
         let peak = peak.clamp(0.0, 1.0);
         if peak <= 0.001 {
             continue;
         }
         let bar_height = (height * 0.88 * peak).max(1.0);
-        let x = bounds.origin.x.as_f32() + index as f32 / peaks.len() as f32 * width;
+        let x = bounds.origin.x.as_f32() + offset as f32 / visible as f32 * width;
         let y = bounds.origin.y.as_f32() + (height - bar_height) / 2.0;
         let bar = Bounds {
             origin: point(px(x), px(y)),
@@ -6426,11 +6519,9 @@ fn paint_waveform(
             Default::default(),
         ));
     }
-    if let Some((start, end)) = selection {
-        let (start, end) = (
-            start.min(end).clamp(0.0, 1.0),
-            start.max(end).clamp(0.0, 1.0),
-        );
+    if let Some((from, until)) = selection {
+        let start = to_view(view, from.min(until));
+        let end = to_view(view, from.max(until));
         if end > start {
             let overlay = Bounds {
                 origin: point(
@@ -6976,4 +7067,30 @@ fn pack_row(
                         }),
                 ),
         )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{MIN_VIEW_SPAN, to_file, to_view, zoom_view};
+
+    #[test]
+    fn zoom_centers_on_the_view_and_stays_in_range() {
+        assert_eq!(zoom_view((0.0, 1.0), 0.5, 0.5), (0.25, 0.75));
+        assert_eq!(zoom_view((0.0, 1.0), 0.0, 0.5), (0.0, 0.5));
+        assert_eq!(zoom_view((0.0, 0.002), 0.001, 0.1), (0.0, MIN_VIEW_SPAN));
+        assert_eq!(zoom_view((0.0, 1.0), 0.5, 4.0), (0.0, 1.0));
+    }
+
+    #[test]
+    fn view_and_file_coordinates_round_trip() {
+        let view = (0.4, 0.6);
+        let close = |value: f32, expected: f32| (value - expected).abs() < 1e-6;
+        assert!(close(to_file(view, 0.5), 0.5));
+        assert!(close(to_view(view, 0.5), 0.5));
+        assert!(close(to_view(view, 0.0), 0.0));
+        assert!(close(to_view(view, 1.0), 1.0));
+        assert!(close(to_view(view, 0.2), 0.0));
+        assert!(close(to_view(view, 0.9), 1.0));
+        assert!(close(to_view((0.5, 0.5), 0.7), 0.0));
+    }
 }
