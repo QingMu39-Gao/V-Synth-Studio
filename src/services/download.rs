@@ -27,8 +27,31 @@ pub fn fetch(
     ctx: &JobContext,
     label: &str,
 ) -> Result<(), String> {
-    fetch_with(
-        url,
+    fetch_all(
+        &[url.to_string()],
+        dest,
+        sha256,
+        size_hint,
+        base,
+        span,
+        ctx,
+        label,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn fetch_all(
+    urls: &[String],
+    dest: &Path,
+    sha256: &str,
+    size_hint: u64,
+    base: f32,
+    span: f32,
+    ctx: &JobContext,
+    label: &str,
+) -> Result<(), String> {
+    fetch_all_with(
+        urls,
         dest,
         sha256,
         size_hint,
@@ -41,9 +64,36 @@ pub fn fetch(
     )
 }
 
+/// Primary URL first, then the listed mirrors, then the GitHub proxy pair for
+/// every entry already in the list.
+pub fn candidate_urls(url: &str, mirrors: &[&str]) -> Vec<String> {
+    const PROXY: &str = "https://gh-proxy.com/";
+    let mut out: Vec<String> = Vec::new();
+    push_unique(&mut out, url);
+    for mirror in mirrors {
+        push_unique(&mut out, mirror);
+    }
+    let known = out.len();
+    for index in 0..known {
+        let candidate = out[index].clone();
+        if let Some(direct) = candidate.strip_prefix(PROXY) {
+            push_unique(&mut out, direct);
+        } else if candidate.starts_with("https://github.com/") {
+            push_unique(&mut out, &format!("{PROXY}{candidate}"));
+        }
+    }
+    out
+}
+
+fn push_unique(urls: &mut Vec<String>, candidate: &str) {
+    if !candidate.is_empty() && !urls.iter().any(|url| url == candidate) {
+        urls.push(candidate.to_string());
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
-pub fn fetch_with<P, L, C>(
-    url: &str,
+pub fn fetch_all_with<P, L, C>(
+    urls: &[String],
     dest: &Path,
     sha256: &str,
     size_hint: u64,
@@ -65,17 +115,57 @@ where
         }
         let _ = fs::remove_file(dest);
     }
-    if size_hint >= PARALLEL_MIN
-        && fetch_ranges(
+    let mut failure = None;
+    for (index, url) in urls.iter().enumerate() {
+        if index > 0 {
+            log(format!("换用备用地址下载 {label}"));
+        }
+        match attempt(
             url,
             dest,
             sha256,
+            size_hint,
             base,
             span,
             &mut progress,
             &mut log,
             &canceled,
             label,
+        ) {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                if error == "已取消" {
+                    return Err(error);
+                }
+                log(format!("⚠ 地址 {url} 失败：{error}"));
+                failure = Some(error);
+            }
+        }
+    }
+    failure.map_or_else(|| Err(format!("没有可用的 {label} 下载源")), Err)
+}
+
+#[allow(clippy::too_many_arguments)]
+fn attempt<P, L, C>(
+    url: &str,
+    dest: &Path,
+    sha256: &str,
+    size_hint: u64,
+    base: f32,
+    span: f32,
+    progress: &mut P,
+    log: &mut L,
+    canceled: &C,
+    label: &str,
+) -> Result<(), String>
+where
+    P: FnMut(Option<f32>, String),
+    L: FnMut(String),
+    C: Fn() -> bool,
+{
+    if size_hint >= PARALLEL_MIN
+        && fetch_ranges(
+            url, dest, sha256, base, span, progress, log, canceled, label,
         )?
     {
         return Ok(());
@@ -347,7 +437,7 @@ pub fn extract_zip(archive: &Path, dest: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn verify_sha256(path: &Path, expected: &str) -> Result<bool, String> {
+pub fn verify_sha256(path: &Path, expected: &str) -> Result<bool, String> {
     let mut file = File::open(path).map_err(|error| error.to_string())?;
     let mut hasher = Sha256::new();
     let mut buffer = [0u8; 256 * 1024];
@@ -385,6 +475,88 @@ mod tests {
     use std::sync::atomic::{AtomicUsize, Ordering};
 
     use super::*;
+
+    #[test]
+    fn lists_primary_then_mirrors_then_proxy_pair() {
+        let github = "https://github.com/yt-dlp/yt-dlp/releases/download/1/yt-dlp.exe";
+        let proxied = format!("https://gh-proxy.com/{github}");
+        let from_proxy = candidate_urls(&proxied, &[]);
+        assert_eq!(from_proxy[0], proxied);
+        assert_eq!(from_proxy[1], github);
+        assert_eq!(from_proxy.len(), 2);
+
+        let listed = candidate_urls(
+            "https://registry.npmmirror.com/-/binary/ffmpeg-static/b6.1.1/ffmpeg-win32-x64.gz",
+            &[github],
+        );
+        assert_eq!(listed[1], github);
+        assert_eq!(listed[2], proxied);
+
+        let deduped = candidate_urls(github, &[github, proxied.as_str()]);
+        assert_eq!(deduped, vec![github.to_string(), proxied]);
+    }
+
+    #[test]
+    fn falls_back_to_the_next_source_when_one_fails() {
+        use crate::services::jobs::{JobOutcome, Jobs};
+
+        let data = b"mirrored payload".to_vec();
+        let sha = Sha256::digest(&data)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+
+        let dead = TcpListener::bind("127.0.0.1:0").unwrap();
+        let dead_address = dead.local_addr().unwrap();
+        std::thread::spawn(move || {
+            for stream in dead.incoming().take(1) {
+                drop(stream.unwrap());
+            }
+        });
+
+        let live = TcpListener::bind("127.0.0.1:0").unwrap();
+        let live_address = live.local_addr().unwrap();
+        let served = data.clone();
+        std::thread::spawn(move || {
+            let (mut stream, _) = live.accept().unwrap();
+            let mut request = [0u8; 1024];
+            let _ = stream.read(&mut request);
+            write!(
+                stream,
+                "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+                served.len()
+            )
+            .unwrap();
+            stream.write_all(&served).unwrap();
+        });
+
+        let directory =
+            std::env::temp_dir().join(format!("vss-mirror-test-{}", std::process::id()));
+        let _ = fs::remove_dir_all(&directory);
+        fs::create_dir_all(&directory).unwrap();
+        let dest = directory.join("file.bin");
+        let urls = vec![
+            format!("http://{dead_address}/file.bin"),
+            format!("http://{live_address}/file.bin"),
+        ];
+        let job_dest = dest.clone();
+        let (jobs, _events) = Jobs::new();
+        let job = jobs.start("mirrors", move |ctx| {
+            fetch_all(&urls, &job_dest, &sha, 0, 0.0, 1.0, &ctx, "test")
+        });
+        assert!(matches!(
+            job.result.recv_blocking().unwrap(),
+            JobOutcome::Done(())
+        ));
+
+        assert_eq!(fs::read(&dest).unwrap(), data);
+        let log = jobs.snapshot(job.id).expect("snapshot").log;
+        assert!(
+            log.iter().any(|line| line.contains("换用备用地址")),
+            "{log:?}"
+        );
+        let _ = fs::remove_dir_all(directory);
+    }
 
     #[test]
     fn rejects_unsafe_archive_paths() {

@@ -606,21 +606,53 @@ impl VSynthApp {
     }
 
     fn install_dependency(&mut self, id: DependencyId, cx: &mut Context<Self>) {
+        let title = format!(
+            "{} {}",
+            self.text().install_job,
+            dependencies::info(id).name
+        );
+        self.run_dependency_job(id, title, move |ctx| dependencies::install(id, &ctx), cx);
+    }
+
+    fn import_dependency(&mut self, id: DependencyId, cx: &mut Context<Self>) {
         if self
             .dependency_job
             .is_some_and(|(_, job)| self.job_center.read(cx).is_running(job))
         {
             return;
         }
-        let title = format!(
-            "{} {}",
-            self.text().install_job,
-            dependencies::info(id).name
+        let s = self.text();
+        let mut dialog = rfd::FileDialog::new();
+        let extensions = dependencies::import_extensions(id);
+        if !extensions.is_empty() {
+            dialog = dialog.add_filter(s.import_filter, extensions);
+        }
+        let Some(path) = dialog.pick_file() else {
+            return;
+        };
+        let title = format!("{} {}", s.import_job, dependencies::info(id).name);
+        self.run_dependency_job(
+            id,
+            title,
+            move |ctx| dependencies::import(id, &path, &ctx),
+            cx,
         );
-        let job = self
-            .job_center
-            .read(cx)
-            .start(title, move |ctx| dependencies::install(id, &ctx));
+    }
+
+    fn run_dependency_job(
+        &mut self,
+        id: DependencyId,
+        title: String,
+        work: impl FnOnce(crate::services::jobs::JobContext) -> Result<(), String> + Send + 'static,
+        cx: &mut Context<Self>,
+    ) {
+        if self
+            .dependency_job
+            .is_some_and(|(_, job)| self.job_center.read(cx).is_running(job))
+        {
+            return;
+        }
+        let job = self.job_center.read(cx).start(title, work);
         self.dependency_job = Some((id, job.id));
         let job_id = job.id;
         cx.spawn(async move |this, cx| {
@@ -762,6 +794,21 @@ impl VSynthApp {
                     info.size as f64 / 1_000_000.0
                 )
             };
+            let import_button = if is_active || !dependencies::importable(id) {
+                None
+            } else {
+                let import_entity = entity.clone();
+                Some(
+                    Button::new(SharedString::from(format!("dep-import-{}", info.name)))
+                        .label(s.import_local)
+                        .compact()
+                        .disabled(active_running)
+                        .on_click(move |_, _, cx| {
+                            import_entity.update(cx, |this, cx| this.import_dependency(id, cx));
+                        })
+                        .into_any_element(),
+                )
+            };
             rows = rows.child(
                 h_flex()
                     .justify_between()
@@ -785,6 +832,7 @@ impl VSynthApp {
                             .items_center()
                             .gap_2()
                             .child(announce_badge(status_label, color, theme.radius))
+                            .children(import_button)
                             .child(button),
                     ),
             );

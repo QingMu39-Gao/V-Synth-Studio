@@ -27,6 +27,7 @@ pub struct Artifact {
     pub name: &'static str,
     pub version: &'static str,
     pub url: &'static str,
+    pub mirrors: &'static [&'static str],
     pub sha256: &'static str,
     pub size: u64,
     pub file_name: &'static str,
@@ -59,6 +60,7 @@ pub const ALL: &[Artifact] = &[
         name: "LibreSVIP CLI",
         version: "2.9.2",
         url: "https://github.com/SoulMelody/LibreSVIP/releases/download/v2.9.2/LibreSVIP-CLI-2.9.2.win-amd64.zip",
+        mirrors: &[],
         sha256: "eb4321274f58b4080ffd545b63f0ef9191b0da130664f6bb5de314b6440d9dcd",
         size: 37_001_401,
         file_name: "libresvip-cli-2.9.2-win-amd64.zip",
@@ -72,6 +74,9 @@ pub const ALL: &[Artifact] = &[
         name: "FFmpeg",
         version: "6.1.1",
         url: "https://registry.npmmirror.com/-/binary/ffmpeg-static/b6.1.1/ffmpeg-win32-x64.gz",
+        mirrors: &[
+            "https://github.com/eugeneware/ffmpeg-static/releases/download/b6.1.1/ffmpeg-win32-x64.gz",
+        ],
         sha256: "8883a3dffbd0a16cf4ef95206ea05283f78908dbfb118f73c83f4951dcc06d77",
         size: 29_581_307,
         file_name: "ffmpeg-win32-x64-6.1.1.gz",
@@ -83,6 +88,7 @@ pub const ALL: &[Artifact] = &[
         name: "yt-dlp",
         version: "2026.10.26",
         url: "https://gh-proxy.com/https://github.com/yt-dlp/yt-dlp/releases/download/2026.10.26/yt-dlp.exe",
+        mirrors: &[],
         sha256: "f5389d3698ecde4ef06f4e6b1ce0294fe9ac1396228c8990b8d3416d6d177a7d",
         size: 23_575_744,
         file_name: "yt-dlp-2026.10.26.exe",
@@ -101,6 +107,35 @@ pub fn install(artifact: &Artifact, root: &Path, ctx: &JobContext) -> Result<(),
         |fraction, message| ctx.progress(fraction, message),
         |line| ctx.log(line),
         || ctx.is_canceled(),
+    )
+}
+
+/// Install from a file the user already has. The pinned SHA-256 still decides,
+/// so a wrong or tampered archive is refused instead of half-installed.
+pub fn install_from_file(
+    artifact: &Artifact,
+    source: &Path,
+    root: &Path,
+    ctx: &JobContext,
+) -> Result<(), String> {
+    if !source.is_file() {
+        return Err(format!("文件不存在：{}", source.display()));
+    }
+    ctx.progress(Some(0.05), "校验本地安装包");
+    if !verify_sha256(source, artifact.sha256)? {
+        return Err(format!(
+            "{} 的本地文件校验值与内置版本不符，拒绝安装",
+            artifact.name
+        ));
+    }
+    ctx.log(format!("使用本地安装包：{}", source.display()));
+    install_archive(
+        artifact,
+        root,
+        source,
+        &mut |fraction, message| ctx.progress(fraction, message),
+        &mut |line| ctx.log(line),
+        &|| ctx.is_canceled(),
     )
 }
 
@@ -141,8 +176,9 @@ where
             return Err("已取消".to_string());
         }
         progress(Some(0.02), "连接下载源");
-        crate::services::download::fetch_with(
-            artifact.url,
+        let urls = crate::services::download::candidate_urls(artifact.url, artifact.mirrors);
+        crate::services::download::fetch_all_with(
+            &urls,
             &archive,
             artifact.sha256,
             artifact.size,
@@ -155,6 +191,22 @@ where
         )?;
     }
 
+    install_archive(artifact, root, &archive, &mut progress, &mut log, &canceled)
+}
+
+fn install_archive<P, L, C>(
+    artifact: &Artifact,
+    root: &Path,
+    archive: &Path,
+    progress: &mut P,
+    log: &mut L,
+    canceled: &C,
+) -> Result<(), String>
+where
+    P: FnMut(Option<f32>, &str),
+    L: FnMut(String),
+    C: Fn() -> bool,
+{
     if canceled() {
         return Err("已取消".to_string());
     }
@@ -169,17 +221,17 @@ where
 
     if let Err(error) = match artifact.kind {
         ArtifactKind::Zip { strip_prefix } => {
-            extract_zip(&archive, &staging, strip_prefix, &mut progress, &canceled)
+            extract_zip(archive, &staging, strip_prefix, progress, canceled)
         }
         ArtifactKind::Gzip => extract_gzip(
-            &archive,
+            archive,
             &staging.join(artifact.executable),
-            &mut progress,
-            &canceled,
+            progress,
+            canceled,
         ),
         ArtifactKind::File => {
             progress(Some(0.9), "安装组件");
-            fs::copy(&archive, staging.join(artifact.executable))
+            fs::copy(archive, staging.join(artifact.executable))
                 .map(|_| ())
                 .map_err(|error| format!("安装组件失败：{error}"))
         }
@@ -396,6 +448,7 @@ mod tests {
             name: "Test Package",
             version: "1.0",
             url: "http://127.0.0.1:9/not-used",
+            mirrors: &[],
             sha256: Box::leak(hash.into_boxed_str()),
             size: fs::metadata(&zip_path).unwrap().len(),
             file_name: "test-pkg-1.0.zip",
@@ -437,6 +490,7 @@ mod tests {
             name: "Gzip Package",
             version: "1.0",
             url: "http://127.0.0.1:9/not-used",
+            mirrors: &[],
             sha256: Box::leak(hash.into_boxed_str()),
             size: fs::metadata(&archive).unwrap().len(),
             file_name: "tool.gz",
@@ -499,6 +553,7 @@ mod tests {
             name: "Download Package",
             version: "1.0",
             url: Box::leak(format!("http://{address}/pkg.zip").into_boxed_str()),
+            mirrors: &[],
             sha256: Box::leak(hash.into_boxed_str()),
             size: bytes.len() as u64,
             file_name: "pkg.zip",
@@ -536,6 +591,25 @@ mod tests {
     }
 
     #[test]
+    #[ignore = "reinstalls yt-dlp from the archive already in data/cache"]
+    fn imports_the_cached_ytdlp_archive_as_a_local_file() {
+        let artifact = *ALL
+            .iter()
+            .find(|artifact| artifact.id == "ytdlp")
+            .expect("ytdlp artifact");
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let source = artifact.cache_path(&root);
+        assert!(
+            source.is_file(),
+            "no cached archive at {}",
+            source.display()
+        );
+
+        install_file_job(&artifact, &source, &root).unwrap();
+        assert!(artifact.is_installed(&root));
+    }
+
+    #[test]
     #[ignore = "installs the real ffmpeg archive into tools/"]
     fn installs_ffmpeg_into_repo_tools() {
         let artifact = ALL
@@ -552,6 +626,73 @@ mod tests {
         )
         .unwrap();
         assert!(artifact.is_installed(&root));
+    }
+
+    #[test]
+    fn rejects_a_local_file_with_the_wrong_hash() {
+        let root = temp_root("local-bad");
+        let source = root.join("pkg.zip");
+        write_test_zip(&source);
+        let artifact = local_artifact("deadbeef");
+
+        let error = install_file_job(&artifact, &source, &root).unwrap_err();
+        assert!(error.contains("校验值"), "{error}");
+        assert!(!artifact.is_installed(&root));
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn installs_from_a_local_file_without_filling_the_cache() {
+        let root = temp_root("local-import");
+        let source = root.join("hand-carried").join("pkg.zip");
+        fs::create_dir_all(source.parent().expect("source parent")).unwrap();
+        write_test_zip(&source);
+        let hash = hex(&Sha256::digest(fs::read(&source).unwrap()));
+        let artifact = local_artifact(&hash);
+
+        install_file_job(&artifact, &source, &root).unwrap();
+
+        assert!(artifact.is_installed(&root));
+        assert_eq!(
+            fs::read_to_string(root.join("tools/local-pkg/hello.txt")).unwrap(),
+            "hello"
+        );
+        assert!(!artifact.cache_path(&root).exists());
+        let _ = fs::remove_dir_all(root);
+    }
+
+    fn local_artifact(sha256: &str) -> Artifact {
+        Artifact {
+            id: "local-pkg",
+            name: "Local Package",
+            version: "1.0",
+            url: "http://127.0.0.1:9/not-used",
+            mirrors: &[],
+            sha256: Box::leak(sha256.to_string().into_boxed_str()),
+            size: 4096,
+            file_name: "pkg.zip",
+            kind: ArtifactKind::Zip {
+                strip_prefix: "pkg/",
+            },
+            executable: "hello.txt",
+        }
+    }
+
+    fn install_file_job(artifact: &Artifact, source: &Path, root: &Path) -> Result<(), String> {
+        use crate::services::jobs::{JobOutcome, Jobs};
+
+        let (jobs, _events) = Jobs::new();
+        let source = source.to_path_buf();
+        let root = root.to_path_buf();
+        let artifact = *artifact;
+        let job = jobs.start("artifact import", move |ctx| {
+            install_from_file(&artifact, &source, &root, &ctx)
+        });
+        match job.result.recv_blocking().expect("job result") {
+            JobOutcome::Done(()) => Ok(()),
+            JobOutcome::Failed(error) => Err(error),
+            JobOutcome::Canceled => Err("已取消".to_string()),
+        }
     }
 
     fn write_test_zip(path: &Path) {

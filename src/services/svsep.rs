@@ -206,6 +206,30 @@ pub fn model_file() -> PathBuf {
     model_path(&base_dir())
 }
 
+/// Install the MDX model from a file the user already has.
+pub fn import_model(source: &Path, ctx: &JobContext) -> Result<(), String> {
+    if !source.is_file() {
+        return Err(format!("文件不存在：{}", source.display()));
+    }
+    ctx.progress(Some(0.1), "校验本地模型");
+    if !download::verify_sha256(source, MODEL_SHA)? {
+        return Err(format!(
+            "{MODEL_NAME} 的本地文件校验值与内置版本不符，拒绝使用"
+        ));
+    }
+    let path = model_file();
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    ctx.progress(Some(0.6), "复制本地模型");
+    fs::copy(source, &path)
+        .map(|_| ())
+        .map_err(|error| format!("复制模型失败（{}）：{error}", path.display()))?;
+    ctx.log(format!("已安装到 {}", path.display()));
+    ctx.progress(Some(1.0), "模型已就绪");
+    Ok(())
+}
+
 fn ensure_model(base: &Path, ctx: &JobContext) -> Result<(), String> {
     let path = model_path(base);
     if path.is_file() {
@@ -214,8 +238,8 @@ fn ensure_model(base: &Path, ctx: &JobContext) -> Result<(), String> {
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|error| error.to_string())?;
     }
-    download::fetch(
-        MODEL_URL,
+    download::fetch_all(
+        &download::candidate_urls(MODEL_URL, &[]),
         &path,
         MODEL_SHA,
         MODEL_SIZE,

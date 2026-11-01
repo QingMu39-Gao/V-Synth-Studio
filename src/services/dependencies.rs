@@ -1,6 +1,6 @@
 //! Unified view of the tools, runtime and models that are downloaded on demand.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use crate::services::artifacts;
 use crate::services::jobs::JobContext;
@@ -140,6 +140,52 @@ pub fn install(id: Id, ctx: &JobContext) -> Result<(), String> {
     }
 }
 
+/// Whether the component ships as one archive the user can hand over.
+pub fn importable(id: Id) -> bool {
+    !matches!(id, Id::Python)
+}
+
+pub fn import(id: Id, path: &Path, ctx: &JobContext) -> Result<(), String> {
+    match id {
+        Id::Python => Err("Python 运行环境由多个组件组成，不支持单文件导入".to_string()),
+        Id::UvrModel => svsep::import_model(path, ctx),
+        Id::GameModel => midi::import_models(path, ctx),
+        Id::LibreSvip | Id::Ffmpeg | Id::YtDlp => {
+            let artifact = artifacts::ALL
+                .iter()
+                .find(|artifact| artifact.id == artifact_id(id))
+                .ok_or_else(|| format!("没有可用的 {} 安装包", info(id).name))?;
+            artifacts::install_from_file(artifact, path, &crate::config::app_root(), ctx)
+        }
+    }
+}
+
+pub fn import_extensions(id: Id) -> &'static [&'static str] {
+    match id {
+        Id::Python => &[],
+        Id::UvrModel => &["onnx"],
+        Id::GameModel => &["zip"],
+        Id::LibreSvip | Id::Ffmpeg | Id::YtDlp => {
+            let artifact_id = artifact_id(id);
+            artifacts::ALL
+                .iter()
+                .find(|artifact| artifact.id == artifact_id)
+                .and_then(|artifact| artifact.file_name.rsplit_once('.'))
+                .map(|(_, extension)| extension_filter(extension))
+                .unwrap_or(&[])
+        }
+    }
+}
+
+fn extension_filter(extension: &str) -> &'static [&'static str] {
+    match extension {
+        "zip" => &["zip"],
+        "gz" => &["gz"],
+        "exe" => &["exe"],
+        _ => &[],
+    }
+}
+
 fn artifact_id(id: Id) -> &'static str {
     match id {
         Id::LibreSvip => "libresvip",
@@ -166,5 +212,17 @@ mod tests {
             assert_eq!(info(id).id, id);
         }
         assert_eq!(ALL.len(), 6);
+    }
+
+    #[test]
+    fn single_file_components_declare_an_import_filter() {
+        assert_eq!(import_extensions(Id::LibreSvip), &["zip"]);
+        assert_eq!(import_extensions(Id::Ffmpeg), &["gz"]);
+        assert_eq!(import_extensions(Id::YtDlp), &["exe"]);
+        assert_eq!(import_extensions(Id::UvrModel), &["onnx"]);
+        assert_eq!(import_extensions(Id::GameModel), &["zip"]);
+        assert!(import_extensions(Id::Python).is_empty());
+        assert!(!importable(Id::Python));
+        assert!(importable(Id::GameModel));
     }
 }

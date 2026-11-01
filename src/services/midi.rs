@@ -299,12 +299,11 @@ pub fn ensure_models_only(ctx: &JobContext) -> Result<(), String> {
 
 fn ensure_models(ctx: &JobContext) -> Result<(), String> {
     let base = base_dir();
-    let models = model_dir();
     let cache = base.join("cache");
     fs::create_dir_all(&cache).map_err(|error| error.to_string())?;
     let archive = cache.join("GAME-1.0.3-large-onnx.zip");
-    download::fetch(
-        MODEL_URL,
+    download::fetch_all(
+        &download::candidate_urls(MODEL_URL, &[]),
         &archive,
         MODEL_SHA,
         MODEL_SIZE,
@@ -313,12 +312,30 @@ fn ensure_models(ctx: &JobContext) -> Result<(), String> {
         ctx,
         "GAME 模型",
     )?;
+    install_models(&archive, ctx)
+}
 
+/// Install the GAME model set from a file the user already has.
+pub fn import_models(source: &Path, ctx: &JobContext) -> Result<(), String> {
+    if !source.is_file() {
+        return Err(format!("文件不存在：{}", source.display()));
+    }
+    ctx.progress(Some(0.05), "校验本地模型");
+    if !download::verify_sha256(source, MODEL_SHA)? {
+        return Err("GAME 模型包的本地文件校验值与内置版本不符，拒绝使用".to_string());
+    }
+    ctx.log(format!("使用本地模型包：{}", source.display()));
+    install_models(source, ctx)
+}
+
+fn install_models(archive: &Path, ctx: &JobContext) -> Result<(), String> {
+    let base = base_dir();
+    let models = model_dir();
     ctx.progress(Some(0.96), "解压 GAME 模型");
     let staging = base.join(format!("install-{}", std::process::id()));
     let _ = fs::remove_dir_all(&staging);
     fs::create_dir_all(&staging).map_err(|error| error.to_string())?;
-    download::extract_zip(&archive, &staging)?;
+    download::extract_zip(archive, &staging)?;
     let extracted = find_model_dir(&staging)?;
     if models.exists() {
         fs::remove_dir_all(&models).map_err(|error| error.to_string())?;
