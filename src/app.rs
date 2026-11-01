@@ -3033,7 +3033,7 @@ impl VSynthApp {
                 .flex()
                 .items_center()
                 .justify_center()
-                .bg(rgba(0x60_00_00_00))
+                .bg(rgba(0x00_00_00_66))
                 .child(div().w(px(520.)).child(card))
                 .into_any_element(),
         )
