@@ -4881,15 +4881,7 @@ impl VSynthApp {
                 .on_click(move |_, _, cx| {
                     zoom_entity.update(cx, |this, cx| {
                         let view = if fit_selection {
-                            match this.audio_selection {
-                                Some((from, until)) if (until - from).abs() > 0.001 => {
-                                    let start = from.min(until);
-                                    let end = from.max(until);
-                                    let padding = (end - start) * 0.1;
-                                    ((start - padding).max(0.0), (end + padding).min(1.0))
-                                }
-                                _ => this.audio_view,
-                            }
+                            fit_view(this.audio_selection).unwrap_or(this.audio_view)
                         } else if id == "audio-zoom-all" {
                             (0.0, 1.0)
                         } else {
@@ -6376,6 +6368,18 @@ fn zoom_view(view: (f32, f32), anchor: f32, factor: f32) -> (f32, f32) {
     (start, start + span)
 }
 
+/// View that frames the selection with a tenth of its width as padding; a click
+/// without a drag is not a selection worth zooming to.
+fn fit_view(selection: Option<(f32, f32)>) -> Option<(f32, f32)> {
+    let (from, until) = selection?;
+    let (start, end) = (from.min(until), from.max(until));
+    if end - start <= MIN_VIEW_SPAN {
+        return None;
+    }
+    let padding = (end - start) * 0.1;
+    Some(((start - padding).max(0.0), (end + padding).min(1.0)))
+}
+
 fn to_file(view: (f32, f32), on_screen: f32) -> f32 {
     view.0 + (view.1 - view.0) * on_screen.clamp(0.0, 1.0)
 }
@@ -7071,7 +7075,7 @@ fn pack_row(
 
 #[cfg(test)]
 mod tests {
-    use super::{MIN_VIEW_SPAN, to_file, to_view, zoom_view};
+    use super::{MIN_VIEW_SPAN, fit_view, to_file, to_view, zoom_view};
 
     #[test]
     fn zoom_centers_on_the_view_and_stays_in_range() {
@@ -7079,6 +7083,27 @@ mod tests {
         assert_eq!(zoom_view((0.0, 1.0), 0.0, 0.5), (0.0, 0.5));
         assert_eq!(zoom_view((0.0, 0.002), 0.001, 0.1), (0.0, MIN_VIEW_SPAN));
         assert_eq!(zoom_view((0.0, 1.0), 0.5, 4.0), (0.0, 1.0));
+    }
+
+    #[test]
+    fn fit_view_pads_the_selection_and_clamps_to_the_file() {
+        let close = |value: f32, expected: f32| (value - expected).abs() < 1e-6;
+        let fitted = fit_view(Some((0.4, 0.6))).expect("a real selection");
+        assert!(close(fitted.0, 0.38));
+        assert!(close(fitted.1, 0.62));
+
+        // A dragged range arrives reversed as well as in order.
+        let reversed = fit_view(Some((0.6, 0.4))).expect("reversed selection");
+        assert!(close(reversed.0, 0.38));
+        assert!(close(reversed.1, 0.62));
+
+        let clamped = fit_view(Some((0.0, 0.05))).expect("selection at the head");
+        assert!(close(clamped.0, 0.0));
+        assert!(close(clamped.1, 0.055));
+
+        assert!(fit_view(None).is_none());
+        assert!(fit_view(Some((0.3, 0.3))).is_none());
+        assert!(fit_view(Some((0.3, 0.301))).is_none());
     }
 
     #[test]
