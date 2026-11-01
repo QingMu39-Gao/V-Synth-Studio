@@ -10,7 +10,18 @@ $cargo = Get-Content "$root/Cargo.toml" -Raw
 $version = [regex]::Match($cargo, '(?m)^version\s*=\s*"([^"]+)"').Groups[1].Value
 if (-not $Setup) { $Setup = "$root/dist/V-Synth-Studio-$version-windows-x64-setup.exe" }
 if (-not $Url.StartsWith('https://')) { throw 'the download URL must use HTTPS' }
+if ($Url -match '^https://(example\.(com|org)|localhost|127\.)') {
+    throw 'the download URL is still a placeholder; publish the package first'
+}
+if (-not $Changelog.Trim()) { throw 'a published manifest needs a changelog users can read' }
 if (-not (Test-Path $Setup)) { throw "setup not found: $Setup" }
+
+$binary = "$root/target/release/v-synth-studio.exe"
+if (Test-Path $binary) {
+    if ((Get-Item $binary).LastWriteTime -gt (Get-Item $Setup).LastWriteTime) {
+        throw "the package predates the release binary: rebuild with scripts/build-installer.ps1 before publishing"
+    }
+}
 
 $file = Get-Item $Setup
 $hash = (Get-FileHash -Algorithm SHA256 -Path $Setup).Hash.ToLower()
